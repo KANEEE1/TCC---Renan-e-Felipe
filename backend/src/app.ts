@@ -1,6 +1,8 @@
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
+import { registerRoutes } from "./modules/routes.js";
+import { errorHandler } from "./shared/http.js";
 
 dotenv.config();
 
@@ -17,6 +19,9 @@ export function createApp() {
   app.get("/", (_req, res) => {
     res.json({ message: "Backend running" });
   });
+
+  registerRoutes(app);
+  app.use(errorHandler);
 
   return app;
 }

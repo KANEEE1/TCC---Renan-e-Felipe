@@ -68,6 +68,10 @@ O custo é complexidade adicional: comunicação entre agentes, sincronização 
 - Para o TCC, o caso de uso mais honesto é: delegar pesquisa/exploração de código a um subagente enquanto a conversa principal mantém o contexto de decisão do usuário — isso evita que o contexto principal fique poluído com resultados intermediários de busca, mas só compensa a complexidade quando a tarefa é genuinamente grande ou paralelizável (algo a discutir criticamente no capítulo de metodologia, dado que o `CLAUDE.md` do projeto prioriza simplicidade).
 - Cabe registrar como estudo de caso momentos em que a orquestração multiagente foi (ou não) vantajosa frente a uma abordagem de agente único, com métricas simples (tempo, número de correções necessárias, qualidade percebida).
 
+### Subagents definidos no projeto
+
+O projeto registra subagents de desenvolvimento em `docs/tecnicas-ia/subagents.md` e `.agents/`. Esses subagents formalizam papeis recorrentes do processo: arquitetura de backend, modelagem de banco, revisao de codigo, documentacao e validacao. Eles sao ferramentas metodologicas de apoio ao desenvolvimento, nao funcionalidades do produto entregue aos usuarios finais.
+
 ### Referências
 
 - Li, G. et al. **CAMEL: Communicative Agents for "Mind" Exploration of Large Language Model Society**. arXiv:2303.17760, 2023. Disponível em: https://arxiv.org/abs/2303.17760

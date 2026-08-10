@@ -1,3 +1,8 @@
+---
+name: test-validator
+description: Valida se a aplicação continua executável após uma mudança. Use antes de abrir PR, depois de alterar schema.prisma, depois de adicionar ou modificar rotas do backend, ou depois de alterar scripts, Docker ou configuração de ambiente.
+---
+
 # test-validator
 
 ## Papel

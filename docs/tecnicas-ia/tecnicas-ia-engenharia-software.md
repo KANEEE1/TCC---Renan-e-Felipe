@@ -43,7 +43,7 @@ O design de boas ferramentas é um problema de engenharia por si só: nomes e de
 ### Como aplicamos no TCC
 
 - No ambiente de desenvolvimento usado neste projeto (Claude Code), o agente tem acesso a ferramentas primitivas (leitura/edição de arquivos, execução de comandos shell, busca) e a Skills de mais alto nível (ex.: `code-review`, `security-review`, `verify`, `run`) que encapsulam fluxos de trabalho inteiros de engenharia de software.
-- Podemos documentar no TCC quais Skills foram criadas ou customizadas especificamente para o domínio deste projeto (ex.: uma skill para rodar as migrations do Prisma e validar o schema, ou para gerar relatórios de cobertura de testes), e justificar as decisões de design (quando expor uma ação como ferramenta atômica vs. quando compor várias ações em uma skill).
+- As Skills criadas ou customizadas especificamente para o domínio deste projeto, e a justificativa de cada decisão de design, estão documentadas em `docs/tecnicas-ia/skills.md` — incluindo a skill orquestradora `feature-pipeline`, que compõe o pipeline multiagente descrito em `docs/tecnicas-ia/subagents.md`.
 - Isso conecta diretamente com um dos objetivos do TCC: avaliar como o *design de ferramentas* (não só o prompt) impacta a produtividade e a qualidade do código gerado.
 
 ### Referências
@@ -70,7 +70,7 @@ O custo é complexidade adicional: comunicação entre agentes, sincronização 
 
 ### Subagents definidos no projeto
 
-O projeto registra subagents de desenvolvimento em `docs/tecnicas-ia/subagents.md` e `.agents/`. Esses subagents formalizam papeis recorrentes do processo: arquitetura de backend, modelagem de banco, revisao de codigo, documentacao e validacao. Eles sao ferramentas metodologicas de apoio ao desenvolvimento, nao funcionalidades do produto entregue aos usuarios finais.
+O projeto registra subagents de desenvolvimento em `docs/tecnicas-ia/subagents.md` e `.claude/agents/`. Esses subagents formalizam papeis recorrentes do processo: arquitetura de backend, modelagem de banco, revisao de codigo, documentacao e validacao. Eles sao ferramentas metodologicas de apoio ao desenvolvimento, nao funcionalidades do produto entregue aos usuarios finais.
 
 ### Referências
 

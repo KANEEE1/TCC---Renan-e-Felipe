@@ -1,3 +1,8 @@
+---
+name: backend-architect
+description: Revisa decisões de arquitetura do backend e garante aderência ao monólito modular definido no projeto. Use antes de criar ou reorganizar módulos do backend, quando uma feature afetar mais de um domínio, quando houver dúvida entre criar nova abstração ou reaproveitar um padrão existente, ou antes de abrir PRs que mexem em backend/src/modules, backend/src/shared ou backend/src/app.ts.
+---
+
 # backend-architect
 
 ## Papel

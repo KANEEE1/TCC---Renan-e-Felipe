@@ -1,6 +1,6 @@
 ---
 name: feature-pipeline
-description: Orquestra o pipeline completo de implementação de uma feature ou mudança, coordenando os subagentes plan-change, backend-architect/database-modeler, code-implementation, code-reviewer, test-writer, test-validator e docs-writer em sequência. Use quando o usuário pedir para implementar uma feature/user story inteira, ou pedir explicitamente para rodar o pipeline automatizado de subagentes.
+description: Orquestra o pipeline completo de implementação de uma feature ou mudança, coordenando os subagentes plan-change, backend-architect/database-modeler, code-implementation, code-reviewer, test-writer, test-validator e docs-writer em sequência. Uso restrito: só acionar via comando explícito /feature-pipeline ou quando o usuário pedir explicitamente para usar esta skill/o pipeline de subagentes — nunca inferir automaticamente a partir da descrição de uma tarefa.
 ---
 
 # Feature Pipeline
@@ -9,9 +9,9 @@ Orquestração multiagente de uma feature completa, do plano à documentação. 
 
 ## Quando usar
 
-Use esta skill quando o usuário pedir para implementar uma feature/user story inteira (não um ajuste pequeno e pontual), ou pedir explicitamente para "rodar o pipeline" / "usar a orquestração de subagentes".
+**Uso restrito, não automático.** Só execute este fluxo quando o usuário chamar explicitamente `/feature-pipeline`, ou pedir claramente em texto para usar esta skill / o pipeline de subagentes. Não infira sozinho, a partir da descrição de uma tarefa, que o pipeline deve ser acionado — mesmo que a tarefa pareça ser uma feature/user story inteira. Se houver dúvida sobre se o usuário quer o pipeline completo ou uma implementação direta, pergunte antes de acionar qualquer subagente.
 
-Para ajustes pequenos e óbvios, não use esta skill — implemente diretamente. O overhead de acionar 5+ subagentes só se justifica para mudanças com escopo real (nova entidade, novo endpoint, nova regra de negócio) e para o experimento de pesquisa do TCC (comparar pipeline delegado vs. implementação direta pelo agente principal).
+Isso é intencional: o pipeline existe como experimento de pesquisa do TCC (comparar execução delegada vs. implementação direta pelo agente principal), e essa comparação exige que o pipeline só rode quando deliberadamente solicitado — nunca como comportamento padrão silencioso.
 
 ## Fluxo
 

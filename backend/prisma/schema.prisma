@@ -7,11 +7,142 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum Role {
+  GESTAO
+  PROFESSOR
+}
+
 model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  celular      String?
+  passwordHash String
+  roles        Role[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  aulas            Aula[]            @relation("ProfessorAulas")
+  disponibilidades Disponibilidade[] @relation("ProfessorDisponibilidades")
+}
+
+model Aluno {
   id        String   @id @default(cuid())
-  name      String
-  email     String   @unique
+  nome      String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  matriculas Matricula[]
+  notas      Nota[]
+  presencas  Presenca[]
+}
+
+model Turma {
+  id        String   @id @default(cuid())
+  nome      String
+  anoLetivo Int
+  createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  aulas      Aula[]
+  matriculas Matricula[]
+
+  @@unique([nome, anoLetivo])
+}
+
+model Disciplina {
+  id        String   @id @default(cuid())
+  nome      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  aulas Aula[]
+}
+
+model Disponibilidade {
+  id             String   @id @default(cuid())
+  professorId    String
+  diaSemana      String
+  horarioInicio  DateTime @db.Time(0)
+  horarioFim     DateTime @db.Time(0)
+  periodoLetivo  String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  professor User @relation("ProfessorDisponibilidades", fields: [professorId], references: [id])
+
+  @@unique([professorId, diaSemana, horarioInicio, horarioFim, periodoLetivo])
+}
+
+model Aula {
+  id            String   @id @default(cuid())
+  turmaId       String
+  disciplinaId  String
+  professorId   String
+  diaSemana     String
+  horarioInicio DateTime @db.Time(0)
+  horarioFim    DateTime @db.Time(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  disciplina Disciplina @relation(fields: [disciplinaId], references: [id])
+  presencas  Presenca[]
+  professor  User       @relation("ProfessorAulas", fields: [professorId], references: [id])
+  turma      Turma      @relation(fields: [turmaId], references: [id])
+
+  @@unique([turmaId, diaSemana, horarioInicio])
+  @@unique([professorId, diaSemana, horarioInicio])
+}
+
+model Matricula {
+  id            String   @id @default(cuid())
+  alunoId       String
+  turmaId       String
+  dataMatricula DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  aluno Aluno @relation(fields: [alunoId], references: [id])
+  turma Turma @relation(fields: [turmaId], references: [id])
+
+  @@unique([alunoId, turmaId])
+}
+
+model Presenca {
+  id        String   @id @default(cuid())
+  alunoId   String
+  aulaId    String
+  presente  Boolean
+  data      DateTime @db.Date
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  aluno Aluno @relation(fields: [alunoId], references: [id])
+  aula  Aula  @relation(fields: [aulaId], references: [id])
+
+  @@unique([alunoId, aulaId, data])
+}
+
+model Simulado {
+  id        String   @id @default(cuid())
+  nome      String
+  data      DateTime @db.Date
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  notas Nota[]
+}
+
+model Nota {
+  id         String   @id @default(cuid())
+  alunoId    String
+  simuladoId String
+  valor      Float
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  aluno    Aluno    @relation(fields: [alunoId], references: [id])
+  simulado Simulado @relation(fields: [simuladoId], references: [id])
+
+  @@unique([alunoId, simuladoId])
 }

@@ -28,6 +28,8 @@ flowchart LR
     visualizarCalendario["Visualizar calendario geral"]
     visualizarGrade["Visualizar grade por turma"]
     registrarPresenca["Registrar presenca"]
+    gerenciarSimulados["Gerenciar simulados"]
+    registrarNotas["Registrar notas de simulados"]
     solicitarCorrecao["Solicitar correcao de dados fora do sistema"]
   end
 
@@ -43,10 +45,12 @@ flowchart LR
   gestao --> manterDisciplinas
   gestao --> visualizarCalendario
   gestao --> visualizarGrade
+  gestao --> gerenciarSimulados
 
   professor --> definirDisponibilidade
   professor --> visualizarAgenda
   professor --> registrarPresenca
+  professor --> registrarNotas
 
   aluno -.-> solicitarCorrecao
   solicitarCorrecao -.-> manterAlunos

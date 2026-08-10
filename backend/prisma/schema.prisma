@@ -7,187 +7,142 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum UserRole {
+enum Role {
   GESTAO
   PROFESSOR
-}
-
-enum StatusAluno {
-  ATIVO
-  INATIVO
-}
-
-enum StatusMatricula {
-  ATIVA
-  INATIVA
-  CONCLUIDA
-  DESISTENTE
-}
-
-enum DiaSemana {
-  SEGUNDA
-  TERCA
-  QUARTA
-  QUINTA
-  SEXTA
-  SABADO
-  DOMINGO
-}
-
-enum StatusPresenca {
-  PRESENTE
-  AUSENTE
-  JUSTIFICADA
 }
 
 model User {
   id           String   @id @default(cuid())
   name         String
   email        String   @unique
+  celular      String?
   passwordHash String
-  role         UserRole
+  roles        Role[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  alunosCriados         Aluno[]                @relation("AlunoCriadoPor")
-  alunosAtualizados     Aluno[]                @relation("AlunoAtualizadoPor")
-  aulasMinistradas      Aula[]                 @relation("ProfessorAulas")
-  disponibilidades      Disponibilidade[]      @relation("ProfessorDisponibilidades")
-  disciplinasMinistradas ProfessorDisciplina[] @relation("ProfessorDisciplinas")
-  presencasRegistradas  Presenca[]             @relation("PresencaRegistradaPor")
+  aulas            Aula[]            @relation("ProfessorAulas")
+  disponibilidades Disponibilidade[] @relation("ProfessorDisponibilidades")
 }
 
 model Aluno {
-  id          String      @id @default(cuid())
-  name        String
-  status      StatusAluno @default(ATIVO)
-  createdById String?
-  updatedById String?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id        String   @id @default(cuid())
+  nome      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  createdBy  User?       @relation("AlunoCriadoPor", fields: [createdById], references: [id])
-  updatedBy  User?       @relation("AlunoAtualizadoPor", fields: [updatedById], references: [id])
   matriculas Matricula[]
+  notas      Nota[]
   presencas  Presenca[]
 }
 
 model Turma {
-  id          String   @id @default(cuid())
-  name        String   @unique
-  description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  nome      String
+  anoLetivo Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   aulas      Aula[]
   matriculas Matricula[]
+
+  @@unique([nome, anoLetivo])
 }
 
 model Disciplina {
   id        String   @id @default(cuid())
-  name      String   @unique
-  code      String?  @unique
+  nome      String   @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  aulas       Aula[]
-  professores ProfessorDisciplina[]
-}
-
-model PeriodoLetivo {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  startsAt  DateTime @db.Date
-  endsAt    DateTime @db.Date
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  aulas            Aula[]
-  disponibilidades Disponibilidade[]
-  matriculas       Matricula[]
-}
-
-model Matricula {
-  id              String          @id @default(cuid())
-  alunoId         String
-  turmaId         String
-  periodoLetivoId String
-  status          StatusMatricula @default(ATIVA)
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-
-  aluno         Aluno         @relation(fields: [alunoId], references: [id])
-  turma         Turma         @relation(fields: [turmaId], references: [id])
-  periodoLetivo PeriodoLetivo @relation(fields: [periodoLetivoId], references: [id])
-
-  @@unique([alunoId, turmaId, periodoLetivoId])
-}
-
-model ProfessorDisciplina {
-  id           String   @id @default(cuid())
-  professorId  String
-  disciplinaId String
-  createdAt    DateTime @default(now())
-
-  professor  User       @relation("ProfessorDisciplinas", fields: [professorId], references: [id])
-  disciplina Disciplina @relation(fields: [disciplinaId], references: [id])
-
-  @@unique([professorId, disciplinaId])
+  aulas Aula[]
 }
 
 model Disponibilidade {
-  id              String    @id @default(cuid())
-  professorId     String
-  periodoLetivoId String
-  diaSemana       DiaSemana
-  horaInicio      String
-  horaFim         String
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id             String   @id @default(cuid())
+  professorId    String
+  diaSemana      String
+  horarioInicio  DateTime @db.Time(0)
+  horarioFim     DateTime @db.Time(0)
+  periodoLetivo  String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  professor     User           @relation("ProfessorDisponibilidades", fields: [professorId], references: [id])
-  periodoLetivo PeriodoLetivo  @relation(fields: [periodoLetivoId], references: [id])
+  professor User @relation("ProfessorDisponibilidades", fields: [professorId], references: [id])
 
-  @@unique([professorId, periodoLetivoId, diaSemana, horaInicio, horaFim])
+  @@unique([professorId, diaSemana, horarioInicio, horarioFim, periodoLetivo])
 }
 
 model Aula {
-  id              String    @id @default(cuid())
-  turmaId         String
-  disciplinaId    String
-  professorId     String
-  periodoLetivoId String
-  diaSemana       DiaSemana
-  horaInicio      String
-  horaFim         String
-  sala            String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id            String   @id @default(cuid())
+  turmaId       String
+  disciplinaId  String
+  professorId   String
+  diaSemana     String
+  horarioInicio DateTime @db.Time(0)
+  horarioFim    DateTime @db.Time(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  turma         Turma         @relation(fields: [turmaId], references: [id])
-  disciplina    Disciplina    @relation(fields: [disciplinaId], references: [id])
-  professor     User          @relation("ProfessorAulas", fields: [professorId], references: [id])
-  periodoLetivo PeriodoLetivo @relation(fields: [periodoLetivoId], references: [id])
-  presencas     Presenca[]
+  disciplina Disciplina @relation(fields: [disciplinaId], references: [id])
+  presencas  Presenca[]
+  professor  User       @relation("ProfessorAulas", fields: [professorId], references: [id])
+  turma      Turma      @relation(fields: [turmaId], references: [id])
 
-  @@unique([turmaId, periodoLetivoId, diaSemana, horaInicio])
-  @@unique([professorId, periodoLetivoId, diaSemana, horaInicio])
+  @@unique([turmaId, diaSemana, horarioInicio])
+  @@unique([professorId, diaSemana, horarioInicio])
+}
+
+model Matricula {
+  id            String   @id @default(cuid())
+  alunoId       String
+  turmaId       String
+  dataMatricula DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  aluno Aluno @relation(fields: [alunoId], references: [id])
+  turma Turma @relation(fields: [turmaId], references: [id])
+
+  @@unique([alunoId, turmaId])
 }
 
 model Presenca {
-  id              String         @id @default(cuid())
-  aulaId          String
-  alunoId         String
-  registradaPorId String
-  data            DateTime       @db.Date
-  status          StatusPresenca
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  id        String   @id @default(cuid())
+  alunoId   String
+  aulaId    String
+  presente  Boolean
+  data      DateTime @db.Date
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  aula          Aula  @relation(fields: [aulaId], references: [id])
-  aluno         Aluno @relation(fields: [alunoId], references: [id])
-  registradaPor User  @relation("PresencaRegistradaPor", fields: [registradaPorId], references: [id])
+  aluno Aluno @relation(fields: [alunoId], references: [id])
+  aula  Aula  @relation(fields: [aulaId], references: [id])
 
-  @@unique([aulaId, alunoId, data])
+  @@unique([alunoId, aulaId, data])
+}
+
+model Simulado {
+  id        String   @id @default(cuid())
+  nome      String
+  data      DateTime @db.Date
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  notas Nota[]
+}
+
+model Nota {
+  id         String   @id @default(cuid())
+  alunoId    String
+  simuladoId String
+  valor      Float
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  aluno    Aluno    @relation(fields: [alunoId], references: [id])
+  simulado Simulado @relation(fields: [simuladoId], references: [id])
+
+  @@unique([alunoId, simuladoId])
 }

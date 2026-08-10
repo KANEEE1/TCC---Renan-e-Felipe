@@ -1,146 +1,124 @@
 # Definicao do Banco de Dados
 
-O banco de dados do MVP segue o recorte P0/P1 do backlog: autenticacao de gestao/professores, cadastro academico basico, disponibilidade docente, grade horaria e presenca.
+Este documento representa visualmente o modelo de dados do sistema, com base nas decisoes registradas em `tecnologias.md`, `arquitetura-inicial.md` e `requisitos-nao-funcionais-e-lgpd.md`. Escopo: P0/P1 do backlog (`docs/lista-features/user-stories.md`), incluindo `Simulado`/`Nota` (P2), cujo dado de aluno ja foi confirmado como parte do escopo mesmo sem login de aluno.
 
-## Decisoes de Modelagem
+O `schema.prisma` do backend e a fonte de verdade executavel; este diagrama deve ser mantido em sincronia com ele. Este e um documento vivo e sera refinado ao longo do desenvolvimento.
 
-- `User` representa apenas usuarios autenticados: gestao e professor.
-- `Aluno` e uma entidade separada, sem senha, pois o aluno e titular de dado e nao acessa o sistema no MVP.
-- `PeriodoLetivo` organiza matriculas, disponibilidade e aulas por ciclo academico.
-- `Aula` representa uma aula recorrente da grade horaria.
-- `Presenca` registra a ocorrencia de uma aula em uma data especifica para um aluno.
-- Campos de auditoria aparecem onde sao mais relevantes para LGPD: aluno e presenca.
-
-## Entidades
+## Diagrama
 
 ```mermaid
 erDiagram
-  User {
-    string id PK
-    string name
-    string email UK
-    string passwordHash
-    UserRole role
-    datetime createdAt
-    datetime updatedAt
-  }
+    USER ||--o{ DISPONIBILIDADE : define
+    USER ||--o{ AULA : leciona
+    TURMA ||--o{ AULA : possui
+    DISCIPLINA ||--o{ AULA : ministra
+    TURMA ||--o{ MATRICULA : possui
+    ALUNO ||--o{ MATRICULA : realiza
+    ALUNO ||--o{ PRESENCA : possui
+    AULA ||--o{ PRESENCA : registra
+    ALUNO ||--o{ NOTA : recebe
+    SIMULADO ||--o{ NOTA : gera
 
-  Aluno {
-    string id PK
-    string name
-    StatusAluno status
-    string createdById FK
-    string updatedById FK
-    datetime createdAt
-    datetime updatedAt
-  }
+    USER {
+        string id
+        string name
+        string email
+        string celular
+        string passwordHash
+        string roles "lista - GESTAO e-ou PROFESSOR"
+        datetime createdAt
+        datetime updatedAt
+    }
 
-  Turma {
-    string id PK
-    string name UK
-    string description
-    datetime createdAt
-    datetime updatedAt
-  }
+    ALUNO {
+        string id
+        string nome
+        datetime createdAt
+        datetime updatedAt
+    }
 
-  Disciplina {
-    string id PK
-    string name UK
-    string code UK
-    datetime createdAt
-    datetime updatedAt
-  }
+    TURMA {
+        string id
+        string nome
+        int anoLetivo
+        datetime createdAt
+        datetime updatedAt
+    }
 
-  PeriodoLetivo {
-    string id PK
-    string name UK
-    date startsAt
-    date endsAt
-    boolean active
-    datetime createdAt
-    datetime updatedAt
-  }
+    DISCIPLINA {
+        string id
+        string nome
+        datetime createdAt
+        datetime updatedAt
+    }
 
-  Matricula {
-    string id PK
-    string alunoId FK
-    string turmaId FK
-    string periodoLetivoId FK
-    StatusMatricula status
-    datetime createdAt
-    datetime updatedAt
-  }
+    DISPONIBILIDADE {
+        string id
+        string professorId
+        string diaSemana
+        time horarioInicio
+        time horarioFim
+        string periodoLetivo
+        datetime createdAt
+        datetime updatedAt
+    }
 
-  ProfessorDisciplina {
-    string id PK
-    string professorId FK
-    string disciplinaId FK
-    datetime createdAt
-  }
+    AULA {
+        string id
+        string turmaId
+        string disciplinaId
+        string professorId
+        string diaSemana
+        time horarioInicio
+        time horarioFim
+        datetime createdAt
+        datetime updatedAt
+    }
 
-  Disponibilidade {
-    string id PK
-    string professorId FK
-    string periodoLetivoId FK
-    DiaSemana diaSemana
-    string horaInicio
-    string horaFim
-    datetime createdAt
-    datetime updatedAt
-  }
+    MATRICULA {
+        string id
+        string alunoId
+        string turmaId
+        datetime dataMatricula
+        datetime createdAt
+        datetime updatedAt
+    }
 
-  Aula {
-    string id PK
-    string turmaId FK
-    string disciplinaId FK
-    string professorId FK
-    string periodoLetivoId FK
-    DiaSemana diaSemana
-    string horaInicio
-    string horaFim
-    string sala
-    datetime createdAt
-    datetime updatedAt
-  }
+    PRESENCA {
+        string id
+        string alunoId
+        string aulaId
+        boolean presente
+        datetime data
+        datetime createdAt
+        datetime updatedAt
+    }
 
-  Presenca {
-    string id PK
-    string aulaId FK
-    string alunoId FK
-    string registradaPorId FK
-    date data
-    StatusPresenca status
-    datetime createdAt
-    datetime updatedAt
-  }
+    SIMULADO {
+        string id
+        string nome
+        datetime data
+        datetime createdAt
+        datetime updatedAt
+    }
 
-  User ||--o{ ProfessorDisciplina : ministra
-  User ||--o{ Disponibilidade : informa
-  User ||--o{ Aula : ministra
-  User ||--o{ Presenca : registra
-  User ||--o{ Aluno : cria
-  User ||--o{ Aluno : atualiza
-
-  Aluno ||--o{ Matricula : possui
-  Aluno ||--o{ Presenca : recebe
-
-  Turma ||--o{ Matricula : contem
-  Turma ||--o{ Aula : possui
-
-  Disciplina ||--o{ ProfessorDisciplina : habilita
-  Disciplina ||--o{ Aula : compoe
-
-  PeriodoLetivo ||--o{ Matricula : organiza
-  PeriodoLetivo ||--o{ Disponibilidade : recebe
-  PeriodoLetivo ||--o{ Aula : organiza
-
-  Aula ||--o{ Presenca : gera
+    NOTA {
+        string id
+        string alunoId
+        string simuladoId
+        float valor
+        datetime createdAt
+        datetime updatedAt
+    }
 ```
 
-## Regras Estruturais
+## Notas de Design
 
-- Um email de usuario deve ser unico.
-- Uma matricula nao pode se repetir para o mesmo aluno, turma e periodo letivo.
-- Um professor nao pode repetir a mesma disponibilidade no mesmo periodo, dia e horario.
-- A mesma presenca nao pode ser registrada duas vezes para o mesmo aluno, aula e data.
-- O mesmo professor nao deve ser associado duas vezes a mesma disciplina.
+- `User` representa gestao e/ou professor, nunca aluno. Aluno e entidade propria e mais enxuta (`Aluno`), sem `email`/`passwordHash`, porque nao autentica.
+- `roles` e uma lista (`Role[]`), nao um valor unico. Permite um `User` acumular gestao e professor ao mesmo tempo, sem precisar de um terceiro valor de enum combinando os dois.
+- `Disponibilidade` e `Aula` referenciam `User` via `professorId`. A regra "so um `User` com papel `PROFESSOR` pode ser `professorId`" e validada na camada de `Service`, nao no schema do banco.
+- Horario usa campos simples (`diaSemana` + `horarioInicio` + `horarioFim`) em vez de entidade propria.
+- `Simulado` e `Nota` sao entidades separadas. `Simulado` e o evento; `Nota` e o resultado, ligando `Aluno` + `Simulado`.
+- `Nota` nao se relaciona com `Disciplina`, porque o simulado tem uma nota unica por aluno, nao quebrada por materia.
+- `createdAt`/`updatedAt` existem em todas as entidades para depuracao, rastreio temporal e apoio a politica de retencao da LGPD.
+- Auditoria de quem alterou presenca/nota segue como pendencia funcional futura, porque `updatedAt` informa quando algo mudou, mas nao quem mudou.

@@ -26,17 +26,18 @@ Deriva diretamente das user stories já levantadas (`docs/lista-features/user-st
 
 ## 6. Modelo de Domínio / Diagrama Entidade-Relacionamento (DER) - conclui
 
-Entidades e relacionamentos do sistema, evoluindo por prioridade de backlog (P0/P1 primeiro). Ver [`banco-de-dados.md`](./banco-de-dados.md). Entidades já identificadas a partir do backlog atual:
+Entidades e relacionamentos do sistema, evoluindo por prioridade de backlog (P0/P1 primeiro), com `Simulado`/`Nota` antecipados do P2 por já fazerem parte dos dados acadêmicos do aluno. Ver [`banco-de-dados.md`](./banco-de-dados.md). Entidades já identificadas a partir do backlog atual:
 
 - `User` (com papel: gestão ou professor — aluno não autentica, é titular de dado gerenciado por esses dois papéis)
 - `Aluno` (nome; sem credenciais de login)
 - `Turma`
 - `Disciplina`
-- `PeriodoLetivo`
 - `Disponibilidade` (professor × período letivo)
 - `Aula` (turma + disciplina + professor + horário — núcleo da grade horária)
 - `Matricula` (aluno ↔ turma)
 - `Presenca` (aluno × aula)
+- `Simulado`
+- `Nota` (aluno ↔ simulado)
 
 O `schema.prisma` do backend é a fonte de verdade executável; o DER é a representação visual usada na dissertação e deve ser mantido em sincronia com o schema.
 

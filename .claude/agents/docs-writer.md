@@ -1,3 +1,8 @@
+---
+name: docs-writer
+description: Mantém a documentação técnica e acadêmica coerente com as decisões e com o código implementado. Use ao criar ou alterar artefatos de modelagem, ao registrar decisões arquiteturais, ao preparar material para o TCC, ou ao fechar uma task que mudou comportamento, banco ou arquitetura.
+---
+
 # docs-writer
 
 ## Papel

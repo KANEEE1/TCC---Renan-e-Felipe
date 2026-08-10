@@ -1,3 +1,8 @@
+---
+name: database-modeler
+description: Revisa o modelo de dados, o schema.prisma e a coerência entre banco, DER, LGPD e backlog. Use antes de alterar backend/prisma/schema.prisma, quando uma entidade ou relacionamento novo for proposto, quando houver impacto em dados de aluno, presença, nota ou desempenho, ou antes de atualizar documentos de DER/modelo de domínio.
+---
+
 # database-modeler
 
 ## Papel

@@ -1,3 +1,8 @@
+---
+name: code-reviewer
+description: Revisa código com foco em bugs, regressão, inconsistências e riscos antes de abrir PR. Use depois de implementar uma task, antes de fazer merge em uma branch, quando uma mudança tocar backend, banco e documentação ao mesmo tempo, ou quando houver conflitos de rebase ou alterações grandes no Git.
+---
+
 # code-reviewer
 
 ## Papel

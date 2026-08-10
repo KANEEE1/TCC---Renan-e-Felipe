@@ -10,19 +10,28 @@ Eles nao fazem parte do produto final, nao sao funcionalidades da plataforma e n
 
 | Subagent | Responsabilidade principal | Arquivo |
 |---|---|---|
-| `backend-architect` | Revisar arquitetura do backend, modulos e camadas | `.agents/backend-architect.md` |
-| `database-modeler` | Revisar schema Prisma, DER, entidades e LGPD | `.agents/database-modeler.md` |
-| `code-reviewer` | Revisar bugs, regressao, riscos e prontidao para PR | `.agents/code-reviewer.md` |
-| `docs-writer` | Manter documentacao tecnica e academica sincronizada | `.agents/docs-writer.md` |
-| `test-validator` | Validar build, typecheck, Prisma, banco e rotas | `.agents/test-validator.md` |
+| `plan-change` | Produzir o plano de implementacao de uma mudanca | `.claude/agents/plan-change.md` |
+| `backend-architect` | Revisar arquitetura do backend, modulos e camadas | `.claude/agents/backend-architect.md` |
+| `database-modeler` | Revisar schema Prisma, DER, entidades e LGPD | `.claude/agents/database-modeler.md` |
+| `code-implementation` | Implementar a mudanca a partir do plano e do design | `.claude/agents/code-implementation.md` |
+| `code-reviewer` | Revisar bugs, regressao, riscos e prontidao para PR | `.claude/agents/code-reviewer.md` |
+| `test-writer` | Escrever os testes automatizados da mudanca | `.claude/agents/test-writer.md` |
+| `test-validator` | Validar build, typecheck, Prisma, banco e rotas | `.claude/agents/test-validator.md` |
+| `pipeline-auditor` | Auditar coerencia entre as etapas do pipeline (plano vs design vs implementacao vs testes) | `.claude/agents/pipeline-auditor.md` |
+| `docs-writer` | Manter documentacao tecnica e academica sincronizada | `.claude/agents/docs-writer.md` |
+
+`plan-change`, `code-implementation`, `test-writer` e `pipeline-auditor` formam, junto com os demais, o pipeline completo de uma feature (plano -> design -> implementacao -> revisao -> testes -> validacao -> auditoria -> documentacao). A skill orquestradora que aciona esse pipeline em sequencia esta em `.claude/skills/feature-pipeline/SKILL.md`.
+
+`pipeline-auditor` e diferente de `code-reviewer`/`test-validator`: nao avalia qualidade de uma etapa isolada, e sim se as etapas estao coerentes entre si (o design seguiu o plano, a implementacao seguiu o design, os testes cobrem o que o plano previu). E acionado como um subagente independente, sem ter participado das etapas anteriores, para evitar que a mesma instancia que orquestrou o pipeline avalie o proprio trabalho.
 
 ## Como Vamos Utilizar
 
-1. Antes de implementar uma feature com impacto estrutural, consultar `backend-architect` ou `database-modeler`.
-2. Durante mudancas no banco, usar `database-modeler` para validar entidades, relacionamentos e minimizacao de dados.
-3. Depois da implementacao, usar `code-reviewer` para procurar riscos antes do PR.
-4. Antes de abrir PR, usar `test-validator` para confirmar comandos, banco local e rotas principais.
-5. Ao finalizar uma task relevante, usar `docs-writer` para atualizar documentacao e registrar decisoes do TCC.
+1. No inicio de uma feature com impacto estrutural, usar `plan-change` para produzir o plano.
+2. Se o plano impactar mais de um modulo ou o banco de dados, consultar `backend-architect` ou `database-modeler` para o design.
+3. Usar `code-implementation` para implementar a partir do plano e do design.
+4. Depois da implementacao, usar `code-reviewer` para procurar riscos antes do PR.
+5. Usar `test-writer` para escrever os testes da mudanca, e `test-validator` para confirmar que tudo passa antes de abrir PR.
+6. Ao finalizar uma task relevante, usar `docs-writer` para atualizar documentacao e registrar decisoes do TCC.
 
 ## Exemplos de Uso
 

@@ -14,14 +14,6 @@ export class PresencaRepository {
             turma: true,
             disciplina: true
           }
-        },
-        registradaPor: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true
-          }
         }
       }
     });

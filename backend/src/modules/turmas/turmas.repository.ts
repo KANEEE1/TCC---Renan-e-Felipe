@@ -5,7 +5,7 @@ export class TurmasRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
   list() {
-    return this.prisma.turma.findMany({ orderBy: { name: "asc" } });
+    return this.prisma.turma.findMany({ orderBy: [{ anoLetivo: "desc" }, { nome: "asc" }] });
   }
 
   create(data: CreateTurmaInput) {

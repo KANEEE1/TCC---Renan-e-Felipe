@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import { parseTimeToDate } from "../../shared/time.js";
 import type { CreateDisponibilidadeInput } from "./disponibilidade.schemas.js";
 
 export class DisponibilidadeRepository {
@@ -6,22 +7,27 @@ export class DisponibilidadeRepository {
 
   list() {
     return this.prisma.disponibilidade.findMany({
-      orderBy: [{ diaSemana: "asc" }, { horaInicio: "asc" }],
+      orderBy: [{ diaSemana: "asc" }, { horarioInicio: "asc" }],
       include: {
         professor: {
           select: {
             id: true,
             name: true,
             email: true,
-            role: true
+            roles: true
           }
-        },
-        periodoLetivo: true
+        }
       }
     });
   }
 
   create(data: CreateDisponibilidadeInput) {
-    return this.prisma.disponibilidade.create({ data });
+    return this.prisma.disponibilidade.create({
+      data: {
+        ...data,
+        horarioInicio: parseTimeToDate(data.horarioInicio),
+        horarioFim: parseTimeToDate(data.horarioFim)
+      }
+    });
   }
 }

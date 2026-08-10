@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import { parseTimeToDate } from "../../shared/time.js";
 import type { CreateAulaInput } from "./grade-horaria.schemas.js";
 
 export class GradeHorariaRepository {
@@ -6,17 +7,16 @@ export class GradeHorariaRepository {
 
   list() {
     return this.prisma.aula.findMany({
-      orderBy: [{ diaSemana: "asc" }, { horaInicio: "asc" }],
+      orderBy: [{ diaSemana: "asc" }, { horarioInicio: "asc" }],
       include: {
         turma: true,
         disciplina: true,
-        periodoLetivo: true,
         professor: {
           select: {
             id: true,
             name: true,
             email: true,
-            role: true
+            roles: true
           }
         }
       }
@@ -24,6 +24,12 @@ export class GradeHorariaRepository {
   }
 
   create(data: CreateAulaInput) {
-    return this.prisma.aula.create({ data });
+    return this.prisma.aula.create({
+      data: {
+        ...data,
+        horarioInicio: parseTimeToDate(data.horarioInicio),
+        horarioFim: parseTimeToDate(data.horarioFim)
+      }
+    });
   }
 }

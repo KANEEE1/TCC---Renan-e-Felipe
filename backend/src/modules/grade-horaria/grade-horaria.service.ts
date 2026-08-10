@@ -10,7 +10,7 @@ export class GradeHorariaService {
   }
 
   create(input: CreateAulaInput) {
-    if (input.horaFim <= input.horaInicio) {
+    if (input.horarioFim <= input.horarioInicio) {
       throw new HttpError(400, "Class end time must be after start time");
     }
 

@@ -10,7 +10,7 @@ export class DisponibilidadeService {
   }
 
   create(input: CreateDisponibilidadeInput) {
-    if (input.horaFim <= input.horaInicio) {
+    if (input.horarioFim <= input.horarioInicio) {
       throw new HttpError(400, "Availability end time must be after start time");
     }
 

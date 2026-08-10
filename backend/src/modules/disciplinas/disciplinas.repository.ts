@@ -5,7 +5,7 @@ export class DisciplinasRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
   list() {
-    return this.prisma.disciplina.findMany({ orderBy: { name: "asc" } });
+    return this.prisma.disciplina.findMany({ orderBy: { nome: "asc" } });
   }
 
   create(data: CreateDisciplinaInput) {

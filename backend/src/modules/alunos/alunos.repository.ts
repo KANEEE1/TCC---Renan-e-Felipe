@@ -6,14 +6,15 @@ export class AlunosRepository {
 
   list() {
     return this.prisma.aluno.findMany({
-      orderBy: { name: "asc" },
+      orderBy: { nome: "asc" },
       include: {
         matriculas: {
-          include: {
-            turma: true,
-            periodoLetivo: true
-          }
-        }
+          include: { turma: true }
+        },
+        notas: {
+          include: { simulado: true }
+        },
+        presencas: true
       }
     });
   }

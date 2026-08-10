@@ -9,8 +9,7 @@ export class MatriculasRepository {
       orderBy: { createdAt: "desc" },
       include: {
         aluno: true,
-        turma: true,
-        periodoLetivo: true
+        turma: true
       }
     });
   }

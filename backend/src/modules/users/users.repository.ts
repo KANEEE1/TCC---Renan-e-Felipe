@@ -5,7 +5,8 @@ const publicUserSelect = {
   id: true,
   name: true,
   email: true,
-  role: true,
+  celular: true,
+  roles: true,
   createdAt: true,
   updatedAt: true
 } satisfies Prisma.UserSelect;

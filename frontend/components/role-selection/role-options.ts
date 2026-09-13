@@ -9,7 +9,7 @@ export type RoleOptionData = {
 
 export const ROLE_OPTIONS: RoleOptionData[] = [
   {
-    href: "/professor",
+    href: "/login-professor",
     title: "Professor",
     description: "Gerenciar aulas e presenças",
     accent: "blue"

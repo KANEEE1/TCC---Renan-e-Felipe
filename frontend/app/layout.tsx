@@ -13,8 +13,8 @@ const bodyFont = Manrope({
 });
 
 export const metadata: Metadata = {
-  title: "Gestão Acadêmica",
-  description: "Plataforma acadêmica com controle de agenda, frequência, notas e gestão de pessoas."
+  title: "Cursinho Popular",
+  description: "Plataforma de gestão acadêmica e administrativa para cursinhos populares."
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

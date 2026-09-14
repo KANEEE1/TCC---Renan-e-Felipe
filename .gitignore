@@ -11,8 +11,6 @@ coverage
 .DS_Store
 backend/prisma/migrations
 
-# Relatório final do TCC — rascunhos privados, não versionados
 monografia/
 
-# Prints do Figma usados como referência de implementação, não versionados
-screenshots/
+figma/

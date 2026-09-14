@@ -1,10 +1,10 @@
-import type { RoleOptionAccent } from "./role-option";
+import type { Accent } from "@/components/ui/accent";
 
 export type RoleOptionData = {
   href: string;
   title: string;
   description: string;
-  accent: RoleOptionAccent;
+  accent: Accent;
 };
 
 export const ROLE_OPTIONS: RoleOptionData[] = [
@@ -15,7 +15,7 @@ export const ROLE_OPTIONS: RoleOptionData[] = [
     accent: "blue"
   },
   {
-    href: "/gestao",
+    href: "/login-gestao",
     title: "Gestão",
     description: "Gestão completa do sistema",
     accent: "purple"

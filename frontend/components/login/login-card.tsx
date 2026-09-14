@@ -5,14 +5,20 @@ import Link from "next/link";
 import { ArrowLeftIcon } from "@/components/icons/arrow-left-icon";
 import { EyeIcon, EyeOffIcon } from "@/components/icons/eye-icon";
 import { LoginIcon } from "@/components/icons/login-icon";
+import type { Accent } from "@/components/ui/accent";
 import { RoleBadge } from "./role-badge";
 
-export function LoginProfessorCard() {
+type LoginCardProps = {
+  roleLabel: string;
+  accent: Accent;
+};
+
+export function LoginCard({ roleLabel, accent }: LoginCardProps) {
   const [showPassword, setShowPassword] = useState(false);
 
   return (
     <div className="w-full max-w-sm rounded-3xl bg-white p-8 shadow-2xl">
-      <RoleBadge label="Professor" />
+      <RoleBadge label={roleLabel} accent={accent} />
 
       <form className="mt-6 flex flex-col gap-4" onSubmit={(event) => event.preventDefault()}>
         <label className="flex flex-col gap-1.5 text-sm">

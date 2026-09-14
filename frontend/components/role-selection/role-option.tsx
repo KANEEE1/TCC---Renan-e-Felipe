@@ -1,17 +1,16 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-
-export type RoleOptionAccent = "blue" | "purple";
+import type { Accent } from "@/components/ui/accent";
 
 type RoleOptionProps = {
   href: string;
   title: string;
   description: string;
   icon: ReactNode;
-  accent: RoleOptionAccent;
+  accent: Accent;
 };
 
-const ACCENT_STYLES: Record<RoleOptionAccent, string> = {
+const ACCENT_STYLES: Record<Accent, string> = {
   blue: "border-blue-200 bg-blue-50 hover:bg-blue-100",
   purple: "border-purple-200 bg-purple-50 hover:bg-purple-100"
 };

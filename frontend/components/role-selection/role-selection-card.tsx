@@ -2,14 +2,15 @@ import type { ReactNode } from "react";
 import { UserIcon } from "@/components/icons/user-icon";
 import { UsersIcon } from "@/components/icons/users-icon";
 import { IconBadge } from "@/components/ui/icon-badge";
-import { RoleOption, type RoleOptionAccent } from "./role-option";
+import type { Accent } from "@/components/ui/accent";
+import { RoleOption } from "./role-option";
 import { ROLE_OPTIONS } from "./role-options";
 
 function badge(background: string, icon: ReactNode) {
   return <IconBadge className={`h-12 w-12 rounded-full ${background} text-white`}>{icon}</IconBadge>;
 }
 
-const OPTION_BADGE: Record<RoleOptionAccent, ReactNode> = {
+const OPTION_BADGE: Record<Accent, ReactNode> = {
   blue: badge("bg-blue-600", <UserIcon className="h-6 w-6" />),
   purple: badge("bg-gradient-to-br from-purple-600 to-fuchsia-600", <UsersIcon className="h-6 w-6" />)
 };

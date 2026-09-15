@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowLeftIcon } from "@/components/icons/arrow-left-icon";
 import { EyeIcon, EyeOffIcon } from "@/components/icons/eye-icon";
 import { LoginIcon } from "@/components/icons/login-icon";
@@ -14,13 +15,19 @@ type LoginCardProps = {
 };
 
 export function LoginCard({ roleLabel, accent }: LoginCardProps) {
+  const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
+
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    router.push("/dashboard");
+  };
 
   return (
     <div className="w-full max-w-sm rounded-3xl bg-white p-8 shadow-2xl">
       <RoleBadge label={roleLabel} accent={accent} />
 
-      <form className="mt-6 flex flex-col gap-4" onSubmit={(event) => event.preventDefault()}>
+      <form className="mt-6 flex flex-col gap-4" onSubmit={handleSubmit}>
         <label className="flex flex-col gap-1.5 text-sm">
           <span className="font-semibold text-slate-900">E-mail</span>
           <input

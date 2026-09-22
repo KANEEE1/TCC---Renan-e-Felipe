@@ -7,11 +7,13 @@ import { matriculasController } from "./matriculas/matriculas.module.js";
 import { notasController } from "./notas/notas.module.js";
 import { presencaController } from "./presenca/presenca.module.js";
 import { simuladosController } from "./simulados/simulados.module.js";
+import { teachersController } from "./teachers/teachers.module.js";
 import { turmasController } from "./turmas/turmas.module.js";
 import { usersController } from "./users/users.module.js";
 
 export function registerRoutes(app: Express) {
   app.use("/users", usersController.router);
+  app.use("/teachers", teachersController.router);
   app.use("/alunos", alunosController.router);
   app.use("/turmas", turmasController.router);
   app.use("/disciplinas", disciplinasController.router);

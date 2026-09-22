@@ -1,6 +1,7 @@
 node_modules
 .next
 dist
+*.tsbuildinfo
 .env
 .env.local
 .env.development.local
@@ -10,5 +11,6 @@ coverage
 .DS_Store
 backend/prisma/migrations
 
-# Relatório final do TCC — rascunhos privados, não versionados
 monografia/
+
+figma/

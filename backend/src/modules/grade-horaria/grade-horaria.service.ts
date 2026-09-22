@@ -9,6 +9,10 @@ export class GradeHorariaService {
     return this.gradeHorariaRepository.list();
   }
 
+  listByProfessor(professorId: string) {
+    return this.gradeHorariaRepository.listByProfessor(professorId);
+  }
+
   create(input: CreateAulaInput) {
     if (input.horarioFim <= input.horarioInicio) {
       throw new HttpError(400, "Class end time must be after start time");

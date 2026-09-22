@@ -21,6 +21,13 @@ export class DisponibilidadeRepository {
     });
   }
 
+  listByProfessor(professorId: string) {
+    return this.prisma.disponibilidade.findMany({
+      where: { professorId },
+      orderBy: [{ diaSemana: "asc" }, { horarioInicio: "asc" }]
+    });
+  }
+
   create(data: CreateDisponibilidadeInput) {
     return this.prisma.disponibilidade.create({
       data: {

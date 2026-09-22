@@ -9,6 +9,10 @@ export class DisponibilidadeService {
     return this.disponibilidadeRepository.list();
   }
 
+  listByProfessor(professorId: string) {
+    return this.disponibilidadeRepository.listByProfessor(professorId);
+  }
+
   create(input: CreateDisponibilidadeInput) {
     if (input.horarioFim <= input.horarioInicio) {
       throw new HttpError(400, "Availability end time must be after start time");

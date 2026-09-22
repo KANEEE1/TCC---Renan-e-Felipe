@@ -23,6 +23,14 @@ export class GradeHorariaRepository {
     });
   }
 
+  listByProfessor(professorId: string) {
+    return this.prisma.aula.findMany({
+      where: { professorId },
+      orderBy: [{ diaSemana: "asc" }, { horarioInicio: "asc" }],
+      include: { turma: true, disciplina: true }
+    });
+  }
+
   create(data: CreateAulaInput) {
     return this.prisma.aula.create({
       data: {

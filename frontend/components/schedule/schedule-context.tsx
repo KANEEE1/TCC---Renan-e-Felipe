@@ -29,6 +29,7 @@ const DEFAULT_SCHEDULE: ScheduleItem[] = [
 interface ScheduleContextType {
   schedules: ScheduleItem[];
   addSchedule: (item: Omit<ScheduleItem, "id">) => void;
+  updateSchedule: (id: number, patch: Partial<Omit<ScheduleItem, "id">>) => void;
   removeSchedule: (id: number) => void;
 }
 
@@ -56,11 +57,15 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
     setSchedules((prev) => [...prev, { ...item, id: Date.now() }]);
   };
 
+  const updateSchedule = (id: number, patch: Partial<Omit<ScheduleItem, "id">>) => {
+    setSchedules((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+  };
+
   const removeSchedule = (id: number) => {
     setSchedules((prev) => prev.filter((s) => s.id !== id));
   };
 
-  return <ScheduleContext.Provider value={{ schedules, addSchedule, removeSchedule }}>{children}</ScheduleContext.Provider>;
+  return <ScheduleContext.Provider value={{ schedules, addSchedule, updateSchedule, removeSchedule }}>{children}</ScheduleContext.Provider>;
 }
 
 export function useSchedule() {

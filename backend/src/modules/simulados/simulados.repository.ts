@@ -7,7 +7,10 @@ export class SimuladosRepository {
   list() {
     return this.prisma.simulado.findMany({
       orderBy: { data: "desc" },
-      include: { notas: true }
+      include: {
+        disciplina: true,
+        notas: { include: { aluno: true } }
+      }
     });
   }
 

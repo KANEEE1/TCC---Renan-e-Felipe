@@ -27,10 +27,16 @@ model User {
 }
 
 model Aluno {
-  id        String   @id @default(cuid())
-  nome      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String    @id @default(cuid())
+  nome           String
+  numero         String?
+  email          String?   @unique
+  telefone       String?
+  dataNascimento DateTime? @db.Date
+  cpf            String?   @unique
+  endereco       String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   matriculas Matricula[]
   notas      Nota[]
@@ -38,11 +44,15 @@ model Aluno {
 }
 
 model Turma {
-  id        String   @id @default(cuid())
-  nome      String
-  anoLetivo Int
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(cuid())
+  nome        String
+  anoLetivo   Int
+  turno       String?
+  sala        String?
+  coordenador String?
+  capacidade  Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   aulas      Aula[]
   matriculas Matricula[]

@@ -18,6 +18,7 @@ export function registerRoutes(app: Express) {
   app.use("/matriculas", matriculasController.router);
   app.use("/disponibilidade", disponibilidadeController.router);
   app.use("/grade-horaria", gradeHorariaController.router);
+  app.use("/schedule", gradeHorariaController.router);
   app.use("/presencas", presencaController.router);
   app.use("/simulados", simuladosController.router);
   app.use("/notas", notasController.router);

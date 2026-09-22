@@ -1,12 +1,12 @@
 import type { ReactNode } from "react";
 import { UserIcon } from "@/components/icons/user-icon";
 import { UsersIcon } from "@/components/icons/users-icon";
-import { IconBadge } from "./icon-badge";
+import { IconBadge } from "@/components/ui/icon-badge";
 import { RoleOption, type RoleOptionAccent } from "./role-option";
 import { ROLE_OPTIONS } from "./role-options";
 
 function badge(background: string, icon: ReactNode) {
-  return <IconBadge className={`${background} text-white`}>{icon}</IconBadge>;
+  return <IconBadge className={`h-12 w-12 rounded-full ${background} text-white`}>{icon}</IconBadge>;
 }
 
 const OPTION_BADGE: Record<RoleOptionAccent, ReactNode> = {
@@ -17,7 +17,7 @@ const OPTION_BADGE: Record<RoleOptionAccent, ReactNode> = {
 export function RoleSelectionCard() {
   return (
     <div className="w-full max-w-sm rounded-3xl bg-white p-8 shadow-2xl">
-      <IconBadge className="mx-auto bg-blue-100 text-blue-600">
+      <IconBadge className="mx-auto h-12 w-12 rounded-full bg-blue-100 text-blue-600">
         <UsersIcon className="h-7 w-7" />
       </IconBadge>
 

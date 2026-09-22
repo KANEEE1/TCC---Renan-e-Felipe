@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { alunosController } from "./alunos/alunos.module.js";
+import { authController } from "./auth/auth.module.js";
 import { disciplinasController } from "./disciplinas/disciplinas.module.js";
 import { disponibilidadeController } from "./disponibilidade/disponibilidade.module.js";
 import { gradeHorariaController } from "./grade-horaria/grade-horaria.module.js";
@@ -11,6 +12,7 @@ import { turmasController } from "./turmas/turmas.module.js";
 import { usersController } from "./users/users.module.js";
 
 export function registerRoutes(app: Express) {
+  app.use("/auth", authController.router);
   app.use("/users", usersController.router);
   app.use("/alunos", alunosController.router);
   app.use("/turmas", turmasController.router);

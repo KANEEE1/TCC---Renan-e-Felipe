@@ -13,7 +13,9 @@ import { usersController } from "./users/users.module.js";
 export function registerRoutes(app: Express) {
   app.use("/users", usersController.router);
   app.use("/alunos", alunosController.router);
+  app.use("/students", alunosController.router);
   app.use("/turmas", turmasController.router);
+  app.use("/classes", turmasController.router);
   app.use("/disciplinas", disciplinasController.router);
   app.use("/matriculas", matriculasController.router);
   app.use("/disponibilidade", disponibilidadeController.router);

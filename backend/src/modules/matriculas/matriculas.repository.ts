@@ -17,4 +17,19 @@ export class MatriculasRepository {
   create(data: CreateMatriculaInput) {
     return this.prisma.matricula.create({ data });
   }
+
+  createMany(turmaId: string, alunoIds: string[]) {
+    return this.prisma.matricula.createMany({
+      data: alunoIds.map((alunoId) => ({ alunoId, turmaId })),
+      skipDuplicates: true
+    });
+  }
+
+  listByTurma(turmaId: string) {
+    return this.prisma.matricula.findMany({
+      where: { turmaId },
+      include: { aluno: true },
+      orderBy: { createdAt: "desc" }
+    });
+  }
 }

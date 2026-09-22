@@ -6,4 +6,9 @@ export const createMatriculaSchema = z.object({
   dataMatricula: z.coerce.date().optional()
 });
 
+export const assignStudentsSchema = z.object({
+  studentIds: z.array(z.string().cuid()).min(1)
+});
+
 export type CreateMatriculaInput = z.infer<typeof createMatriculaSchema>;
+export type AssignStudentsInput = z.infer<typeof assignStudentsSchema>;

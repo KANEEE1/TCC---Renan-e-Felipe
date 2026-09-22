@@ -21,4 +21,5 @@ export function registerRoutes(app: Express) {
   app.use("/presencas", presencaController.router);
   app.use("/simulados", simuladosController.router);
   app.use("/notas", notasController.router);
+  app.use("/grades", notasController.router);
 }

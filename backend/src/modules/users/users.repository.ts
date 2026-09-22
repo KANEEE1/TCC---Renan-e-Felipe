@@ -1,5 +1,4 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
-import type { CreateUserInput } from "./users.schemas.js";
 
 const publicUserSelect = {
   id: true,
@@ -28,7 +27,21 @@ export class UsersRepository {
     });
   }
 
-  create(data: CreateUserInput) {
+  findById(id: string) {
+    return this.prisma.user.findUnique({
+      where: { id },
+      select: publicUserSelect
+    });
+  }
+
+  findAuthByEmail(email: string) {
+    return this.prisma.user.findUnique({
+      where: { email },
+      select: { id: true, email: true, roles: true, passwordHash: true }
+    });
+  }
+
+  create(data: Prisma.UserCreateInput) {
     return this.prisma.user.create({
       data,
       select: publicUserSelect

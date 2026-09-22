@@ -1,6 +1,9 @@
+import bcrypt from "bcryptjs";
 import { HttpError } from "../../shared/http.js";
 import type { CreateUserInput } from "./users.schemas.js";
 import type { UsersRepository } from "./users.repository.js";
+
+const SALT_ROUNDS = 10;
 
 export class UsersService {
   constructor(private readonly usersRepository: UsersRepository) {}
@@ -16,6 +19,9 @@ export class UsersService {
       throw new HttpError(409, "Email already registered");
     }
 
-    return this.usersRepository.create(input);
+    const { password, ...rest } = input;
+    const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+
+    return this.usersRepository.create({ ...rest, passwordHash });
   }
 }

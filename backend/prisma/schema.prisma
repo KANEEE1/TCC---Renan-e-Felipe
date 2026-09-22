@@ -12,6 +12,12 @@ enum Role {
   PROFESSOR
 }
 
+enum TipoAula {
+  AULA
+  PLANTAO
+  AULAO
+}
+
 model User {
   id           String   @id @default(cuid())
   name         String
@@ -82,6 +88,8 @@ model Aula {
   diaSemana     String
   horarioInicio DateTime @db.Time(0)
   horarioFim    DateTime @db.Time(0)
+  sala          String?
+  tipo          TipoAula @default(AULA)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

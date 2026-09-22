@@ -56,18 +56,19 @@ model Disciplina {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  aulas Aula[]
+  aulas     Aula[]
+  simulados Simulado[]
 }
 
 model Disponibilidade {
-  id             String   @id @default(cuid())
-  professorId    String
-  diaSemana      String
-  horarioInicio  DateTime @db.Time(0)
-  horarioFim     DateTime @db.Time(0)
-  periodoLetivo  String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id            String   @id @default(cuid())
+  professorId   String
+  diaSemana     String
+  horarioInicio DateTime @db.Time(0)
+  horarioFim    DateTime @db.Time(0)
+  periodoLetivo String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   professor User @relation("ProfessorDisponibilidades", fields: [professorId], references: [id])
 
@@ -124,22 +125,25 @@ model Presenca {
 }
 
 model Simulado {
-  id        String   @id @default(cuid())
-  nome      String
-  data      DateTime @db.Date
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String   @id @default(cuid())
+  nome         String
+  data         DateTime @db.Date
+  disciplinaId String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  notas Nota[]
+  disciplina Disciplina? @relation(fields: [disciplinaId], references: [id])
+  notas      Nota[]
 }
 
 model Nota {
-  id         String   @id @default(cuid())
-  alunoId    String
-  simuladoId String
-  valor      Float
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id          String   @id @default(cuid())
+  alunoId     String
+  simuladoId  String
+  valor       Float
+  observacoes String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   aluno    Aluno    @relation(fields: [alunoId], references: [id])
   simulado Simulado @relation(fields: [simuladoId], references: [id])

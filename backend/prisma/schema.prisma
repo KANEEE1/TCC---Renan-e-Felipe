@@ -18,6 +18,26 @@ enum TipoAula {
   AULAO
 }
 
+enum TipoReuniao {
+  AULAO
+  SIMULADO
+  REVISAO
+}
+
+model Reuniao {
+  id            String      @id @default(cuid())
+  titulo        String
+  tipo          TipoReuniao
+  data          DateTime    @db.Date
+  horarioInicio DateTime    @db.Time(0)
+  horarioFim    DateTime    @db.Time(0)
+  local         String?
+  descricao     String?
+  participantes String[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
 model User {
   id           String   @id @default(cuid())
   name         String

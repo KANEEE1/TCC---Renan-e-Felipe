@@ -6,6 +6,9 @@ const publicUserSelect = {
   email: true,
   celular: true,
   roles: true,
+  ativo: true,
+  departamento: true,
+  bio: true,
   createdAt: true,
   updatedAt: true
 } satisfies Prisma.UserSelect;
@@ -43,6 +46,14 @@ export class UsersRepository {
 
   create(data: Prisma.UserCreateInput) {
     return this.prisma.user.create({
+      data,
+      select: publicUserSelect
+    });
+  }
+
+  update(id: string, data: Prisma.UserUpdateInput) {
+    return this.prisma.user.update({
+      where: { id },
       data,
       select: publicUserSelect
     });

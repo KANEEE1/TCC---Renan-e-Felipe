@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import { HttpError } from "../../shared/http.js";
 import { signAuthToken } from "../../shared/auth.js";
-import type { LoginInput } from "./auth.schemas.js";
+import type { LoginInput, UpdateMeInput } from "./auth.schemas.js";
 import type { UsersRepository } from "../users/users.repository.js";
 
 export class AuthService {
@@ -33,5 +33,10 @@ export class AuthService {
     }
 
     return user;
+  }
+
+  async updateMe(userId: string, input: UpdateMeInput) {
+    await this.me(userId);
+    return this.usersRepository.update(userId, input);
   }
 }

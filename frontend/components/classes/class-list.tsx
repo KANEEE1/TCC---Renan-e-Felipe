@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Calendar, Edit, MapPin, Plus, Search, Users } from "lucide-react";
+import { api } from "@/lib/api";
 
 const SHIFT_COLORS: Record<string, string> = {
-  Manhã: "bg-amber-50 text-amber-700 border-amber-200",
+  "Manhã": "bg-amber-50 text-amber-700 border-amber-200",
   Tarde: "bg-orange-50 text-orange-600 border-orange-200",
   Noite: "bg-indigo-50 text-indigo-700 border-indigo-200",
   Integral: "bg-blue-50 text-blue-700 border-blue-200"
@@ -20,21 +21,40 @@ const CARD_ACCENTS = [
   "from-cyan-500 to-teal-600"
 ];
 
-const CLASSES = [
-  { id: 1, name: "Extensivo — Manhã", year: "Extensivo", shift: "Manhã", students: 45, coordinator: "Ana Silva", room: "Sala 101" },
-  { id: 2, name: "Extensivo — Noite", year: "Extensivo", shift: "Noite", students: 52, coordinator: "Carlos Santos", room: "Sala 102" },
-  { id: 3, name: "Intensivo — Integral", year: "Intensivo", shift: "Integral", students: 38, coordinator: "Maria Oliveira", room: "Sala 201" },
-  { id: 4, name: "Semi-Intensivo — Tarde", year: "Semi-Intensivo", shift: "Tarde", students: 40, coordinator: "João Costa", room: "Sala 202" },
-  { id: 5, name: "Reta Final ENEM", year: "Reta Final", shift: "Manhã", students: 35, coordinator: "Ana Silva", room: "Sala 301" },
-  { id: 6, name: "Medicina — Específicas", year: "Específicas", shift: "Tarde", students: 28, coordinator: "Carlos Santos", room: "Sala 302" }
-];
+interface ClassSummary {
+  id: string;
+  nome: string;
+  turno: string | null;
+  sala: string | null;
+  coordenador: string | null;
+}
+
+interface ClassDetail extends ClassSummary {
+  matriculas: unknown[];
+}
 
 export function ClassList() {
   const [searchTerm, setSearchTerm] = useState("");
+  const [classes, setClasses] = useState<(ClassSummary & { students: number })[]>([]);
 
-  const filteredClasses = CLASSES.filter((c) => c.name.toLowerCase().includes(searchTerm.toLowerCase()) || c.year.toLowerCase().includes(searchTerm.toLowerCase()));
+  useEffect(() => {
+    api.get<ClassSummary[]>("/classes").then(async (list) => {
+      const withCounts = await Promise.all(
+        list.map(async (cls) => {
+          try {
+            const detail = await api.get<ClassDetail>(`/classes/${cls.id}`);
+            return { ...cls, students: detail.matriculas.length };
+          } catch {
+            return { ...cls, students: 0 };
+          }
+        })
+      );
+      setClasses(withCounts);
+    }).catch(() => setClasses([]));
+  }, []);
 
-  const totalStudents = CLASSES.reduce((sum, c) => sum + c.students, 0);
+  const filteredClasses = classes.filter((c) => c.nome.toLowerCase().includes(searchTerm.toLowerCase()));
+  const totalStudents = classes.reduce((sum, c) => sum + c.students, 0);
 
   return (
     <div className="flex flex-1 flex-col bg-slate-50">
@@ -52,7 +72,7 @@ export function ClassList() {
         <div className="grid grid-cols-2 gap-3">
           <div className="rounded-2xl border border-white/20 bg-white/15 p-3.5 text-center">
             <Calendar size={18} className="mx-auto mb-1 text-teal-200" />
-            <p className="text-2xl text-white">{CLASSES.length}</p>
+            <p className="text-2xl text-white">{classes.length}</p>
             <p className="text-xs text-white/60">Turmas</p>
           </div>
           <div className="rounded-2xl border border-white/20 bg-white/15 p-3.5 text-center">
@@ -87,12 +107,16 @@ export function ClassList() {
             <div className="p-4">
               <div className="mb-3 flex items-start justify-between">
                 <div className="min-w-0 flex-1">
-                  <h3 className="truncate text-slate-800">{cls.name}</h3>
+                  <h3 className="truncate text-slate-800">{cls.nome}</h3>
                   <div className="mt-1.5 flex items-center gap-2">
-                    <span className={`rounded-full border px-2 py-0.5 text-xs ${SHIFT_COLORS[cls.shift] || "border-slate-200 bg-slate-100 text-slate-600"}`}>{cls.shift}</span>
-                    <span className="flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-500">
-                      <MapPin size={10} /> {cls.room}
-                    </span>
+                    {cls.turno && (
+                      <span className={`rounded-full border px-2 py-0.5 text-xs ${SHIFT_COLORS[cls.turno] || "border-slate-200 bg-slate-100 text-slate-600"}`}>{cls.turno}</span>
+                    )}
+                    {cls.sala && (
+                      <span className="flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-500">
+                        <MapPin size={10} /> {cls.sala}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className={`ml-3 shrink-0 rounded-xl bg-gradient-to-br px-3 py-2 text-center ${CARD_ACCENTS[idx % CARD_ACCENTS.length]}`}>
@@ -101,11 +125,13 @@ export function ClassList() {
                 </div>
               </div>
 
-              <div className="mb-4 flex items-center gap-1.5 text-xs text-slate-400">
-                <Users size={12} className="text-slate-300" />
-                <span>Coordenador:</span>
-                <span className="text-slate-600">{cls.coordinator}</span>
-              </div>
+              {cls.coordenador && (
+                <div className="mb-4 flex items-center gap-1.5 text-xs text-slate-400">
+                  <Users size={12} className="text-slate-300" />
+                  <span>Coordenador:</span>
+                  <span className="text-slate-600">{cls.coordenador}</span>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-2">
                 <Link

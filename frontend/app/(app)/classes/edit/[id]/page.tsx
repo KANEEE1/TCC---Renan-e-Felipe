@@ -1,5 +1,6 @@
 import { ClassForm } from "@/components/classes/class-form";
 
-export default function EditClassPage() {
-  return <ClassForm isEdit />;
+export default async function EditClassPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  return <ClassForm isEdit classId={id} />;
 }

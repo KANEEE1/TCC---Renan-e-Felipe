@@ -1,5 +1,6 @@
 import { AssignStudents } from "@/components/classes/assign-students";
 
-export default function AssignStudentsPage() {
-  return <AssignStudents />;
+export default async function AssignStudentsPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  return <AssignStudents classId={id} />;
 }

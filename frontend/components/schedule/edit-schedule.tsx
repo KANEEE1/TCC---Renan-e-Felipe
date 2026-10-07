@@ -5,10 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Save, Trash2 } from "lucide-react";
 import { useSchedule } from "@/components/schedule/schedule-context";
+import { api, ApiError } from "@/lib/api";
 
-const TEACHERS = ["Ana Silva", "Carlos Santos", "Maria Oliveira", "João Costa"];
-const CLASSES = ["Extensivo - Manhã", "Extensivo - Noite", "Intensivo", "Semi-Intensivo", "Reta Final", "Medicina"];
-const SUBJECTS = ["Matemática", "Física", "Química", "Biologia", "História", "Geografia", "Português", "Literatura", "Redação", "Inglês", "Filosofia", "Sociologia"];
 const DAYS = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira"];
 const TIMES = [
   "07:00", "07:30", "08:00", "08:30", "09:00", "09:30",
@@ -17,18 +15,10 @@ const TIMES = [
   "16:00", "16:30", "17:00", "17:30", "18:00"
 ];
 
-const TYPE_COLOR: Record<string, string> = {
-  aula: "bg-blue-500",
-  plantao: "bg-purple-500",
-  aulao: "bg-orange-500"
-};
-
-function calcDuration(start: string, end: string): number {
-  if (!start || !end) return 1;
-  const [sh, sm] = start.split(":").map(Number);
-  const [eh, em] = end.split(":").map(Number);
-  const diff = (eh * 60 + em - (sh * 60 + sm)) / 60;
-  return diff > 0 ? Math.round(diff) : 1;
+interface Option {
+  id: string;
+  nome?: string;
+  name?: string;
 }
 
 type EditScheduleProps = {
@@ -38,14 +28,19 @@ type EditScheduleProps = {
 export function EditSchedule({ id }: EditScheduleProps) {
   const router = useRouter();
   const { schedules, updateSchedule, removeSchedule } = useSchedule();
-  const scheduleId = Number(id);
-  const existing = schedules.find((s) => s.id === scheduleId);
+  const existing = schedules.find((s) => s.id === id);
+
+  const [teachers, setTeachers] = useState<Option[]>([]);
+  const [classes, setClasses] = useState<Option[]>([]);
+  const [subjects, setSubjects] = useState<Option[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
     type: "aula" as "aula" | "plantao" | "aulao",
-    teacher: "",
-    class: "",
-    subject: "",
+    teacherId: "",
+    classId: "",
+    subjectId: "",
     day: DAYS[0],
     startTime: "",
     endTime: "",
@@ -53,42 +48,61 @@ export function EditSchedule({ id }: EditScheduleProps) {
   });
 
   useEffect(() => {
+    api.get<Option[]>("/teachers").then(setTeachers).catch(() => setTeachers([]));
+    api.get<Option[]>("/classes").then(setClasses).catch(() => setClasses([]));
+    api.get<Option[]>("/disciplinas").then(setSubjects).catch(() => setSubjects([]));
+  }, []);
+
+  useEffect(() => {
     if (existing) {
       setFormData({
         type: existing.type,
-        teacher: existing.teacher,
-        class: existing.class,
-        subject: existing.subject,
+        teacherId: existing.teacherId,
+        classId: existing.classId,
+        subjectId: existing.subjectId,
         day: DAYS[existing.day] ?? DAYS[0],
         startTime: existing.startTime,
         endTime: existing.endTime,
         room: existing.room
       });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scheduleId]);
+  }, [existing]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const dayIndex = DAYS.indexOf(formData.day);
-    updateSchedule(scheduleId, {
-      day: dayIndex >= 0 ? dayIndex : 0,
-      startTime: formData.startTime,
-      endTime: formData.endTime,
-      duration: calcDuration(formData.startTime, formData.endTime),
-      subject: formData.subject,
-      class: formData.class,
-      teacher: formData.teacher,
-      room: formData.room,
-      color: TYPE_COLOR[formData.type],
-      type: formData.type
-    });
-    router.push("/schedule/weekly");
+    setError(null);
+    setSubmitting(true);
+
+    try {
+      const dayIndex = DAYS.indexOf(formData.day);
+      const teacher = teachers.find((t) => t.id === formData.teacherId);
+      const cls = classes.find((c) => c.id === formData.classId);
+      const subject = subjects.find((s) => s.id === formData.subjectId);
+
+      await updateSchedule(id, {
+        day: dayIndex >= 0 ? dayIndex : 0,
+        startTime: formData.startTime,
+        endTime: formData.endTime,
+        subject: subject?.nome ?? "",
+        subjectId: formData.subjectId,
+        class: cls?.nome ?? "",
+        classId: formData.classId,
+        teacher: teacher?.name ?? "",
+        teacherId: formData.teacherId,
+        room: formData.room,
+        type: formData.type
+      });
+      router.push("/schedule/weekly");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Não foi possível salvar.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (confirm("Tem certeza que deseja excluir este agendamento?")) {
-      removeSchedule(scheduleId);
+      await removeSchedule(id);
       router.push("/schedule/weekly");
     }
   };
@@ -107,193 +121,79 @@ export function EditSchedule({ id }: EditScheduleProps) {
           <div>
             <label className="mb-3 block text-gray-700">Tipo de Agendamento</label>
             <div className="space-y-2">
-              <button
-                type="button"
-                onClick={() => setFormData({ ...formData, type: "aula" })}
-                className={`w-full rounded-lg p-4 text-left transition-all ${
-                  formData.type === "aula" ? "bg-blue-600 text-white shadow-lg" : "border border-gray-300 bg-gray-100 text-gray-900 hover:bg-gray-200"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-semibold">Aula Regular</div>
-                    <div className={`mt-1 text-sm ${formData.type === "aula" ? "text-blue-100" : "text-gray-700"}`}>Aula normal com turma específica</div>
-                  </div>
-                  {formData.type === "aula" && (
-                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-white">
-                      <div className="h-3 w-3 rounded-full bg-blue-600" />
-                    </div>
-                  )}
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setFormData({ ...formData, type: "plantao" })}
-                className={`w-full rounded-lg p-4 text-left transition-all ${
-                  formData.type === "plantao" ? "bg-purple-600 text-white shadow-lg" : "border border-gray-300 bg-gray-100 text-gray-900 hover:bg-gray-200"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-semibold">Plantão de Dúvidas</div>
-                    <div className={`mt-1 text-sm ${formData.type === "plantao" ? "text-purple-100" : "text-gray-700"}`}>Atendimento para tirar dúvidas dos alunos</div>
-                  </div>
-                  {formData.type === "plantao" && (
-                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-white">
-                      <div className="h-3 w-3 rounded-full bg-purple-600" />
-                    </div>
-                  )}
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setFormData({ ...formData, type: "aulao" })}
-                className={`w-full rounded-lg p-4 text-left transition-all ${
-                  formData.type === "aulao" ? "bg-orange-600 text-white shadow-lg" : "border border-gray-300 bg-gray-100 text-gray-900 hover:bg-gray-200"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-semibold">Aulão / Evento Especial</div>
-                    <div className={`mt-1 text-sm ${formData.type === "aulao" ? "text-orange-100" : "text-gray-700"}`}>Revisão, simulado ou evento com várias turmas</div>
-                  </div>
-                  {formData.type === "aulao" && (
-                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-white">
-                      <div className="h-3 w-3 rounded-full bg-orange-600" />
-                    </div>
-                  )}
-                </div>
-              </button>
+              {(["aula", "plantao", "aulao"] as const).map((t) => {
+                const labels = {
+                  aula: { title: "Aula Regular", desc: "Aula normal com turma específica", on: "bg-blue-600" },
+                  plantao: { title: "Plantão de Dúvidas", desc: "Atendimento para tirar dúvidas dos alunos", on: "bg-purple-600" },
+                  aulao: { title: "Aulão / Evento Especial", desc: "Revisão, simulado ou evento com várias turmas", on: "bg-orange-600" }
+                }[t];
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setFormData({ ...formData, type: t })}
+                    className={`w-full rounded-lg p-4 text-left transition-all ${
+                      formData.type === t ? `${labels.on} text-white shadow-lg` : "border border-gray-300 bg-gray-100 text-gray-900 hover:bg-gray-200"
+                    }`}
+                  >
+                    <div className="font-semibold">{labels.title}</div>
+                    <div className={`mt-1 text-sm ${formData.type === t ? "text-white/80" : "text-gray-700"}`}>{labels.desc}</div>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
           <div>
             <label className="mb-2 block text-gray-700">Professor</label>
             <select
-              value={formData.teacher}
-              onChange={(e) => setFormData({ ...formData, teacher: e.target.value })}
+              value={formData.teacherId}
+              onChange={(e) => setFormData({ ...formData, teacherId: e.target.value })}
               className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-500"
               required
             >
-              {TEACHERS.map((teacher) => (
-                <option key={teacher} value={teacher}>
-                  {teacher}
+              <option value="">Selecione um professor</option>
+              {teachers.map((teacher) => (
+                <option key={teacher.id} value={teacher.id}>
+                  {teacher.name}
                 </option>
               ))}
             </select>
           </div>
 
-          {formData.type === "aula" && (
-            <>
-              <div>
-                <label className="mb-2 block text-gray-700">Turma</label>
-                <select
-                  value={formData.class}
-                  onChange={(e) => setFormData({ ...formData, class: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-black focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  required
-                >
-                  {CLASSES.map((cls) => (
-                    <option key={cls} value={cls}>
-                      {cls}
-                    </option>
-                  ))}
-                </select>
-              </div>
+          <div>
+            <label className="mb-2 block text-gray-700">Turma</label>
+            <select
+              value={formData.classId}
+              onChange={(e) => setFormData({ ...formData, classId: e.target.value })}
+              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-black focus:outline-none focus:ring-2 focus:ring-orange-500"
+              required
+            >
+              <option value="">Selecione uma turma</option>
+              {classes.map((cls) => (
+                <option key={cls.id} value={cls.id}>
+                  {cls.nome}
+                </option>
+              ))}
+            </select>
+          </div>
 
-              <div>
-                <label className="mb-2 block text-gray-700">Disciplina</label>
-                <select
-                  value={formData.subject}
-                  onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-black focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  required
-                >
-                  {SUBJECTS.map((subject) => (
-                    <option key={subject} value={subject}>
-                      {subject}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </>
-          )}
-
-          {formData.type === "plantao" && (
-            <>
-              <div>
-                <label className="mb-2 block text-gray-700">Disciplina / Área</label>
-                <select
-                  value={formData.subject}
-                  onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-black focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  required
-                >
-                  <option value="Exatas">Exatas (Mat, Fís, Quím)</option>
-                  <option value="Humanas">Humanas (His, Geo, Filo, Soc)</option>
-                  <option value="Linguagens">Linguagens (Port, Lit, Red, Ing)</option>
-                  <option value="Biológicas">Biológicas (Bio)</option>
-                  <option value="Geral">Geral (Todas as disciplinas)</option>
-                  {SUBJECTS.map((subject) => (
-                    <option key={subject} value={subject}>
-                      {subject}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="mb-2 block text-gray-700">Turma (Opcional)</label>
-                <select
-                  value={formData.class}
-                  onChange={(e) => setFormData({ ...formData, class: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-black focus:outline-none focus:ring-2 focus:ring-purple-500"
-                >
-                  <option value="">Todas as turmas</option>
-                  {CLASSES.map((cls) => (
-                    <option key={cls} value={cls}>
-                      {cls}
-                    </option>
-                  ))}
-                </select>
-                <p className="mt-1 text-sm text-gray-600">Deixe em branco para plantão aberto a todos</p>
-              </div>
-            </>
-          )}
-
-          {formData.type === "aulao" && (
-            <>
-              <div>
-                <label className="mb-2 block text-gray-700">Título do Evento</label>
-                <input
-                  type="text"
-                  value={formData.subject}
-                  onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-black focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  placeholder="Ex: Aulão de Química Orgânica"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-gray-700">Turmas Participantes</label>
-                <select
-                  value={formData.class}
-                  onChange={(e) => setFormData({ ...formData, class: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-black focus:outline-none focus:ring-2 focus:ring-orange-500"
-                >
-                  <option value="">Todas as turmas</option>
-                  {CLASSES.map((cls) => (
-                    <option key={cls} value={cls}>
-                      {cls}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </>
-          )}
+          <div>
+            <label className="mb-2 block text-gray-700">Disciplina</label>
+            <select
+              value={formData.subjectId}
+              onChange={(e) => setFormData({ ...formData, subjectId: e.target.value })}
+              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-black focus:outline-none focus:ring-2 focus:ring-orange-500"
+              required
+            >
+              <option value="">Selecione uma disciplina</option>
+              {subjects.map((subject) => (
+                <option key={subject.id} value={subject.id}>
+                  {subject.nome}
+                </option>
+              ))}
+            </select>
+          </div>
 
           <div>
             <label className="mb-2 block text-gray-700">Dia da Semana</label>
@@ -355,6 +255,8 @@ export function EditSchedule({ id }: EditScheduleProps) {
               placeholder="Ex: Sala 101"
             />
           </div>
+
+          {error && <p className="text-sm text-red-600">{error}</p>}
         </div>
 
         <button
@@ -367,9 +269,13 @@ export function EditSchedule({ id }: EditScheduleProps) {
         </button>
 
         <div className="fixed bottom-16 left-0 right-0 z-40 border-t bg-white p-4">
-          <button type="submit" className="flex w-full items-center justify-center rounded-lg bg-orange-600 py-3 text-white transition-colors hover:bg-orange-700">
+          <button
+            type="submit"
+            disabled={submitting}
+            className="flex w-full items-center justify-center rounded-lg bg-orange-600 py-3 text-white transition-colors hover:bg-orange-700 disabled:opacity-60"
+          >
             <Save size={20} className="mr-2" />
-            Salvar Alterações
+            {submitting ? "Salvando..." : "Salvar Alterações"}
           </button>
         </div>
       </form>

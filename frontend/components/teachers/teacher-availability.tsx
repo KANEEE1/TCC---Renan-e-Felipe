@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Check, Save } from "lucide-react";
+import { api, ApiError } from "@/lib/api";
 
 const TIME_SLOTS = [
   "07:00 - 08:00",
@@ -19,21 +20,78 @@ const TIME_SLOTS = [
 
 const WEEK_DAYS = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta"];
 
-const DEFAULT_AVAILABILITY: Record<string, boolean> = {
-  "Segunda-08:00 - 09:00": true,
-  "Segunda-09:00 - 10:00": true,
-  "Terça-08:00 - 09:00": true,
-  "Quarta-14:00 - 15:00": true,
-  "Quinta-08:00 - 09:00": true,
-  "Sexta-10:00 - 11:00": true
+const DIA_SEMANA: Record<string, string> = {
+  Segunda: "SEGUNDA",
+  "Terça": "TERCA",
+  Quarta: "QUARTA",
+  Quinta: "QUINTA",
+  Sexta: "SEXTA"
 };
 
-export function TeacherAvailability() {
-  const [availability, setAvailability] = useState(DEFAULT_AVAILABILITY);
+const PERIODO_LETIVO = `${new Date().getFullYear()}-1`;
+
+interface AvailabilityEntry {
+  diaSemana: string;
+  horarioInicio: string;
+  horarioFim: string;
+}
+
+function toHHMM(iso: string) {
+  return new Date(iso).toISOString().slice(11, 16);
+}
+
+export function TeacherAvailability({ teacherId }: { teacherId: string }) {
+  const [teacherName, setTeacherName] = useState("");
+  const [availability, setAvailability] = useState<Record<string, boolean>>({});
+  const [saved, setSaved] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.get<{ name: string }>(`/teachers/${teacherId}`).then((t) => setTeacherName(t.name));
+    api.get<AvailabilityEntry[]>(`/teachers/${teacherId}/availability`).then((entries) => {
+      const next: Record<string, boolean> = {};
+      const savedKeys = new Set<string>();
+      for (const entry of entries) {
+        const day = Object.keys(DIA_SEMANA).find((d) => DIA_SEMANA[d] === entry.diaSemana);
+        if (!day) continue;
+        const key = `${day}-${toHHMM(entry.horarioInicio)} - ${toHHMM(entry.horarioFim)}`;
+        next[key] = true;
+        savedKeys.add(key);
+      }
+      setAvailability(next);
+      setSaved(savedKeys);
+    });
+  }, [teacherId]);
 
   const toggleSlot = (day: string, time: string) => {
     const key = `${day}-${time}`;
     setAvailability((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError(null);
+
+    const newSlots = Object.entries(availability).filter(([key, isOn]) => isOn && !saved.has(key));
+
+    try {
+      for (const [key] of newSlots) {
+        const [day, time] = key.split("-");
+        const [horarioInicio, horarioFim] = time.split(" - ");
+        await api.post(`/teachers/${teacherId}/availability`, {
+          diaSemana: DIA_SEMANA[day],
+          horarioInicio,
+          horarioFim,
+          periodoLetivo: PERIODO_LETIVO
+        });
+      }
+      setSaved((prev) => new Set([...prev, ...newSlots.map(([key]) => key)]));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Não foi possível salvar.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -44,7 +102,7 @@ export function TeacherAvailability() {
         </Link>
         <div>
           <h1>Disponibilidade</h1>
-          <p className="text-sm text-purple-100">Ana Silva</p>
+          <p className="text-sm text-purple-100">{teacherName}</p>
         </div>
       </div>
 
@@ -99,15 +157,19 @@ export function TeacherAvailability() {
             </div>
           </div>
         </div>
+
+        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
       </div>
 
       <div className="fixed bottom-16 left-0 right-0 z-40 border-t bg-white p-4">
         <button
           type="button"
-          className="flex w-full items-center justify-center rounded-lg bg-purple-600 py-3 text-white transition-colors hover:bg-purple-700"
+          onClick={handleSave}
+          disabled={saving}
+          className="flex w-full items-center justify-center rounded-lg bg-purple-600 py-3 text-white transition-colors hover:bg-purple-700 disabled:opacity-60"
         >
           <Save size={20} className="mr-2" />
-          Salvar Disponibilidade
+          {saving ? "Salvando..." : "Salvar Disponibilidade"}
         </button>
       </div>
     </div>

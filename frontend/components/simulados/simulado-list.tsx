@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BarChart2, BookOpen, ChevronDown, ChevronUp, Filter, Plus, Search, Star, Trophy, Users, X } from "lucide-react";
+import { api, ApiError } from "@/lib/api";
 
 export interface SimuladoRecord {
   id: string;
+  studentId: string;
   studentName: string;
   turma: string;
   subject: string;
@@ -15,18 +17,24 @@ export interface SimuladoRecord {
   createdAt: string;
 }
 
-const SUBJECTS = [
-  "Matemática", "Física", "Química", "Biologia", "História",
-  "Geografia", "Português", "Redação", "Inglês", "Filosofia",
-  "Sociologia", "Literatura", "Geral (Todas as matérias)"
-];
+interface Option {
+  id: string;
+  nome: string;
+}
 
-const TURMAS = ["Extensivo", "Intensivo", "Reta Final", "Medicina", "Engenharia", "Semi-extensivo"];
+interface StudentOption {
+  id: string;
+  nome: string;
+  matriculas: { turma: { nome: string } }[];
+}
 
-const STORAGE_KEY = "app_simulados";
-
-function generateId(): string {
-  return `sim-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+interface SimuladoDTO {
+  id: string;
+  nome: string;
+  data: string;
+  disciplina: { nome: string } | null;
+  disciplinaId: string | null;
+  notas: { id: string; valor: number; observacoes: string | null; createdAt: string; aluno: { id: string; nome: string } }[];
 }
 
 function gradeColor(g: number | null): string {
@@ -59,53 +67,89 @@ function avg(grades: (number | null)[]): string {
   return (valid.reduce((a, b) => a + b, 0) / valid.length).toFixed(1);
 }
 
-const EMPTY_FORM: Omit<SimuladoRecord, "id" | "createdAt"> = {
-  studentName: "",
-  turma: "",
-  subject: "",
-  examName: "",
-  date: "",
-  grade: null,
-  notes: ""
-};
+const EMPTY_FORM = { studentId: "", examName: "", subjectId: "", date: "", grade: null as number | null, notes: "" };
 
 export function SimuladoList() {
-  const [records, setRecords] = useState<SimuladoRecord[]>([]);
+  const [simulados, setSimulados] = useState<SimuladoDTO[]>([]);
+  const [students, setStudents] = useState<StudentOption[]>([]);
+  const [subjectOptions, setSubjectOptions] = useState<Option[]>([]);
+  const [classOptions, setClassOptions] = useState<Option[]>([]);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ ...EMPTY_FORM });
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filterTurma, setFilterTurma] = useState("");
   const [filterSubject, setFilterSubject] = useState("");
   const [expandedStudent, setExpandedStudent] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
 
+  const loadSimulados = () => api.get<SimuladoDTO[]>("/simulados").then(setSimulados).catch(() => setSimulados([]));
+
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) setRecords(JSON.parse(stored));
-    } catch {
-      // ignora storage indisponível/corrompido
-    }
+    loadSimulados();
+    api.get<StudentOption[]>("/students").then(setStudents).catch(() => setStudents([]));
+    api.get<Option[]>("/disciplinas").then(setSubjectOptions).catch(() => setSubjectOptions([]));
+    api.get<Option[]>("/classes").then(setClassOptions).catch(() => setClassOptions([]));
   }, []);
 
-  const persist = (data: SimuladoRecord[]) => {
-    setRecords(data);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  };
+  // Backend models the exam (Simulado) and a student's grade on it (Nota) as
+  // two related resources; this screen displays one flat row per grade, so we
+  // flatten them here instead of changing the UI's shape.
+  const records: SimuladoRecord[] = useMemo(() => {
+    const turmaByStudent = new Map(students.map((s) => [s.id, s.matriculas[0]?.turma.nome ?? ""]));
+    return simulados.flatMap((sim) =>
+      sim.notas.map((nota) => ({
+        id: nota.id,
+        studentId: nota.aluno.id,
+        studentName: nota.aluno.nome,
+        turma: turmaByStudent.get(nota.aluno.id) ?? "",
+        subject: sim.disciplina?.nome ?? "",
+        examName: sim.nome,
+        date: sim.data.slice(0, 10),
+        grade: nota.valor,
+        notes: nota.observacoes ?? "",
+        createdAt: nota.createdAt
+      }))
+    );
+  }, [simulados, students]);
 
-  const handleSave = () => {
-    const newRecord: SimuladoRecord = {
-      ...form,
-      id: generateId(),
-      createdAt: new Date().toISOString()
-    };
-    persist([newRecord, ...records]);
-    setForm({ ...EMPTY_FORM });
-    setShowForm(false);
-  };
+  const handleSave = async () => {
+    if (!form.studentId || form.grade === null) {
+      setError("Selecione o aluno e informe a nota.");
+      return;
+    }
+    setError(null);
+    setSaving(true);
 
-  const handleDelete = (id: string) => {
-    persist(records.filter((r) => r.id !== id));
+    try {
+      // Reuse an existing exam with the same name/date/subject, or create one.
+      let simulado = simulados.find(
+        (s) => s.nome === form.examName && s.data.slice(0, 10) === form.date && s.disciplinaId === (form.subjectId || null)
+      );
+      if (!simulado) {
+        simulado = await api.post<SimuladoDTO>("/simulados", {
+          nome: form.examName,
+          data: form.date,
+          disciplinaId: form.subjectId || undefined
+        });
+      }
+
+      await api.post("/grades", {
+        alunoId: form.studentId,
+        simuladoId: simulado.id,
+        valor: form.grade,
+        observacoes: form.notes || undefined
+      });
+
+      await loadSimulados();
+      setForm(EMPTY_FORM);
+      setShowForm(false);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Não foi possível salvar o registro.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const setGrade = (raw: string) => {
@@ -197,8 +241,10 @@ export function SimuladoList() {
               className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 focus:outline-none"
             >
               <option value="">Todas as turmas</option>
-              {TURMAS.map((t) => (
-                <option key={t}>{t}</option>
+              {classOptions.map((t) => (
+                <option key={t.id} value={t.nome}>
+                  {t.nome}
+                </option>
               ))}
             </select>
             <select
@@ -207,8 +253,10 @@ export function SimuladoList() {
               className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 focus:outline-none"
             >
               <option value="">Todas as matérias</option>
-              {SUBJECTS.map((s) => (
-                <option key={s}>{s}</option>
+              {subjectOptions.map((s) => (
+                <option key={s.id} value={s.nome}>
+                  {s.nome}
+                </option>
               ))}
             </select>
           </div>
@@ -294,12 +342,7 @@ export function SimuladoList() {
                         </div>
                         {r.notes && <p className="mt-0.5 truncate text-xs italic text-slate-400">{r.notes}</p>}
                       </div>
-                      <div className="flex shrink-0 items-center gap-2">
-                        <span className={`hidden text-xs group-hover:inline ${gradeColor(r.grade)}`}>{gradeLabel(r.grade)}</span>
-                        <button type="button" onClick={() => handleDelete(r.id)} className="opacity-0 transition-opacity group-hover:opacity-100">
-                          <X size={14} className="text-slate-400 hover:text-red-500" />
-                        </button>
-                      </div>
+                      <span className={`hidden text-xs group-hover:inline ${gradeColor(r.grade)}`}>{gradeLabel(r.grade)}</span>
                     </div>
                   ))}
 
@@ -345,7 +388,8 @@ export function SimuladoList() {
                 type="button"
                 onClick={() => {
                   setShowForm(false);
-                  setForm({ ...EMPTY_FORM });
+                  setForm(EMPTY_FORM);
+                  setError(null);
                 }}
               >
                 <X size={20} className="text-slate-400" />
@@ -354,37 +398,23 @@ export function SimuladoList() {
 
             <div className="space-y-4 px-5 py-4 pb-8">
               <div>
-                <label className="mb-1.5 block text-xs text-slate-500">
-                  Nome do aluno <span className="text-slate-300">(opcional)</span>
-                </label>
-                <input
-                  value={form.studentName}
-                  onChange={(e) => setForm((f) => ({ ...f, studentName: e.target.value }))}
-                  placeholder="Ex: João da Silva"
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-orange-300"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-xs text-slate-500">
-                  Turma <span className="text-slate-300">(opcional)</span>
-                </label>
+                <label className="mb-1.5 block text-xs text-slate-500">Aluno</label>
                 <select
-                  value={form.turma}
-                  onChange={(e) => setForm((f) => ({ ...f, turma: e.target.value }))}
+                  value={form.studentId}
+                  onChange={(e) => setForm((f) => ({ ...f, studentId: e.target.value }))}
                   className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-orange-300"
                 >
-                  <option value="">Selecionar turma...</option>
-                  {TURMAS.map((t) => (
-                    <option key={t}>{t}</option>
+                  <option value="">Selecionar aluno...</option>
+                  {students.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.nome}
+                    </option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label className="mb-1.5 block text-xs text-slate-500">
-                  Nome do simulado <span className="text-slate-300">(opcional)</span>
-                </label>
+                <label className="mb-1.5 block text-xs text-slate-500">Nome do simulado</label>
                 <input
                   value={form.examName}
                   onChange={(e) => setForm((f) => ({ ...f, examName: e.target.value }))}
@@ -399,20 +429,20 @@ export function SimuladoList() {
                     Matéria <span className="text-slate-300">(opcional)</span>
                   </label>
                   <select
-                    value={form.subject}
-                    onChange={(e) => setForm((f) => ({ ...f, subject: e.target.value }))}
+                    value={form.subjectId}
+                    onChange={(e) => setForm((f) => ({ ...f, subjectId: e.target.value }))}
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-orange-300"
                   >
                     <option value="">Selecionar...</option>
-                    {SUBJECTS.map((s) => (
-                      <option key={s}>{s}</option>
+                    {subjectOptions.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.nome}
+                      </option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-xs text-slate-500">
-                    Data <span className="text-slate-300">(opcional)</span>
-                  </label>
+                  <label className="mb-1.5 block text-xs text-slate-500">Data</label>
                   <input
                     type="date"
                     value={form.date}
@@ -423,9 +453,7 @@ export function SimuladoList() {
               </div>
 
               <div>
-                <label className="mb-1.5 block text-xs text-slate-500">
-                  Nota (0–10) <span className="text-slate-300">(opcional)</span>
-                </label>
+                <label className="mb-1.5 block text-xs text-slate-500">Nota (0–10)</label>
                 <div className="flex items-center gap-3">
                   <input
                     type="number"
@@ -468,13 +496,16 @@ export function SimuladoList() {
                 />
               </div>
 
+              {error && <p className="text-sm text-red-600">{error}</p>}
+
               <button
                 type="button"
                 onClick={handleSave}
-                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-orange-500 to-rose-500 py-3.5 text-white shadow-md shadow-orange-200 transition-opacity hover:opacity-90"
+                disabled={saving}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-orange-500 to-rose-500 py-3.5 text-white shadow-md shadow-orange-200 transition-opacity hover:opacity-90 disabled:opacity-60"
               >
                 <Trophy size={18} />
-                Salvar Registro
+                {saving ? "Salvando..." : "Salvar Registro"}
               </button>
             </div>
           </div>

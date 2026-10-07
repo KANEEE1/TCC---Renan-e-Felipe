@@ -1,32 +1,70 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Check, Save, Search, UserMinus, UserPlus } from "lucide-react";
+import { api, ApiError } from "@/lib/api";
 
-const INITIAL_STUDENTS = [
-  { id: 1, name: "Ana Beatriz Santos", number: "01", assigned: true },
-  { id: 2, name: "Bruno Oliveira Costa", number: "02", assigned: true },
-  { id: 3, name: "Carla Maria Silva", number: "03", assigned: true },
-  { id: 4, name: "Daniel Ferreira Lima", number: "04", assigned: false },
-  { id: 5, name: "Elena Rodrigues Souza", number: "05", assigned: false },
-  { id: 6, name: "Felipe Alves Pereira", number: "06", assigned: true },
-  { id: 7, name: "Gabriela Costa Santos", number: "07", assigned: false },
-  { id: 8, name: "Henrique Dias Oliveira", number: "08", assigned: true },
-  { id: 9, name: "Isabela Martins Silva", number: "09", assigned: false },
-  { id: 10, name: "João Pedro Rocha", number: "10", assigned: true }
-];
+interface StudentRow {
+  id: string;
+  name: string;
+  number: string;
+  assigned: boolean;
+}
 
-export function AssignStudents() {
+interface ClassDetail {
+  nome: string;
+  capacidade: number | null;
+  matriculas: { aluno: { id: string } }[];
+}
+
+export function AssignStudents({ classId }: { classId: string }) {
   const [searchTerm, setSearchTerm] = useState("");
-  const [students, setStudents] = useState(INITIAL_STUDENTS);
+  const [students, setStudents] = useState<StudentRow[]>([]);
+  const [className, setClassName] = useState("");
+  const [capacity, setCapacity] = useState<number | null>(null);
+  const [initiallyAssigned, setInitiallyAssigned] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const toggleStudent = (studentId: number) => {
+  useEffect(() => {
+    Promise.all([
+      api.get<ClassDetail>(`/classes/${classId}`),
+      api.get<{ id: string; nome: string; numero: string | null }[]>("/students")
+    ]).then(([cls, allStudents]) => {
+      setClassName(cls.nome);
+      setCapacity(cls.capacidade);
+      const assignedIds = new Set(cls.matriculas.map((m) => m.aluno.id));
+      setInitiallyAssigned(assignedIds);
+      setStudents(
+        allStudents.map((s) => ({ id: s.id, name: s.nome, number: s.numero ?? "-", assigned: assignedIds.has(s.id) }))
+      );
+    });
+  }, [classId]);
+
+  const toggleStudent = (studentId: string) => {
     setStudents((prev) => prev.map((student) => (student.id === studentId ? { ...student, assigned: !student.assigned } : student)));
   };
 
-  const filteredStudents = students.filter((student) => student.name.toLowerCase().includes(searchTerm.toLowerCase()));
+  const handleSave = async () => {
+    setSaving(true);
+    setError(null);
 
+    const newlyAssigned = students.filter((s) => s.assigned && !initiallyAssigned.has(s.id)).map((s) => s.id);
+
+    try {
+      if (newlyAssigned.length > 0) {
+        await api.post(`/classes/${classId}/students`, { studentIds: newlyAssigned });
+      }
+      setInitiallyAssigned(new Set(students.filter((s) => s.assigned).map((s) => s.id)));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Não foi possível salvar.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const filteredStudents = students.filter((student) => student.name.toLowerCase().includes(searchTerm.toLowerCase()));
   const assignedCount = students.filter((s) => s.assigned).length;
   const unassignedStudents = filteredStudents.filter((s) => !s.assigned);
   const assignedStudents = filteredStudents.filter((s) => s.assigned);
@@ -42,8 +80,8 @@ export function AssignStudents() {
         </div>
 
         <div className="rounded-lg bg-indigo-500 p-3">
-          <div className="text-sm text-indigo-100">Turma: Extensivo - Manhã</div>
-          <div className="text-sm text-indigo-100">Capacidade: 50 alunos</div>
+          <div className="text-sm text-indigo-100">Turma: {className || "..."}</div>
+          <div className="text-sm text-indigo-100">Capacidade: {capacity ?? "—"} alunos</div>
         </div>
       </div>
 
@@ -125,13 +163,20 @@ export function AssignStudents() {
             </div>
           </section>
         )}
+
+        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
       </div>
 
       <div className="fixed bottom-16 left-0 right-0 z-40 border-t bg-white p-4">
         <div className="mb-2 text-center text-sm text-gray-600">{assignedCount} alunos atribuídos</div>
-        <button type="button" className="flex w-full items-center justify-center rounded-lg bg-indigo-600 py-3 text-white transition-colors hover:bg-indigo-700">
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving}
+          className="flex w-full items-center justify-center rounded-lg bg-indigo-600 py-3 text-white transition-colors hover:bg-indigo-700 disabled:opacity-60"
+        >
           <Save size={20} className="mr-2" />
-          Salvar Alterações
+          {saving ? "Salvando..." : "Salvar Alterações"}
         </button>
       </div>
     </div>

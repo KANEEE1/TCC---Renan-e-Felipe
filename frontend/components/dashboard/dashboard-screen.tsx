@@ -1,3 +1,7 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   BookOpen,
@@ -12,36 +16,68 @@ import {
   Video,
   Zap
 } from "lucide-react";
+import { api } from "@/lib/api";
+import { clearSession } from "@/lib/auth";
 
-const userRole = "gestão";
-const userName = "Usuário";
-
-const STATS = [
-  { icon: BookOpen, value: "12", label: "Aulas Hoje" },
-  { icon: Users, value: "6", label: "Turmas" },
-  { icon: Video, value: "2", label: "Aulões" }
-];
-
-const TODAY_ACTIVITIES = [
-  { id: 1, title: "Matemática", subtitle: "Extensivo Manhã", time: "08:00", end: "09:30", status: "em andamento", color: "bg-blue-500" },
-  { id: 2, title: "Física", subtitle: "Intensivo", time: "10:00", end: "11:30", status: "próxima", color: "bg-emerald-500" },
-  { id: 3, title: "Plantão de Exatas", subtitle: "Todas as turmas", time: "14:00", end: "16:00", status: "agendado", color: "bg-purple-500" },
-  { id: 4, title: "Aulão de Redação", subtitle: "ENEM", time: "16:30", end: "18:00", status: "agendado", color: "bg-orange-500" }
-];
-
-const UPCOMING_ACTIVITIES = [
-  { id: 1, title: "Simulado ENEM", date: "05", month: "MAI", time: "08:00", color: "bg-red-500" },
-  { id: 2, title: "Aulão de Química", date: "08", month: "MAI", time: "14:00", color: "bg-blue-500" },
-  { id: 3, title: "Revisão Geral — Humanas", date: "10", month: "MAI", time: "09:00", color: "bg-purple-500" }
-];
+interface DashboardSummary {
+  stats: { turmas: number; aulasHoje: number; auloesHoje: number };
+  todayActivities: {
+    id: string;
+    subject: string;
+    class: string;
+    teacher: string;
+    tipo: string;
+    time: string;
+    endTime: string;
+    status: "agendada" | "em andamento" | "concluída";
+  }[];
+  upcomingSimulados: { id: string; nome: string; data: string }[];
+}
 
 const STATUS_STYLE: Record<string, string> = {
   "em andamento": "bg-emerald-100 text-emerald-700",
-  "próxima": "bg-blue-100 text-blue-700",
-  agendado: "bg-slate-100 text-slate-600"
+  agendada: "bg-blue-100 text-blue-700",
+  "concluída": "bg-slate-100 text-slate-600"
 };
 
+const ACTIVITY_COLORS = ["bg-blue-500", "bg-emerald-500", "bg-purple-500", "bg-orange-500", "bg-rose-500"];
+const UPCOMING_COLORS = ["bg-red-500", "bg-blue-500", "bg-purple-500", "bg-emerald-500"];
+
+function formatTime(iso: string) {
+  return new Date(iso).toISOString().slice(11, 16);
+}
+
+const MONTHS = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
+
 export function DashboardScreen() {
+  const router = useRouter();
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [userName, setUserName] = useState("Usuário");
+  const [userRole, setUserRole] = useState("gestão");
+
+  useEffect(() => {
+    api.get<DashboardSummary>("/dashboard/summary").then(setSummary).catch(() => setSummary(null));
+    api
+      .get<{ name: string; roles: ("GESTAO" | "PROFESSOR")[] }>("/auth/me")
+      .then((me) => {
+        setUserName(me.name);
+        setUserRole(me.roles.includes("GESTAO") ? "gestão" : "professor");
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleLogout = (event: React.MouseEvent) => {
+    event.preventDefault();
+    clearSession();
+    router.push("/");
+  };
+
+  const stats = [
+    { icon: BookOpen, value: String(summary?.stats.aulasHoje ?? 0), label: "Aulas Hoje" },
+    { icon: Users, value: String(summary?.stats.turmas ?? 0), label: "Turmas" },
+    { icon: Video, value: String(summary?.stats.auloesHoje ?? 0), label: "Aulões" }
+  ];
+
   return (
     <div className="flex-1 bg-slate-50">
       <div className="bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700 px-5 pt-5 pb-8 text-white">
@@ -62,6 +98,7 @@ export function DashboardScreen() {
             </Link>
             <Link
               href="/"
+              onClick={handleLogout}
               className="flex h-9 w-9 items-center justify-center rounded-full bg-white/20 transition-colors hover:bg-white/30"
             >
               <LogOut size={17} />
@@ -70,7 +107,7 @@ export function DashboardScreen() {
         </div>
 
         <div className="grid grid-cols-3 gap-3">
-          {STATS.map(({ icon: Icon, value, label }) => (
+          {stats.map(({ icon: Icon, value, label }) => (
             <div key={label} className="rounded-2xl border border-white/20 bg-white/15 p-3 text-center backdrop-blur-sm">
               <Icon className="mx-auto mb-1 text-white/80" size={20} />
               <p className="text-2xl leading-tight text-white">{value}</p>
@@ -155,19 +192,26 @@ export function DashboardScreen() {
               <div className="h-5 w-1 rounded-full bg-blue-500" />
               <h2 className="text-slate-700">Resumo do Dia</h2>
             </div>
-            <span className="text-xs text-slate-400">Segunda, 04 Mai</span>
+            <span className="text-xs text-slate-400">
+              {new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "short" })}
+            </span>
           </div>
 
           <div className="space-y-2.5">
-            {TODAY_ACTIVITIES.map((activity) => (
+            {(summary?.todayActivities ?? []).length === 0 && (
+              <p className="rounded-2xl border border-dashed border-slate-200 bg-white p-4 text-center text-sm text-slate-400">
+                Nenhuma aula hoje.
+              </p>
+            )}
+            {(summary?.todayActivities ?? []).map((activity, index) => (
               <div key={activity.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <div className="flex items-stretch">
-                  <div className={`w-1.5 rounded-l-2xl ${activity.color}`} />
+                  <div className={`w-1.5 rounded-l-2xl ${ACTIVITY_COLORS[index % ACTIVITY_COLORS.length]}`} />
                   <div className="flex flex-1 items-center justify-between p-3.5">
                     <div>
-                      <p className="text-sm leading-tight text-slate-800">{activity.title}</p>
+                      <p className="text-sm leading-tight text-slate-800">{activity.subject}</p>
                       <p className="mt-0.5 text-xs text-slate-400">
-                        {activity.subtitle} · {activity.time}–{activity.end}
+                        {activity.class} · {formatTime(activity.time)}–{formatTime(activity.endTime)}
                       </p>
                     </div>
                     <span className={`rounded-full px-2 py-0.5 text-xs ${STATUS_STYLE[activity.status] ?? "bg-slate-100 text-slate-500"}`}>
@@ -192,19 +236,26 @@ export function DashboardScreen() {
           </div>
 
           <div className="space-y-2.5">
-            {UPCOMING_ACTIVITIES.map((activity) => (
-              <div key={activity.id} className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm">
-                <div className={`flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-xl ${activity.color}`}>
-                  <span className="text-[15px] font-bold leading-none text-white">{activity.date}</span>
-                  <span className="mt-0.5 text-[9px] leading-none text-white/80">{activity.month}</span>
+            {(summary?.upcomingSimulados ?? []).length === 0 && (
+              <p className="rounded-2xl border border-dashed border-slate-200 bg-white p-4 text-center text-sm text-slate-400">
+                Nenhum simulado agendado.
+              </p>
+            )}
+            {(summary?.upcomingSimulados ?? []).map((simulado, index) => {
+              const date = new Date(simulado.data);
+              return (
+                <div key={simulado.id} className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm">
+                  <div className={`flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-xl ${UPCOMING_COLORS[index % UPCOMING_COLORS.length]}`}>
+                    <span className="text-[15px] font-bold leading-none text-white">{String(date.getUTCDate()).padStart(2, "0")}</span>
+                    <span className="mt-0.5 text-[9px] leading-none text-white/80">{MONTHS[date.getUTCMonth()]}</span>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm text-slate-800">{simulado.nome}</p>
+                  </div>
+                  <ChevronRight size={16} className="shrink-0 text-slate-300" />
                 </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm text-slate-800">{activity.title}</p>
-                  <p className="mt-0.5 text-xs text-slate-400">às {activity.time}</p>
-                </div>
-                <ChevronRight size={16} className="shrink-0 text-slate-300" />
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       </div>

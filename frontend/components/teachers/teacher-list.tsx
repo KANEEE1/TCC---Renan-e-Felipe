@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { BookOpen, Calendar, Edit, Mail, Phone, Plus, Search, UserPlus } from "lucide-react";
+import { api } from "@/lib/api";
 
 const isCoordinator = true;
 
@@ -22,20 +23,27 @@ function getInitials(name: string) {
     .toUpperCase();
 }
 
-const TEACHERS = [
-  { id: 1, name: "Ana Silva", email: "ana.silva@escola.com", phone: "(11) 98765-4321", subjects: ["Matemática", "Física"], status: "Ativo" },
-  { id: 2, name: "Carlos Santos", email: "carlos.santos@escola.com", phone: "(11) 98765-4322", subjects: ["História", "Geografia"], status: "Ativo" },
-  { id: 3, name: "Maria Oliveira", email: "maria.oliveira@escola.com", phone: "(11) 98765-4323", subjects: ["Português", "Literatura"], status: "Ativo" },
-  { id: 4, name: "João Costa", email: "joao.costa@escola.com", phone: "(11) 98765-4324", subjects: ["Química", "Biologia"], status: "Ativo" }
-];
+interface Teacher {
+  id: string;
+  name: string;
+  email: string;
+  celular: string | null;
+  ativo: boolean;
+  disciplinas: { id: string; nome: string }[];
+}
 
 export function TeacherList() {
   const [searchTerm, setSearchTerm] = useState("");
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
 
-  const filteredTeachers = TEACHERS.filter(
+  useEffect(() => {
+    api.get<Teacher[]>("/teachers").then(setTeachers).catch(() => setTeachers([]));
+  }, []);
+
+  const filteredTeachers = teachers.filter(
     (teacher) =>
       teacher.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      teacher.subjects.some((subject) => subject.toLowerCase().includes(searchTerm.toLowerCase()))
+      teacher.disciplinas.some((subject) => subject.nome.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   return (
@@ -105,14 +113,18 @@ export function TeacherList() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between">
                   <h3 className="truncate text-slate-800">{teacher.name}</h3>
-                  <span className="ml-2 shrink-0 rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">
-                    {teacher.status}
+                  <span
+                    className={`ml-2 shrink-0 rounded-full border px-2 py-0.5 text-xs ${
+                      teacher.ativo ? "border-emerald-200 bg-emerald-100 text-emerald-700" : "border-slate-200 bg-slate-100 text-slate-500"
+                    }`}
+                  >
+                    {teacher.ativo ? "Ativo" : "Inativo"}
                   </span>
                 </div>
                 <div className="mt-1.5 flex flex-wrap gap-1">
-                  {teacher.subjects.map((subject) => (
-                    <span key={subject} className="rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-xs text-blue-600">
-                      {subject}
+                  {teacher.disciplinas.map((subject) => (
+                    <span key={subject.id} className="rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-xs text-blue-600">
+                      {subject.nome}
                     </span>
                   ))}
                 </div>
@@ -126,7 +138,7 @@ export function TeacherList() {
               </div>
               <div className="flex items-center gap-2 text-xs text-slate-400">
                 <Phone size={13} className="text-slate-300" />
-                {teacher.phone}
+                {teacher.celular ?? "-"}
               </div>
             </div>
 
@@ -139,7 +151,7 @@ export function TeacherList() {
                 Editar
               </Link>
               <Link
-                href={`/teachers/schedule?teacher=${encodeURIComponent(teacher.name)}`}
+                href={`/teachers/schedule?teacher=${teacher.id}`}
                 className="flex items-center justify-center gap-1.5 border-r border-slate-100 py-3 text-xs text-slate-500 transition-colors hover:bg-emerald-50 hover:text-emerald-600"
               >
                 <BookOpen size={14} />

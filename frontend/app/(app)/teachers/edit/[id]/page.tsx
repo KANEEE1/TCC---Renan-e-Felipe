@@ -1,5 +1,6 @@
 import { TeacherForm } from "@/components/teachers/teacher-form";
 
-export default function EditTeacherPage() {
-  return <TeacherForm isEdit />;
+export default async function EditTeacherPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  return <TeacherForm isEdit teacherId={id} />;
 }

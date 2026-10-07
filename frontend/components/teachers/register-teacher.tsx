@@ -1,23 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { BookOpen, Check, ChevronLeft, Eye, EyeOff, Lock, Mail, Phone, Trash2, User, UserPlus } from "lucide-react";
-
-const SUBJECT_OPTIONS = [
-  "Matemática",
-  "Física",
-  "Química",
-  "Biologia",
-  "História",
-  "Geografia",
-  "Português",
-  "Literatura",
-  "Redação",
-  "Inglês",
-  "Filosofia",
-  "Sociologia"
-];
+import { api, ApiError } from "@/lib/api";
 
 const AVATAR_GRADIENTS = [
   "from-blue-500 to-indigo-600",
@@ -32,41 +18,85 @@ function getInitials(name: string) {
   return name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
 }
 
-type RegisteredTeacher = {
+interface Subject {
+  id: string;
+  nome: string;
+}
+
+interface Teacher {
   id: string;
   name: string;
   email: string;
-  phone: string;
-  subjects: string[];
+  celular: string | null;
+  disciplinas: Subject[];
   createdAt: string;
-};
-
-const REGISTERED_TEACHERS: RegisteredTeacher[] = [
-  { id: "1", name: "Ana Silva", email: "ana.silva@escola.com", phone: "(11) 98765-4321", subjects: ["Matemática", "Física"], createdAt: "2026-03-12" },
-  { id: "2", name: "Carlos Santos", email: "carlos.santos@escola.com", phone: "(11) 98765-4322", subjects: ["História", "Geografia"], createdAt: "2026-04-02" }
-];
+}
 
 export function RegisterTeacher() {
   const [tab, setTab] = useState<"register" | "list">("register");
 
+  const [subjectOptions, setSubjectOptions] = useState<Subject[]>([]);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [subjects, setSubjects] = useState<string[]>([]);
+  const [subjectIds, setSubjectIds] = useState<string[]>([]);
   const [showPass, setShowPass] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  const [teachers, setTeachers] = useState(REGISTERED_TEACHERS);
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
-  const toggleSubject = (subject: string) =>
-    setSubjects((prev) => (prev.includes(subject) ? prev.filter((s) => s !== subject) : [...prev, subject]));
+  useEffect(() => {
+    api.get<Subject[]>("/disciplinas").then(setSubjectOptions).catch(() => setSubjectOptions([]));
+    refreshTeachers();
+  }, []);
 
-  const handleDelete = (id: string) => {
-    setTeachers((prev) => prev.filter((t) => t.id !== id));
-    setDeleteConfirm(null);
+  function refreshTeachers() {
+    api.get<Teacher[]>("/teachers").then(setTeachers).catch(() => setTeachers([]));
+  }
+
+  const toggleSubject = (subjectId: string) =>
+    setSubjectIds((prev) => (prev.includes(subjectId) ? prev.filter((s) => s !== subjectId) : [...prev, subjectId]));
+
+  const handleDelete = async (id: string) => {
+    try {
+      await api.put(`/teachers/${id}`, { ativo: false });
+      setTeachers((prev) => prev.filter((t) => t.id !== id));
+    } finally {
+      setDeleteConfirm(null);
+    }
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError(null);
+
+    if (password !== confirm) {
+      setError("As senhas não coincidem.");
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      await api.post("/teachers", { name, email, celular: phone, password, disciplinaIds: subjectIds });
+      setName("");
+      setEmail("");
+      setPhone("");
+      setPassword("");
+      setConfirm("");
+      setSubjectIds([]);
+      refreshTeachers();
+      setTab("list");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Não foi possível cadastrar. Tente novamente.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -111,7 +141,7 @@ export function RegisterTeacher() {
 
       <div className="flex-1 overflow-y-auto px-4 py-4 pb-8">
         {tab === "register" && (
-          <form onSubmit={(event) => event.preventDefault()} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <p className="text-xs uppercase tracking-wide text-slate-400">Dados Pessoais</p>
 
@@ -124,6 +154,7 @@ export function RegisterTeacher() {
                   value={name}
                   onChange={(event) => setName(event.target.value)}
                   placeholder="Ex: Ana Silva"
+                  required
                   className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
                 />
               </div>
@@ -154,6 +185,7 @@ export function RegisterTeacher() {
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                   placeholder="professor@escola.com"
+                  required
                   className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
                 />
               </div>
@@ -167,7 +199,9 @@ export function RegisterTeacher() {
                     type={showPass ? "text" : "password"}
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
-                    placeholder="Mínimo 6 caracteres"
+                    placeholder="Mínimo 8 caracteres"
+                    minLength={8}
+                    required
                     className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 pr-11 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
                   />
                   <button
@@ -205,6 +239,7 @@ export function RegisterTeacher() {
                     value={confirm}
                     onChange={(event) => setConfirm(event.target.value)}
                     placeholder="Repita a senha"
+                    required
                     className={`w-full rounded-xl border bg-white px-3.5 py-2.5 pr-11 text-sm text-slate-800 focus:outline-none focus:ring-2 ${
                       confirm && confirm !== password
                         ? "border-red-300 focus:ring-red-400"
@@ -229,13 +264,13 @@ export function RegisterTeacher() {
                 <BookOpen size={13} /> Disciplinas *
               </p>
               <div className="grid grid-cols-2 gap-2">
-                {SUBJECT_OPTIONS.map((subject) => {
-                  const active = subjects.includes(subject);
+                {subjectOptions.map((subject) => {
+                  const active = subjectIds.includes(subject.id);
                   return (
                     <button
-                      key={subject}
+                      key={subject.id}
                       type="button"
-                      onClick={() => toggleSubject(subject)}
+                      onClick={() => toggleSubject(subject.id)}
                       className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm transition-all ${
                         active ? "border-blue-600 bg-blue-600 text-white shadow-sm" : "border-slate-200 bg-slate-50 text-slate-600 hover:border-blue-300"
                       }`}
@@ -247,19 +282,22 @@ export function RegisterTeacher() {
                       >
                         {active && <Check size={10} className="text-white" strokeWidth={3} />}
                       </div>
-                      {subject}
+                      {subject.nome}
                     </button>
                   );
                 })}
               </div>
             </div>
 
+            {error && <p className="text-sm text-red-600">{error}</p>}
+
             <button
               type="submit"
-              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 py-3.5 text-white shadow-sm transition-colors hover:bg-blue-700"
+              disabled={submitting}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 py-3.5 text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-60"
             >
               <UserPlus size={18} />
-              Cadastrar Professor
+              {submitting ? "Cadastrando..." : "Cadastrar Professor"}
             </button>
           </form>
         )}
@@ -297,17 +335,19 @@ export function RegisterTeacher() {
                       </span>
                     </div>
 
-                    {teacher.phone && <p className="mb-2 text-xs text-slate-400">📞 {teacher.phone}</p>}
+                    {teacher.celular && <p className="mb-2 text-xs text-slate-400">📞 {teacher.celular}</p>}
 
                     <div className="mb-3 flex flex-wrap gap-1.5">
-                      {teacher.subjects.map((subject) => (
-                        <span key={subject} className="rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-xs text-blue-600">
-                          {subject}
+                      {teacher.disciplinas.map((subject) => (
+                        <span key={subject.id} className="rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-xs text-blue-600">
+                          {subject.nome}
                         </span>
                       ))}
                     </div>
 
-                    <p className="mb-3 text-[10px] text-slate-300">Criado em {teacher.createdAt}</p>
+                    <p className="mb-3 text-[10px] text-slate-300">
+                      Criado em {new Date(teacher.createdAt).toLocaleDateString("pt-BR")}
+                    </p>
 
                     {deleteConfirm === teacher.id ? (
                       <div className="flex gap-2">

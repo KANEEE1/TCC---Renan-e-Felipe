@@ -1,18 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Calendar, Save, Trash2, Users } from "lucide-react";
+import { api, ApiError } from "@/lib/api";
 
 const MEETING_TYPES = [
-  { value: "aulao", label: "Aulão" },
-  { value: "simulado", label: "Simulado" },
-  { value: "revisao", label: "Revisão" }
+  { value: "aulao", label: "Aulão", backend: "AULAO" },
+  { value: "simulado", label: "Simulado", backend: "SIMULADO" },
+  { value: "revisao", label: "Revisão", backend: "REVISAO" }
 ] as const;
 
 type MeetingType = (typeof MEETING_TYPES)[number]["value"];
 
-const AVAILABLE_PARTICIPANTS = ["Ana Silva", "Carlos Santos", "Maria Oliveira", "João Costa", "Pedro Lima", "Direção Escolar", "Equipe Pedagógica"];
+const AVAILABLE_PARTICIPANTS = ["Ana Silva", "Carlos Santos", "Maria Oliveira", "João Costa", "Pedro Lima", "Direção Escolar", "Equipe Pedagógica", "Todos os alunos"];
 
 const TIMES = [
   "07:00", "07:30", "08:00", "08:30", "09:00", "09:30",
@@ -22,19 +24,49 @@ const TIMES = [
   "19:00", "19:30", "20:00"
 ];
 
-const INITIAL_FORM = {
-  title: "Aulão de Química Orgânica",
-  type: "aulao" as MeetingType,
-  date: "2026-05-08",
-  startTime: "14:00",
-  endTime: "18:00",
-  location: "Auditório Principal",
-  description: "Revisão completa de química orgânica com foco em questões de vestibular e ENEM.",
-  participants: ["João Costa", "Todos os alunos"]
-};
+interface MeetingDTO {
+  titulo: string;
+  tipo: "AULAO" | "SIMULADO" | "REVISAO";
+  data: string;
+  horarioInicio: string;
+  horarioFim: string;
+  local: string | null;
+  descricao: string | null;
+  participantes: string[];
+}
 
-export function MeetingEdit() {
-  const [formData, setFormData] = useState(INITIAL_FORM);
+function toHHMM(iso: string) {
+  return new Date(iso).toISOString().slice(11, 16);
+}
+
+const EMPTY = { title: "", type: "aulao" as MeetingType, date: "", startTime: "", endTime: "", location: "", description: "", participants: [] as string[] };
+
+export function MeetingEdit({ meetingId }: { meetingId: string }) {
+  const router = useRouter();
+  const [formData, setFormData] = useState(EMPTY);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .get<MeetingDTO>(`/meetings/${meetingId}`)
+      .then((m) => {
+        const typeEntry = MEETING_TYPES.find((t) => t.backend === m.tipo);
+        setFormData({
+          title: m.titulo,
+          type: typeEntry?.value ?? "aulao",
+          date: m.data.slice(0, 10),
+          startTime: toHHMM(m.horarioInicio),
+          endTime: toHHMM(m.horarioFim),
+          location: m.local ?? "",
+          description: m.descricao ?? "",
+          participants: m.participantes
+        });
+      })
+      .catch(() => setError("Reunião não encontrada."))
+      .finally(() => setLoading(false));
+  }, [meetingId]);
 
   const toggleParticipant = (participant: string) => {
     setFormData((prev) => ({
@@ -42,6 +74,41 @@ export function MeetingEdit() {
       participants: prev.participants.includes(participant) ? prev.participants.filter((p) => p !== participant) : [...prev.participants, participant]
     }));
   };
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError(null);
+    setSaving(true);
+
+    try {
+      const typeEntry = MEETING_TYPES.find((t) => t.value === formData.type)!;
+      await api.put(`/meetings/${meetingId}`, {
+        titulo: formData.title,
+        tipo: typeEntry.backend,
+        data: formData.date,
+        horarioInicio: formData.startTime,
+        horarioFim: formData.endTime,
+        local: formData.location || undefined,
+        descricao: formData.description || undefined,
+        participantes: formData.participants
+      });
+      router.push("/dashboard");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Não foi possível salvar.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirm("Tem certeza que deseja excluir este evento?")) return;
+    await api.delete(`/meetings/${meetingId}`);
+    router.push("/dashboard");
+  };
+
+  if (loading) {
+    return <div className="flex flex-1 items-center justify-center bg-gray-50 text-gray-400">Carregando...</div>;
+  }
 
   return (
     <div className="flex flex-1 flex-col bg-gray-50">
@@ -52,7 +119,7 @@ export function MeetingEdit() {
         <h1>Editar Evento</h1>
       </div>
 
-      <form onSubmit={(event) => event.preventDefault()} className="flex-1 overflow-y-auto p-4 pb-32">
+      <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 pb-32">
         <div className="mb-4 space-y-4 rounded-lg bg-white p-4 shadow">
           <div>
             <label className="mb-2 block text-gray-700">Título do Evento</label>
@@ -137,7 +204,6 @@ export function MeetingEdit() {
               onChange={(e) => setFormData({ ...formData, location: e.target.value })}
               className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-purple-500"
               placeholder="Ex: Sala de Reuniões"
-              required
             />
           </div>
 
@@ -180,26 +246,36 @@ export function MeetingEdit() {
             <div>
               <h4 className="text-blue-800">Informações do Evento</h4>
               <div className="mt-2 space-y-1 text-sm text-blue-700">
-                <p>Data: {new Date(`${formData.date}T00:00:00`).toLocaleDateString("pt-BR")}</p>
+                <p>Data: {formData.date ? new Date(`${formData.date}T00:00:00`).toLocaleDateString("pt-BR") : "-"}</p>
                 <p>
                   Horário: {formData.startTime} - {formData.endTime}
                 </p>
-                <p>Local: {formData.location}</p>
+                <p>Local: {formData.location || "-"}</p>
                 <p>Participantes: {formData.participants.length} pessoa(s)</p>
               </div>
             </div>
           </div>
         </div>
 
-        <button type="button" className="mb-4 flex w-full items-center justify-center rounded-lg bg-red-50 py-3 text-red-600 transition-colors hover:bg-red-100">
+        {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+
+        <button
+          type="button"
+          onClick={handleDelete}
+          className="mb-4 flex w-full items-center justify-center rounded-lg bg-red-50 py-3 text-red-600 transition-colors hover:bg-red-100"
+        >
           <Trash2 size={20} className="mr-2" />
           Excluir Evento
         </button>
 
         <div className="fixed bottom-16 left-0 right-0 z-40 border-t bg-white p-4">
-          <button type="submit" className="flex w-full items-center justify-center rounded-lg bg-purple-600 py-3 text-white transition-colors hover:bg-purple-700">
+          <button
+            type="submit"
+            disabled={saving}
+            className="flex w-full items-center justify-center rounded-lg bg-purple-600 py-3 text-white transition-colors hover:bg-purple-700 disabled:opacity-60"
+          >
             <Save size={20} className="mr-2" />
-            Salvar Alterações
+            {saving ? "Salvando..." : "Salvar Alterações"}
           </button>
         </div>
       </form>

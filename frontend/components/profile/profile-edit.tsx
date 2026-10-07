@@ -1,34 +1,100 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Camera, Save } from "lucide-react";
+import { api, ApiError } from "@/lib/api";
 
-const AVAILABLE_SUBJECTS = [
-  "Matemática", "Física", "Química", "Biologia", "História",
-  "Geografia", "Português", "Literatura", "Redação", "Inglês",
-  "Filosofia", "Sociologia"
-];
+interface Subject {
+  id: string;
+  nome: string;
+}
 
-const userRole: string = "gestão";
+interface MeDTO {
+  name: string;
+  email: string;
+  celular: string | null;
+  roles: ("GESTAO" | "PROFESSOR")[];
+  departamento: string | null;
+  bio: string | null;
+}
 
-const INITIAL_FORM = {
-  name: "Ana Silva",
-  email: "ana.silva@cursinho.com",
-  phone: "(11) 98765-4321",
-  department: "Ciências Exatas",
-  subjects: ["Matemática", "Física"] as string[],
-  bio: "Professora voluntária dedicada ao ensino preparatório para vestibular e ENEM."
-};
+interface TeacherSelfDTO {
+  disciplinas: Subject[];
+}
+
+const EMPTY = { name: "", email: "", phone: "", department: "Ciências Exatas", subjectIds: [] as string[], bio: "" };
 
 export function ProfileEdit() {
-  const [formData, setFormData] = useState(INITIAL_FORM);
+  const [subjectOptions, setSubjectOptions] = useState<Subject[]>([]);
+  const [formData, setFormData] = useState(EMPTY);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [isProfessor, setIsProfessor] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
 
-  const handleSubjectToggle = (subject: string) => {
+  useEffect(() => {
+    api.get<Subject[]>("/disciplinas").then(setSubjectOptions).catch(() => setSubjectOptions([]));
+
+    api.get<MeDTO & { id: string }>("/auth/me").then(async (me) => {
+      setUserId(me.id);
+      const professor = me.roles.includes("PROFESSOR");
+      setIsProfessor(professor);
+
+      let subjectIds: string[] = [];
+      if (professor) {
+        try {
+          const teacher = await api.get<TeacherSelfDTO>(`/teachers/${me.id}`);
+          subjectIds = teacher.disciplinas.map((d) => d.id);
+        } catch {
+          // self isn't resolvable as a teacher record yet; leave empty
+        }
+      }
+
+      setFormData({
+        name: me.name,
+        email: me.email,
+        phone: me.celular ?? "",
+        department: me.departamento ?? "Ciências Exatas",
+        subjectIds,
+        bio: me.bio ?? ""
+      });
+    });
+  }, []);
+
+  const handleSubjectToggle = (subjectId: string) => {
     setFormData((prev) => ({
       ...prev,
-      subjects: prev.subjects.includes(subject) ? prev.subjects.filter((s) => s !== subject) : [...prev.subjects, subject]
+      subjectIds: prev.subjectIds.includes(subjectId) ? prev.subjectIds.filter((id) => id !== subjectId) : [...prev.subjectIds, subjectId]
     }));
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!userId) return;
+    setError(null);
+    setSaving(true);
+    setSaved(false);
+
+    try {
+      await api.put("/auth/me", {
+        name: formData.name,
+        celular: formData.phone || undefined,
+        departamento: formData.department || undefined,
+        bio: formData.bio || undefined
+      });
+
+      if (isProfessor) {
+        await api.put(`/teachers/${userId}`, { disciplinaIds: formData.subjectIds });
+      }
+
+      setSaved(true);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Não foi possível salvar.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -42,7 +108,7 @@ export function ProfileEdit() {
         </div>
       </div>
 
-      <form onSubmit={(event) => event.preventDefault()} className="flex-1 overflow-y-auto p-4 pb-32">
+      <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 pb-32">
         <div className="mb-4 rounded-lg bg-white p-4 shadow">
           <div className="mb-6 flex flex-col items-center">
             <div className="relative">
@@ -54,7 +120,7 @@ export function ProfileEdit() {
               </button>
             </div>
             <h3 className="mt-3 text-gray-800">{formData.name}</h3>
-            <p className="text-sm capitalize text-gray-600">{userRole}</p>
+            <p className="text-sm capitalize text-gray-600">{isProfessor ? "professor" : "gestão"}</p>
           </div>
 
           <div className="space-y-4">
@@ -74,9 +140,8 @@ export function ProfileEdit() {
               <input
                 type="email"
                 value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
+                disabled
+                className="w-full rounded-lg border border-gray-300 bg-gray-100 px-4 py-3 text-gray-500 focus:outline-none"
               />
             </div>
 
@@ -87,7 +152,6 @@ export function ProfileEdit() {
                 value={formData.phone}
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                 className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
               />
             </div>
 
@@ -106,19 +170,24 @@ export function ProfileEdit() {
               </select>
             </div>
 
-            {userRole === "professor" && (
+            {isProfessor && (
               <div>
                 <label className="mb-2 block text-gray-700">Disciplinas que Leciona</label>
                 <div className="grid grid-cols-2 gap-2">
-                  {AVAILABLE_SUBJECTS.map((subject) => (
+                  {subjectOptions.map((subject) => (
                     <label
-                      key={subject}
+                      key={subject.id}
                       className={`flex cursor-pointer items-center rounded-lg border p-3 transition-colors ${
-                        formData.subjects.includes(subject) ? "border-blue-500 bg-blue-50" : "border-gray-300 bg-white"
+                        formData.subjectIds.includes(subject.id) ? "border-blue-500 bg-blue-50" : "border-gray-300 bg-white"
                       }`}
                     >
-                      <input type="checkbox" checked={formData.subjects.includes(subject)} onChange={() => handleSubjectToggle(subject)} className="mr-2" />
-                      <span className="text-sm text-gray-900">{subject}</span>
+                      <input
+                        type="checkbox"
+                        checked={formData.subjectIds.includes(subject.id)}
+                        onChange={() => handleSubjectToggle(subject.id)}
+                        className="mr-2"
+                      />
+                      <span className="text-sm text-gray-900">{subject.nome}</span>
                     </label>
                   ))}
                 </div>
@@ -136,17 +205,24 @@ export function ProfileEdit() {
               />
             </div>
           </div>
+
+          {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+          {saved && <p className="mt-3 text-sm text-emerald-600">Perfil atualizado.</p>}
         </div>
 
         <div className="rounded-lg border-l-4 border-blue-500 bg-blue-50 p-4">
           <h4 className="text-blue-800">Informação</h4>
-          <p className="mt-1 text-sm text-blue-700">Para alterar sua senha ou outras configurações de conta, entre em contato com a coordenação.</p>
+          <p className="mt-1 text-sm text-blue-700">Para alterar sua senha, e-mail ou outras configurações de conta, entre em contato com a coordenação.</p>
         </div>
 
         <div className="fixed bottom-16 left-0 right-0 z-40 border-t bg-white p-4">
-          <button type="submit" className="flex w-full items-center justify-center rounded-lg bg-blue-600 py-3 text-white transition-colors hover:bg-blue-700">
+          <button
+            type="submit"
+            disabled={saving}
+            className="flex w-full items-center justify-center rounded-lg bg-blue-600 py-3 text-white transition-colors hover:bg-blue-700 disabled:opacity-60"
+          >
             <Save size={20} className="mr-2" />
-            Salvar Alterações
+            {saving ? "Salvando..." : "Salvar Alterações"}
           </button>
         </div>
       </form>

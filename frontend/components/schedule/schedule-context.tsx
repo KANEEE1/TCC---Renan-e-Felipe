@@ -1,71 +1,144 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { api } from "@/lib/api";
 
 export interface ScheduleItem {
-  id: number;
+  id: string;
   day: number;
   startTime: string;
   endTime: string;
   duration: number;
   subject: string;
+  subjectId: string;
   class: string;
+  classId: string;
   teacher: string;
+  teacherId: string;
   room: string;
   color: string;
   type: "aula" | "plantao" | "aulao";
 }
 
-const DEFAULT_SCHEDULE: ScheduleItem[] = [
-  { id: 1, day: 0, startTime: "08:00", endTime: "10:00", duration: 2, subject: "Matemática", class: "Extensivo", teacher: "Ana Silva", room: "Sala 101", color: "bg-blue-500", type: "aula" },
-  { id: 2, day: 0, startTime: "10:00", endTime: "12:00", duration: 2, subject: "Física", class: "Intensivo", teacher: "Ana Silva", room: "Sala 102", color: "bg-green-500", type: "aula" },
-  { id: 3, day: 0, startTime: "14:00", endTime: "16:00", duration: 2, subject: "Plantão Exatas", class: "Todas", teacher: "Ana Silva", room: "Sala 103", color: "bg-purple-500", type: "plantao" },
-  { id: 4, day: 1, startTime: "08:00", endTime: "10:00", duration: 2, subject: "História", class: "Extensivo", teacher: "Carlos Santos", room: "Sala 201", color: "bg-indigo-500", type: "aula" },
-  { id: 5, day: 2, startTime: "10:00", endTime: "12:00", duration: 2, subject: "Redação", class: "Reta Final", teacher: "Maria Oliveira", room: "Sala 301", color: "bg-orange-500", type: "aula" },
-  { id: 6, day: 3, startTime: "14:00", endTime: "16:00", duration: 2, subject: "Química", class: "Intensivo", teacher: "João Costa", room: "Sala 401", color: "bg-red-500", type: "aula" },
-  { id: 7, day: 4, startTime: "09:00", endTime: "11:00", duration: 2, subject: "Biologia", class: "Medicina", teacher: "Pedro Lima", room: "Sala 501", color: "bg-teal-500", type: "aula" }
-];
+interface AulaDTO {
+  id: string;
+  diaSemana: string;
+  horarioInicio: string;
+  horarioFim: string;
+  sala: string | null;
+  tipo: "AULA" | "PLANTAO" | "AULAO";
+  turma: { id: string; nome: string };
+  disciplina: { id: string; nome: string };
+  professor: { id: string; name: string };
+}
+
+const DAY_TO_INDEX: Record<string, number> = { SEGUNDA: 0, TERCA: 1, QUARTA: 2, QUINTA: 3, SEXTA: 4 };
+const INDEX_TO_DAY = ["SEGUNDA", "TERCA", "QUARTA", "QUINTA", "SEXTA"];
+const COLORS = ["bg-blue-500", "bg-emerald-500", "bg-violet-500", "bg-orange-500", "bg-rose-500", "bg-teal-500", "bg-indigo-500", "bg-amber-500"];
+
+function colorFor(id: string) {
+  const sum = Array.from(id).reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+  return COLORS[sum % COLORS.length];
+}
+
+function toHHMM(iso: string) {
+  return new Date(iso).toISOString().slice(11, 16);
+}
+
+function durationOf(start: string, end: string) {
+  const [sh, sm] = start.split(":").map(Number);
+  const [eh, em] = end.split(":").map(Number);
+  return (eh * 60 + em - (sh * 60 + sm)) / 60;
+}
+
+function fromAula(aula: AulaDTO): ScheduleItem {
+  const startTime = toHHMM(aula.horarioInicio);
+  const endTime = toHHMM(aula.horarioFim);
+  return {
+    id: aula.id,
+    day: DAY_TO_INDEX[aula.diaSemana] ?? 0,
+    startTime,
+    endTime,
+    duration: durationOf(startTime, endTime),
+    subject: aula.disciplina.nome,
+    subjectId: aula.disciplina.id,
+    class: aula.turma.nome,
+    classId: aula.turma.id,
+    teacher: aula.professor.name,
+    teacherId: aula.professor.id,
+    room: aula.sala ?? "",
+    color: colorFor(aula.id),
+    type: aula.tipo.toLowerCase() as ScheduleItem["type"]
+  };
+}
 
 interface ScheduleContextType {
   schedules: ScheduleItem[];
-  addSchedule: (item: Omit<ScheduleItem, "id">) => void;
-  updateSchedule: (id: number, patch: Partial<Omit<ScheduleItem, "id">>) => void;
-  removeSchedule: (id: number) => void;
+  loading: boolean;
+  refresh: () => Promise<void>;
+  addSchedule: (item: Omit<ScheduleItem, "id" | "duration" | "color">) => Promise<void>;
+  updateSchedule: (id: string, patch: Partial<Omit<ScheduleItem, "id">>) => Promise<void>;
+  removeSchedule: (id: string) => Promise<void>;
 }
 
 const ScheduleContext = createContext<ScheduleContextType | null>(null);
 
-const STORAGE_KEY = "app_schedules";
-
 export function ScheduleProvider({ children }: { children: ReactNode }) {
-  const [schedules, setSchedules] = useState<ScheduleItem[]>(DEFAULT_SCHEDULE);
+  const [schedules, setSchedules] = useState<ScheduleItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = async () => {
+    setLoading(true);
+    try {
+      const aulas = await api.get<AulaDTO[]>("/schedule/weekly");
+      setSchedules(aulas.map(fromAula));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) setSchedules(JSON.parse(stored) as ScheduleItem[]);
-    } catch {
-      // ignora storage indisponível/corrompido, mantém o valor padrão
-    }
+    refresh();
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(schedules));
-  }, [schedules]);
-
-  const addSchedule = (item: Omit<ScheduleItem, "id">) => {
-    setSchedules((prev) => [...prev, { ...item, id: Date.now() }]);
+  const addSchedule = async (item: Omit<ScheduleItem, "id" | "duration" | "color">) => {
+    await api.post("/schedule", {
+      turmaId: item.classId,
+      disciplinaId: item.subjectId,
+      professorId: item.teacherId,
+      diaSemana: INDEX_TO_DAY[item.day],
+      horarioInicio: item.startTime,
+      horarioFim: item.endTime,
+      sala: item.room || undefined,
+      tipo: item.type.toUpperCase()
+    });
+    await refresh();
   };
 
-  const updateSchedule = (id: number, patch: Partial<Omit<ScheduleItem, "id">>) => {
-    setSchedules((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+  const updateSchedule = async (id: string, patch: Partial<Omit<ScheduleItem, "id">>) => {
+    await api.put(`/schedule/${id}`, {
+      turmaId: patch.classId,
+      disciplinaId: patch.subjectId,
+      professorId: patch.teacherId,
+      diaSemana: patch.day !== undefined ? INDEX_TO_DAY[patch.day] : undefined,
+      horarioInicio: patch.startTime,
+      horarioFim: patch.endTime,
+      sala: patch.room,
+      tipo: patch.type ? patch.type.toUpperCase() : undefined
+    });
+    await refresh();
   };
 
-  const removeSchedule = (id: number) => {
+  const removeSchedule = async (id: string) => {
+    await api.delete(`/schedule/${id}`);
     setSchedules((prev) => prev.filter((s) => s.id !== id));
   };
 
-  return <ScheduleContext.Provider value={{ schedules, addSchedule, updateSchedule, removeSchedule }}>{children}</ScheduleContext.Provider>;
+  return (
+    <ScheduleContext.Provider value={{ schedules, loading, refresh, addSchedule, updateSchedule, removeSchedule }}>
+      {children}
+    </ScheduleContext.Provider>
+  );
 }
 
 export function useSchedule() {

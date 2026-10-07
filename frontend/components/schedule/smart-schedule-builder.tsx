@@ -4,12 +4,11 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, ArrowLeft, BookOpen, Check, Plus, RotateCcw, Sparkles, Trash2, Users, Zap } from "lucide-react";
 import { useSchedule } from "@/components/schedule/schedule-context";
+import { api, ApiError } from "@/lib/api";
 
 const TIME_SLOTS = ["07:00", "08:00", "09:00", "10:00", "11:00", "13:00", "14:00", "15:00", "16:00", "17:00"];
 const WEEK_DAYS = ["Seg", "Ter", "Qua", "Qui", "Sex"];
 const WEEK_DAYS_FULL = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta"];
-const SUBJECTS = ["Matemática", "Física", "Química", "Biologia", "História", "Geografia", "Português", "Redação", "Inglês", "Filosofia", "Sociologia", "Literatura"];
-const CLASSES_LIST = ["Extensivo", "Intensivo", "Reta Final", "Medicina", "Engenharia", "Semi-extensivo"];
 
 const SLOT_COLORS = [
   "bg-blue-500", "bg-emerald-500", "bg-violet-500", "bg-orange-500",
@@ -28,12 +27,19 @@ const AVATAR_GRADIENTS = [
   "from-lime-400 to-green-500"
 ];
 
-const FALLBACK_TEACHERS = ["Ana Silva", "Carlos Santos", "Maria Oliveira", "João Costa", "Pedro Lima"];
+interface Option {
+  id: string;
+  nome?: string;
+  name?: string;
+}
 
 interface TeacherEntry {
   id: string;
+  teacherId: string;
   teacherName: string;
+  subjectId: string;
   subject: string;
+  classId: string;
   turma: string;
   slots: Set<string>;
   colorIndex: number;
@@ -44,8 +50,11 @@ interface GeneratedItem {
   startTime: string;
   endTime: string;
   subject: string;
+  subjectId: string;
   class: string;
+  classId: string;
   teacher: string;
+  teacherId: string;
   room: string;
   color: string;
   type: "aula" | "plantao" | "aulao";
@@ -85,21 +94,29 @@ export function SmartScheduleBuilder() {
   const [saved, setSaved] = useState(false);
 
   const [form, setForm] = useState({
+    teacherId: "",
     teacherName: "",
+    subjectId: "",
     subject: "",
+    classId: "",
     turma: "",
     slots: new Set<string>()
   });
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [allTeachers, setAllTeachers] = useState<string[]>([]);
+  const [teacherOptions, setTeacherOptions] = useState<Option[]>([]);
+  const [subjectOptions, setSubjectOptions] = useState<Option[]>([]);
+  const [classOptions, setClassOptions] = useState<Option[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    const fromSched = schedules.map((s) => s.teacher);
-    setAllTeachers([...new Set([...fromSched, ...FALLBACK_TEACHERS])]);
-  }, [schedules]);
+    api.get<Option[]>("/teachers").then(setTeacherOptions).catch(() => setTeacherOptions([]));
+    api.get<Option[]>("/disciplinas").then(setSubjectOptions).catch(() => setSubjectOptions([]));
+    api.get<Option[]>("/classes").then(setClassOptions).catch(() => setClassOptions([]));
+  }, []);
 
-  const filteredSuggestions = allTeachers.filter(
-    (t) => form.teacherName.length > 0 && t.toLowerCase().includes(form.teacherName.toLowerCase())
+  const filteredSuggestions = teacherOptions.filter(
+    (t) => form.teacherName.length > 0 && (t.name ?? "").toLowerCase().includes(form.teacherName.toLowerCase())
   );
 
   const toggleFormSlot = (day: number, time: string) => {
@@ -115,20 +132,23 @@ export function SmartScheduleBuilder() {
   const clearFormSlots = () => setForm((f) => ({ ...f, slots: new Set() }));
 
   const addEntry = () => {
-    if (!form.teacherName.trim() || form.slots.size === 0) return;
+    if (!form.teacherId || !form.subjectId || !form.classId || form.slots.size === 0) return;
     const colorIndex = entries.length % SLOT_COLORS.length;
     setEntries((prev) => [
       ...prev,
       {
         id: `e-${Date.now()}`,
+        teacherId: form.teacherId,
         teacherName: form.teacherName.trim(),
+        subjectId: form.subjectId,
         subject: form.subject,
+        classId: form.classId,
         turma: form.turma,
         slots: new Set(form.slots),
         colorIndex
       }
     ]);
-    setForm({ teacherName: "", subject: "", turma: "", slots: new Set() });
+    setForm({ teacherId: "", teacherName: "", subjectId: "", subject: "", classId: "", turma: "", slots: new Set() });
     setStep("list");
   };
 
@@ -140,7 +160,7 @@ export function SmartScheduleBuilder() {
     let roomCounter = 101;
 
     const occupiedByTeacher = schedules.map((s) => ({
-      teacher: s.teacher,
+      teacherId: s.teacherId,
       day: s.day,
       start: s.startTime,
       end: s.endTime,
@@ -159,7 +179,7 @@ export function SmartScheduleBuilder() {
         const end = addHours(time, SLOT_HOURS);
 
         const existingConflict = occupiedByTeacher.find(
-          (o) => o.teacher === entry.teacherName && o.day === day && overlaps(o.start, o.end, time, end)
+          (o) => o.teacherId === entry.teacherId && o.day === day && overlaps(o.start, o.end, time, end)
         );
         if (existingConflict) {
           conflictList.push({
@@ -171,7 +191,7 @@ export function SmartScheduleBuilder() {
         }
 
         const generatedConflict = result.find(
-          (g) => g.teacher === entry.teacherName && g.day === day && overlaps(g.startTime, g.endTime, time, end)
+          (g) => g.teacherId === entry.teacherId && g.day === day && overlaps(g.startTime, g.endTime, time, end)
         );
         if (generatedConflict) {
           conflictList.push({
@@ -186,9 +206,12 @@ export function SmartScheduleBuilder() {
           day,
           startTime: time,
           endTime: end,
-          subject: entry.subject || "A definir",
-          class: entry.turma || "Extensivo",
+          subject: entry.subject,
+          subjectId: entry.subjectId,
+          class: entry.turma,
+          classId: entry.classId,
           teacher: entry.teacherName,
+          teacherId: entry.teacherId,
           room: `Sala ${roomCounter++}`,
           color: SLOT_COLORS[entry.colorIndex],
           type: "aula",
@@ -202,10 +225,20 @@ export function SmartScheduleBuilder() {
     setStep("result");
   };
 
-  const handleConfirm = () => {
-    generated.forEach((item) => addSchedule(item));
-    setSaved(true);
-    setTimeout(() => router.push("/schedule/weekly"), 1500);
+  const handleConfirm = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      for (const item of generated) {
+        await addSchedule(item);
+      }
+      setSaved(true);
+      setTimeout(() => router.push("/schedule/weekly"), 1500);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Não foi possível salvar a grade.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -337,7 +370,7 @@ export function SmartScheduleBuilder() {
                 <input
                   value={form.teacherName}
                   onChange={(e) => {
-                    setForm((f) => ({ ...f, teacherName: e.target.value }));
+                    setForm((f) => ({ ...f, teacherName: e.target.value, teacherId: "" }));
                     setShowSuggestions(true);
                   }}
                   onFocus={() => setShowSuggestions(true)}
@@ -349,15 +382,15 @@ export function SmartScheduleBuilder() {
                   <div className="absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
                     {filteredSuggestions.map((t) => (
                       <button
-                        key={t}
+                        key={t.id}
                         type="button"
                         onMouseDown={() => {
-                          setForm((f) => ({ ...f, teacherName: t }));
+                          setForm((f) => ({ ...f, teacherId: t.id, teacherName: t.name ?? "" }));
                           setShowSuggestions(false);
                         }}
                         className="w-full px-4 py-2.5 text-left text-sm text-slate-700 transition-colors hover:bg-violet-50"
                       >
-                        {t}
+                        {t.name}
                       </button>
                     ))}
                   </div>
@@ -368,31 +401,41 @@ export function SmartScheduleBuilder() {
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <label className="mb-2 flex items-center gap-1 text-xs text-slate-500">
-                  <BookOpen size={11} /> Matéria <span className="ml-0.5 text-slate-300">(opt.)</span>
+                  <BookOpen size={11} /> Matéria
                 </label>
                 <select
-                  value={form.subject}
-                  onChange={(e) => setForm((f) => ({ ...f, subject: e.target.value }))}
+                  value={form.subjectId}
+                  onChange={(e) => {
+                    const opt = subjectOptions.find((s) => s.id === e.target.value);
+                    setForm((f) => ({ ...f, subjectId: e.target.value, subject: opt?.nome ?? "" }));
+                  }}
                   className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-400"
                 >
                   <option value="">Selecionar...</option>
-                  {SUBJECTS.map((s) => (
-                    <option key={s}>{s}</option>
+                  {subjectOptions.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.nome}
+                    </option>
                   ))}
                 </select>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <label className="mb-2 flex items-center gap-1 text-xs text-slate-500">
-                  <Users size={11} /> Turma <span className="ml-0.5 text-slate-300">(opt.)</span>
+                  <Users size={11} /> Turma
                 </label>
                 <select
-                  value={form.turma}
-                  onChange={(e) => setForm((f) => ({ ...f, turma: e.target.value }))}
+                  value={form.classId}
+                  onChange={(e) => {
+                    const opt = classOptions.find((c) => c.id === e.target.value);
+                    setForm((f) => ({ ...f, classId: e.target.value, turma: opt?.nome ?? "" }));
+                  }}
                   className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-400"
                 >
                   <option value="">Selecionar...</option>
-                  {CLASSES_LIST.map((c) => (
-                    <option key={c}>{c}</option>
+                  {classOptions.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nome}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -432,7 +475,7 @@ export function SmartScheduleBuilder() {
                           const selected = form.slots.has(key);
                           const end = addHours(time, SLOT_HOURS);
                           const hasConflict = schedules.some(
-                            (s) => s.teacher === form.teacherName && s.day === dayIdx && overlaps(s.startTime, s.endTime, time, end)
+                            (s) => s.teacherId === form.teacherId && s.day === dayIdx && overlaps(s.startTime, s.endTime, time, end)
                           );
                           return (
                             <td key={dayIdx} className="px-0.5 py-0.5">
@@ -480,9 +523,11 @@ export function SmartScheduleBuilder() {
             <button
               type="button"
               onClick={addEntry}
-              disabled={!form.teacherName.trim() || form.slots.size === 0}
+              disabled={!form.teacherId || !form.subjectId || !form.classId || form.slots.size === 0}
               className={`flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 transition-all ${
-                form.teacherName.trim() && form.slots.size > 0 ? "bg-violet-600 text-white shadow-md shadow-violet-200 hover:bg-violet-700" : "cursor-not-allowed bg-slate-100 text-slate-400"
+                form.teacherId && form.subjectId && form.classId && form.slots.size > 0
+                  ? "bg-violet-600 text-white shadow-md shadow-violet-200 hover:bg-violet-700"
+                  : "cursor-not-allowed bg-slate-100 text-slate-400"
               }`}
             >
               <Plus size={18} />
@@ -618,6 +663,13 @@ export function SmartScheduleBuilder() {
                 <p className="text-sm text-emerald-700">Grade salva com sucesso! Redirecionando...</p>
               </div>
             )}
+
+            {error && (
+              <div className="flex items-center gap-3 rounded-2xl border border-red-100 bg-red-50 p-4">
+                <AlertTriangle size={20} className="text-red-500" />
+                <p className="text-sm text-red-700">{error}</p>
+              </div>
+            )}
           </div>
 
           <div className="fixed bottom-16 left-0 right-0 z-40 space-y-2 border-t border-slate-200 bg-white/95 p-4 backdrop-blur-md">
@@ -625,10 +677,11 @@ export function SmartScheduleBuilder() {
               <button
                 type="button"
                 onClick={handleConfirm}
-                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-3.5 text-white shadow-md shadow-emerald-200 transition-colors hover:bg-emerald-700"
+                disabled={saving}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-3.5 text-white shadow-md shadow-emerald-200 transition-colors hover:bg-emerald-700 disabled:opacity-60"
               >
                 <Check size={18} />
-                Confirmar e salvar grade ({generated.length} aulas)
+                {saving ? "Salvando..." : `Confirmar e salvar grade (${generated.length} aulas)`}
               </button>
             )}
             <button

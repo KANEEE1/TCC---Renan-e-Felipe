@@ -1,39 +1,91 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Save } from "lucide-react";
+import { api, ApiError } from "@/lib/api";
 
-const CLASSES = ["Extensivo - Manhã", "Extensivo - Noite", "Intensivo - Integral", "Semi-Intensivo - Tarde", "Reta Final ENEM", "Medicina - Específicas"];
+interface ClassOption {
+  id: string;
+  nome: string;
+}
 
-const EDIT_DEFAULTS = {
-  name: "Ana Beatriz Santos",
-  number: "01",
-  class: "Extensivo - Manhã",
-  email: "ana.beatriz@email.com",
-  phone: "(11) 98765-1111",
-  birthDate: "2005-05-15",
-  cpf: "123.456.789-00",
-  address: "Rua das Flores, 123 - São Paulo, SP"
-};
-
-const EMPTY_DEFAULTS = {
-  name: "",
-  number: "",
-  class: "",
-  email: "",
-  phone: "",
-  birthDate: "",
-  cpf: "",
-  address: ""
-};
+interface StudentDetail {
+  nome: string;
+  numero: string | null;
+  email: string | null;
+  telefone: string | null;
+  dataNascimento: string | null;
+  cpf: string | null;
+  endereco: string | null;
+  matriculas: { turma: { id: string } }[];
+}
 
 type StudentFormProps = {
   isEdit?: boolean;
+  studentId?: string;
 };
 
-export function StudentForm({ isEdit = false }: StudentFormProps) {
-  const [formData, setFormData] = useState(isEdit ? EDIT_DEFAULTS : EMPTY_DEFAULTS);
+const EMPTY = { name: "", number: "", classId: "", email: "", phone: "", birthDate: "", cpf: "", address: "" };
+
+export function StudentForm({ isEdit = false, studentId }: StudentFormProps) {
+  const router = useRouter();
+  const [classOptions, setClassOptions] = useState<ClassOption[]>([]);
+  const [formData, setFormData] = useState(EMPTY);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    api.get<ClassOption[]>("/classes").then(setClassOptions).catch(() => setClassOptions([]));
+  }, []);
+
+  useEffect(() => {
+    if (!isEdit || !studentId) return;
+    api.get<StudentDetail>(`/students/${studentId}`).then((student) => {
+      setFormData({
+        name: student.nome,
+        number: student.numero ?? "",
+        classId: student.matriculas[0]?.turma.id ?? "",
+        email: student.email ?? "",
+        phone: student.telefone ?? "",
+        birthDate: student.dataNascimento ? student.dataNascimento.slice(0, 10) : "",
+        cpf: student.cpf ?? "",
+        address: student.endereco ?? ""
+      });
+    });
+  }, [isEdit, studentId]);
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    const payload = {
+      nome: formData.name,
+      numero: formData.number || undefined,
+      email: formData.email || undefined,
+      telefone: formData.phone || undefined,
+      dataNascimento: formData.birthDate || undefined,
+      cpf: formData.cpf || undefined,
+      endereco: formData.address || undefined
+    };
+
+    try {
+      const id = isEdit && studentId ? studentId : undefined;
+      const student = id ? await api.put<{ id: string }>(`/students/${id}`, payload) : await api.post<{ id: string }>("/students", payload);
+
+      if (formData.classId) {
+        await api.post(`/classes/${formData.classId}/students`, { studentIds: [student.id] });
+      }
+
+      router.push("/students");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Não foi possível salvar. Tente novamente.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="flex flex-1 flex-col bg-gray-50">
@@ -44,7 +96,7 @@ export function StudentForm({ isEdit = false }: StudentFormProps) {
         <h1>{isEdit ? "Editar Aluno" : "Novo Aluno"}</h1>
       </div>
 
-      <form onSubmit={(event) => event.preventDefault()} className="flex-1 overflow-y-auto p-4 pb-32">
+      <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 pb-32">
         <div className="mb-4 rounded-lg bg-white p-4 shadow">
           <h3 className="mb-4 text-gray-800">Dados do Aluno</h3>
 
@@ -70,22 +122,20 @@ export function StudentForm({ isEdit = false }: StudentFormProps) {
                   onChange={(e) => setFormData({ ...formData, number: e.target.value })}
                   className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-black focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   placeholder="Nº"
-                  required
                 />
               </div>
 
               <div>
                 <label className="mb-2 block text-gray-700">Turma</label>
                 <select
-                  value={formData.class}
-                  onChange={(e) => setFormData({ ...formData, class: e.target.value })}
+                  value={formData.classId}
+                  onChange={(e) => setFormData({ ...formData, classId: e.target.value })}
                   className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-black focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  required
                 >
                   <option value="">Selecione</option>
-                  {CLASSES.map((cls) => (
-                    <option key={cls} value={cls}>
-                      {cls}
+                  {classOptions.map((cls) => (
+                    <option key={cls.id} value={cls.id}>
+                      {cls.nome}
                     </option>
                   ))}
                 </select>
@@ -99,7 +149,6 @@ export function StudentForm({ isEdit = false }: StudentFormProps) {
                 value={formData.birthDate}
                 onChange={(e) => setFormData({ ...formData, birthDate: e.target.value })}
                 className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-black focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                required
               />
             </div>
 
@@ -133,7 +182,6 @@ export function StudentForm({ isEdit = false }: StudentFormProps) {
                 onChange={(e) => setFormData({ ...formData, cpf: e.target.value })}
                 className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-black focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 placeholder="123.456.789-00"
-                required
               />
             </div>
 
@@ -148,12 +196,18 @@ export function StudentForm({ isEdit = false }: StudentFormProps) {
               />
             </div>
           </div>
+
+          {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
         </div>
 
         <div className="fixed bottom-16 left-0 right-0 z-40 border-t bg-white p-4">
-          <button type="submit" className="flex w-full items-center justify-center rounded-lg bg-indigo-600 py-3 text-white transition-colors hover:bg-indigo-700">
+          <button
+            type="submit"
+            disabled={loading}
+            className="flex w-full items-center justify-center rounded-lg bg-indigo-600 py-3 text-white transition-colors hover:bg-indigo-700 disabled:opacity-60"
+          >
             <Save size={20} className="mr-2" />
-            {isEdit ? "Salvar Alterações" : "Cadastrar Aluno"}
+            {loading ? "Salvando..." : isEdit ? "Salvar Alterações" : "Cadastrar Aluno"}
           </button>
         </div>
       </form>

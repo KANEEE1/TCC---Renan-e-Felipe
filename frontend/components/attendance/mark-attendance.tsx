@@ -1,28 +1,56 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Check, Save, User, X } from "lucide-react";
+import { api, ApiError } from "@/lib/api";
 
-const INITIAL_STUDENTS = [
-  { id: 1, name: "Ana Beatriz Santos", number: "01", present: true },
-  { id: 2, name: "Bruno Oliveira Costa", number: "02", present: true },
-  { id: 3, name: "Carla Maria Silva", number: "03", present: false },
-  { id: 4, name: "Daniel Ferreira Lima", number: "04", present: true },
-  { id: 5, name: "Elena Rodrigues Souza", number: "05", present: true },
-  { id: 6, name: "Felipe Alves Pereira", number: "06", present: true },
-  { id: 7, name: "Gabriela Costa Santos", number: "07", present: false },
-  { id: 8, name: "Henrique Dias Oliveira", number: "08", present: true },
-  { id: 9, name: "Isabela Martins Silva", number: "09", present: true },
-  { id: 10, name: "João Pedro Rocha", number: "10", present: true },
-  { id: 11, name: "Larissa Cardoso Alves", number: "11", present: true },
-  { id: 12, name: "Marcos Vinicius Lima", number: "12", present: true }
-];
+interface AulaDTO {
+  id: string;
+  horarioInicio: string;
+  horarioFim: string;
+  disciplina: { nome: string };
+  turma: { id: string; nome: string };
+  professor: { name: string };
+}
 
-export function MarkAttendance() {
-  const [students, setStudents] = useState(INITIAL_STUDENTS);
+interface ClassDetail {
+  matriculas: { aluno: { id: string; nome: string; numero: string | null } }[];
+}
 
-  const toggleAttendance = (studentId: number) => {
+interface StudentRow {
+  id: string;
+  name: string;
+  number: string;
+  present: boolean;
+}
+
+function toHHMM(iso: string) {
+  return new Date(iso).toISOString().slice(11, 16);
+}
+
+export function MarkAttendance({ aulaId }: { aulaId: string }) {
+  const [lesson, setLesson] = useState<AulaDTO | null>(null);
+  const [students, setStudents] = useState<StudentRow[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    api.get<AulaDTO[]>("/schedule/weekly").then((aulas) => {
+      const found = aulas.find((a) => a.id === aulaId) ?? null;
+      setLesson(found);
+      if (found) {
+        api.get<ClassDetail>(`/classes/${found.turma.id}`).then((cls) => {
+          setStudents(
+            cls.matriculas.map((m) => ({ id: m.aluno.id, name: m.aluno.nome, number: m.aluno.numero ?? "-", present: true }))
+          );
+        });
+      }
+    });
+  }, [aulaId]);
+
+  const toggleAttendance = (studentId: string) => {
     setStudents((prev) => prev.map((student) => (student.id === studentId ? { ...student, present: !student.present } : student)));
   };
 
@@ -31,6 +59,23 @@ export function MarkAttendance() {
 
   const presentCount = students.filter((s) => s.present).length;
   const absentCount = students.length - presentCount;
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      await api.post("/attendance/mark", {
+        aulaId,
+        data: new Date().toISOString().slice(0, 10),
+        entries: students.map((s) => ({ alunoId: s.id, presente: s.present }))
+      });
+      setSaved(true);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Não foi possível salvar a presença.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="flex flex-1 flex-col bg-gray-50">
@@ -43,8 +88,12 @@ export function MarkAttendance() {
         </div>
 
         <div className="rounded-lg bg-green-500 p-3">
-          <div className="text-sm text-green-100">Física - Intensivo</div>
-          <div className="text-sm text-green-100">10:30 - 12:30 | Ana Silva</div>
+          <div className="text-sm text-green-100">{lesson ? `${lesson.disciplina.nome} - ${lesson.turma.nome}` : "Carregando..."}</div>
+          {lesson && (
+            <div className="text-sm text-green-100">
+              {toHHMM(lesson.horarioInicio)} - {toHHMM(lesson.horarioFim)} | {lesson.professor.name}
+            </div>
+          )}
         </div>
       </div>
 
@@ -109,15 +158,23 @@ export function MarkAttendance() {
             </div>
           ))}
         </div>
+
+        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+        {saved && <p className="mt-3 text-sm text-emerald-600">Presença salva com sucesso.</p>}
       </div>
 
       <div className="fixed bottom-16 left-0 right-0 z-40 border-t bg-white p-4">
         <div className="mb-2 text-center text-sm text-gray-600">
-          {presentCount} de {students.length} presentes ({Math.round((presentCount / students.length) * 100)}%)
+          {presentCount} de {students.length} presentes ({students.length > 0 ? Math.round((presentCount / students.length) * 100) : 0}%)
         </div>
-        <button type="button" className="flex w-full items-center justify-center rounded-lg bg-green-600 py-3 text-white transition-colors hover:bg-green-700">
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving || students.length === 0}
+          className="flex w-full items-center justify-center rounded-lg bg-green-600 py-3 text-white transition-colors hover:bg-green-700 disabled:opacity-60"
+        >
           <Save size={20} className="mr-2" />
-          Salvar Presença
+          {saving ? "Salvando..." : "Salvar Presença"}
         </button>
       </div>
     </div>

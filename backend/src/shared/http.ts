@@ -5,7 +5,8 @@ import { ZodError } from "zod";
 const PRISMA_ERROR_STATUS: Record<string, { status: number; message: string }> = {
   P2002: { status: 409, message: "Resource already exists" },
   P2003: { status: 400, message: "Referenced resource does not exist" },
-  P2025: { status: 404, message: "Resource not found" }
+  P2025: { status: 404, message: "Resource not found" },
+  P2034: { status: 409, message: "Concurrent update conflict, please retry" }
 };
 
 type AsyncRouteHandler = (req: Request, res: Response, next: NextFunction) => Promise<void>;

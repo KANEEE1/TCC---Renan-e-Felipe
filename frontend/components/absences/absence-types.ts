@@ -23,8 +23,11 @@ export interface AbsenceDTO {
     professor: { id: string; name: string };
   };
   registradoPor: { id: string; name: string };
+  substituicao: { id: string; status: "PENDENTE" | "ACEITA" | "RECUSADA"; substituto: { id: string; name: string } } | null;
   permissoes: { cancelar: boolean };
 }
+
+export const SUBSTITUICAO_STATUS_LABELS = { PENDENTE: "Pendente", ACEITA: "Aceita", RECUSADA: "Recusada" } as const;
 
 export function toHHMM(iso: string) {
   return new Date(iso).toISOString().slice(11, 16);

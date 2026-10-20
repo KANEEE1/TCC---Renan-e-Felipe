@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import { parseDateOnly } from "../../shared/time.js";
 
 const ausenciaInclude = {
@@ -9,8 +9,13 @@ const ausenciaInclude = {
       professor: { select: { id: true, name: true } }
     }
   },
-  registradoPor: { select: { id: true, name: true } }
-} as const;
+  registradoPor: { select: { id: true, name: true } },
+  substituicoes: {
+    where: { status: { in: ["PENDENTE", "ACEITA"] } },
+    select: { id: true, status: true, substituto: { select: { id: true, name: true } } },
+    take: 1
+  }
+} satisfies Prisma.AusenciaAulaInclude;
 
 export class AusenciasRepository {
   constructor(private readonly prisma: PrismaClient) {}
@@ -48,6 +53,9 @@ export class AusenciasRepository {
   }
 
   remove(id: string) {
-    return this.prisma.ausenciaAula.delete({ where: { id } });
+    return this.prisma.$transaction([
+      this.prisma.substituicao.deleteMany({ where: { ausenciaId: id } }),
+      this.prisma.ausenciaAula.delete({ where: { id } })
+    ]);
   }
 }

@@ -5,10 +5,15 @@ import Link from "next/link";
 import { ArrowLeft, Calendar, Clock, Plus, User } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { getSessionUser } from "@/lib/auth";
-import { toHHMM, type AbsenceDTO } from "./absence-types";
+import { SUBSTITUICAO_STATUS_LABELS, toHHMM, type AbsenceDTO } from "./absence-types";
 
 function formatDate(data: string) {
   return new Date(`${data.slice(0, 10)}T00:00:00`).toLocaleDateString("pt-BR");
+}
+
+interface TeacherOption {
+  id: string;
+  name: string;
 }
 
 export function AbsenceList() {
@@ -17,15 +22,54 @@ export function AbsenceList() {
   const [error, setError] = useState<string | null>(null);
   const [cancelingId, setCancelingId] = useState<string | null>(null);
   const [isManagement, setIsManagement] = useState(false);
+  const [teachers, setTeachers] = useState<TeacherOption[]>([]);
+  const [selectedSubstitutes, setSelectedSubstitutes] = useState<Record<string, string>>({});
+  const [busySubstitutionId, setBusySubstitutionId] = useState<string | null>(null);
 
   useEffect(() => {
-    setIsManagement(!!getSessionUser()?.roles.includes("GESTAO"));
+    const management = !!getSessionUser()?.roles.includes("GESTAO");
+    setIsManagement(management);
+    if (management) {
+      api.get<TeacherOption[]>("/teachers").then(setTeachers).catch(() => setTeachers([]));
+    }
     api
       .get<AbsenceDTO[]>("/absences")
       .then(setAbsences)
       .catch(() => setError("Não foi possível carregar as faltas."))
       .finally(() => setLoading(false));
   }, []);
+
+  const updateSubstitution = (id: string, substituicao: AbsenceDTO["substituicao"]) =>
+    setAbsences((prev) => prev.map((absence) => (absence.id === id ? { ...absence, substituicao } : absence)));
+
+  const handleAssign = async (absenceId: string) => {
+    const substitutoId = selectedSubstitutes[absenceId];
+    if (busySubstitutionId || !substitutoId) return;
+    setError(null);
+    setBusySubstitutionId(absenceId);
+    try {
+      const created = await api.post<NonNullable<AbsenceDTO["substituicao"]>>("/substitutions", { ausenciaId: absenceId, substitutoId });
+      updateSubstitution(absenceId, { id: created.id, status: created.status, substituto: created.substituto });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Não foi possível designar o substituto.");
+    } finally {
+      setBusySubstitutionId(null);
+    }
+  };
+
+  const handleUnassign = async (absenceId: string, substitutionId: string) => {
+    if (busySubstitutionId || !confirm("Cancelar a designação do substituto?")) return;
+    setError(null);
+    setBusySubstitutionId(absenceId);
+    try {
+      await api.delete(`/substitutions/${substitutionId}`);
+      updateSubstitution(absenceId, null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Não foi possível cancelar a designação.");
+    } finally {
+      setBusySubstitutionId(null);
+    }
+  };
 
   const handleCancel = async (id: string) => {
     if (cancelingId || !confirm("Cancelar esta falta?")) return;
@@ -67,9 +111,9 @@ export function AbsenceList() {
       <div className="flex-1 space-y-2.5 overflow-y-auto px-4 pb-6 pt-4">
         {loading && <p className="text-center text-sm text-slate-400">Carregando...</p>}
 
-        {!loading && error && <p className="text-center text-sm text-red-600">{error}</p>}
+        {error && <p className="text-center text-sm text-red-600">{error}</p>}
 
-        {!loading && !error && absences.length === 0 && (
+        {!loading && absences.length === 0 && (
           <p className="rounded-2xl border border-dashed border-slate-200 bg-white p-4 text-center text-sm text-slate-400">
             Nenhuma falta registrada.
           </p>
@@ -106,6 +150,49 @@ export function AbsenceList() {
               )}
             </div>
             {absence.motivo && <p className="mt-2 text-sm text-slate-600">{absence.motivo}</p>}
+            {absence.substituicao && (
+              <div className="mt-2 flex items-center justify-between gap-3 text-sm text-slate-600">
+                <span>
+                  Substituto: {absence.substituicao.substituto.name} ({SUBSTITUICAO_STATUS_LABELS[absence.substituicao.status]})
+                </span>
+                {isManagement && absence.substituicao.status === "PENDENTE" && (
+                  <button
+                    type="button"
+                    onClick={() => handleUnassign(absence.id, absence.substituicao!.id)}
+                    disabled={busySubstitutionId === absence.id}
+                    className="shrink-0 rounded-lg bg-slate-100 px-3 py-1 text-xs text-slate-700 transition-colors hover:bg-slate-200 disabled:opacity-60"
+                  >
+                    Cancelar designação
+                  </button>
+                )}
+              </div>
+            )}
+            {isManagement && !absence.substituicao && (
+              <div className="mt-2 flex items-center gap-2">
+                <select
+                  value={selectedSubstitutes[absence.id] ?? ""}
+                  onChange={(e) => setSelectedSubstitutes((prev) => ({ ...prev, [absence.id]: e.target.value }))}
+                  className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm text-slate-700"
+                >
+                  <option value="">Selecione um professor</option>
+                  {teachers
+                    .filter((teacher) => teacher.id !== absence.aula.professor.id)
+                    .map((teacher) => (
+                      <option key={teacher.id} value={teacher.id}>
+                        {teacher.name}
+                      </option>
+                    ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => handleAssign(absence.id)}
+                  disabled={!selectedSubstitutes[absence.id] || busySubstitutionId === absence.id}
+                  className="shrink-0 rounded-lg bg-rose-600 px-3 py-1 text-xs text-white transition-colors hover:bg-rose-700 disabled:opacity-60"
+                >
+                  Designar substituto
+                </button>
+              </div>
+            )}
           </div>
         ))}
       </div>

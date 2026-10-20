@@ -12,6 +12,7 @@ import { meetingsController } from "./meetings/meetings.module.js";
 import { notasController } from "./notas/notas.module.js";
 import { presencaController } from "./presenca/presenca.module.js";
 import { simuladosController } from "./simulados/simulados.module.js";
+import { substituicoesController } from "./substituicoes/substituicoes.module.js";
 import { teachersController } from "./teachers/teachers.module.js";
 import { turmasController } from "./turmas/turmas.module.js";
 import { usersController } from "./users/users.module.js";
@@ -29,6 +30,7 @@ export function registerRoutes(app: Express) {
   app.use("/matriculas", matriculasController.router);
   app.use("/meetings", requireAuth, meetingsController.router);
   app.use("/absences", requireAuth, ausenciasController.router);
+  app.use("/substitutions", requireAuth, substituicoesController.router);
   app.use("/disponibilidade", disponibilidadeController.router);
   app.use("/grade-horaria", gradeHorariaController.router);
   app.use("/schedule", gradeHorariaController.router);

@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { parseTimeToDate } from "../../shared/time.js";
-import type { CreateDisponibilidadeInput } from "./disponibilidade.schemas.js";
+import type { CreateDisponibilidadeInput, UpdateDisponibilidadeInput } from "./disponibilidade.schemas.js";
 
 export class DisponibilidadeRepository {
   constructor(private readonly prisma: PrismaClient) {}
@@ -28,6 +28,10 @@ export class DisponibilidadeRepository {
     });
   }
 
+  findById(id: string) {
+    return this.prisma.disponibilidade.findUnique({ where: { id } });
+  }
+
   create(data: CreateDisponibilidadeInput) {
     return this.prisma.disponibilidade.create({
       data: {
@@ -36,5 +40,20 @@ export class DisponibilidadeRepository {
         horarioFim: parseTimeToDate(data.horarioFim)
       }
     });
+  }
+
+  update(id: string, data: UpdateDisponibilidadeInput) {
+    return this.prisma.disponibilidade.update({
+      where: { id },
+      data: {
+        ...data,
+        horarioInicio: data.horarioInicio ? parseTimeToDate(data.horarioInicio) : undefined,
+        horarioFim: data.horarioFim ? parseTimeToDate(data.horarioFim) : undefined
+      }
+    });
+  }
+
+  delete(id: string) {
+    return this.prisma.disponibilidade.delete({ where: { id } });
   }
 }

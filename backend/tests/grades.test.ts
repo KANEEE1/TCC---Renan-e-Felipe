@@ -45,7 +45,7 @@ describe("grades", () => {
     await request(app).post("/grades").send({ alunoId: student.body.id, simuladoId: exam.body.id, valor: 6 });
     const dup = await request(app).post("/grades").send({ alunoId: student.body.id, simuladoId: exam.body.id, valor: 9 });
 
-    expect(dup.status).toBe(500);
+    expect(dup.status).toBe(409);
   });
 
   it("rejects a negative grade", async () => {

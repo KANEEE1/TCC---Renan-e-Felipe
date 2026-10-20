@@ -72,7 +72,7 @@ describe("schedule", () => {
       horarioFim: "10:00"
     });
 
-    expect(conflict.status).toBe(500);
+    expect(conflict.status).toBe(409);
   });
 
   it("updates and deletes a lesson", async () => {

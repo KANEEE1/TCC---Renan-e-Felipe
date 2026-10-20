@@ -31,6 +31,7 @@ const DIA_SEMANA: Record<string, string> = {
 const PERIODO_LETIVO = `${new Date().getFullYear()}-1`;
 
 interface AvailabilityEntry {
+  id: string;
   diaSemana: string;
   horarioInicio: string;
   horarioFim: string;
@@ -40,56 +41,78 @@ function toHHMM(iso: string) {
   return new Date(iso).toISOString().slice(11, 16);
 }
 
+function slotKey(day: string, time: string) {
+  return `${day}|${time}`;
+}
+
+function parseSlotKey(key: string) {
+  const [day, time] = key.split("|");
+  const [horarioInicio, horarioFim] = time.split(" - ");
+  return { day, horarioInicio, horarioFim };
+}
+
 export function TeacherAvailability({ teacherId }: { teacherId: string }) {
   const [teacherName, setTeacherName] = useState("");
   const [availability, setAvailability] = useState<Record<string, boolean>>({});
-  const [saved, setSaved] = useState<Set<string>>(new Set());
+  const [saved, setSaved] = useState<Map<string, string>>(new Map());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
 
   useEffect(() => {
     api.get<{ name: string }>(`/teachers/${teacherId}`).then((t) => setTeacherName(t.name));
     api.get<AvailabilityEntry[]>(`/teachers/${teacherId}/availability`).then((entries) => {
       const next: Record<string, boolean> = {};
-      const savedKeys = new Set<string>();
+      const savedSlots = new Map<string, string>();
       for (const entry of entries) {
         const day = Object.keys(DIA_SEMANA).find((d) => DIA_SEMANA[d] === entry.diaSemana);
         if (!day) continue;
-        const key = `${day}-${toHHMM(entry.horarioInicio)} - ${toHHMM(entry.horarioFim)}`;
+        const key = slotKey(day, `${toHHMM(entry.horarioInicio)} - ${toHHMM(entry.horarioFim)}`);
         next[key] = true;
-        savedKeys.add(key);
+        savedSlots.set(key, entry.id);
       }
       setAvailability(next);
-      setSaved(savedKeys);
+      setSaved(savedSlots);
     });
   }, [teacherId]);
 
   const toggleSlot = (day: string, time: string) => {
-    const key = `${day}-${time}`;
+    const key = slotKey(day, time);
+    setSuccess(false);
     setAvailability((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
   const handleSave = async () => {
     setSaving(true);
     setError(null);
+    setSuccess(false);
 
-    const newSlots = Object.entries(availability).filter(([key, isOn]) => isOn && !saved.has(key));
+    const toCreate = Object.entries(availability)
+      .filter(([key, isOn]) => isOn && !saved.has(key))
+      .map(([key]) => key);
+    const toRemove = [...saved.entries()].filter(([key]) => !availability[key]);
+    const nextSaved = new Map(saved);
 
     try {
-      for (const [key] of newSlots) {
-        const [day, time] = key.split("-");
-        const [horarioInicio, horarioFim] = time.split(" - ");
-        await api.post(`/teachers/${teacherId}/availability`, {
+      for (const [key, id] of toRemove) {
+        await api.delete(`/teachers/${teacherId}/availability/${id}`);
+        nextSaved.delete(key);
+      }
+      for (const key of toCreate) {
+        const { day, horarioInicio, horarioFim } = parseSlotKey(key);
+        const created = await api.post<AvailabilityEntry>(`/teachers/${teacherId}/availability`, {
           diaSemana: DIA_SEMANA[day],
           horarioInicio,
           horarioFim,
           periodoLetivo: PERIODO_LETIVO
         });
+        nextSaved.set(key, created.id);
       }
-      setSaved((prev) => new Set([...prev, ...newSlots.map(([key]) => key)]));
+      setSuccess(true);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Não foi possível salvar.");
     } finally {
+      setSaved(nextSaved);
       setSaving(false);
     }
   };
@@ -124,7 +147,7 @@ export function TeacherAvailability({ teacherId }: { teacherId: string }) {
               <div key={time} className="mb-2 grid grid-cols-6 gap-2">
                 <div className="flex w-24 items-center text-sm text-gray-600">{time}</div>
                 {WEEK_DAYS.map((day) => {
-                  const key = `${day}-${time}`;
+                  const key = slotKey(day, time);
                   const isAvailable = availability[key];
                   return (
                     <button
@@ -159,6 +182,7 @@ export function TeacherAvailability({ teacherId }: { teacherId: string }) {
         </div>
 
         {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+        {success && <p className="mt-3 text-sm text-green-700">Disponibilidade salva.</p>}
       </div>
 
       <div className="fixed bottom-16 left-0 right-0 z-40 border-t bg-white p-4">

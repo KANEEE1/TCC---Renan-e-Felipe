@@ -1,3 +1,4 @@
+import { boundedNumberQuery } from "../../shared/query.js";
 import { z } from "zod";
 
 export const createNotaSchema = z.object({
@@ -8,3 +9,13 @@ export const createNotaSchema = z.object({
 });
 
 export type CreateNotaInput = z.infer<typeof createNotaSchema>;
+
+export const classSummaryParamsSchema = z.object({
+  turmaId: z.string().min(1)
+});
+
+export const classSummaryQuerySchema = z.object({
+  limite: boundedNumberQuery(0, 10, 6)
+});
+
+export type ClassSummaryQuery = z.infer<typeof classSummaryQuerySchema>;

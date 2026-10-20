@@ -1,3 +1,4 @@
+import { boundedNumberQuery } from "../../shared/query.js";
 import { z } from "zod";
 
 export const createPresencaSchema = z.object({
@@ -22,7 +23,7 @@ export const markAttendanceSchema = z.object({
 
 export const attendanceSummaryQuerySchema = z.object({
   turmaId: z.string().min(1).optional(),
-  limite: z.coerce.number().min(0).max(100).default(75)
+  limite: boundedNumberQuery(0, 100, 75)
 });
 
 export type AttendanceSummaryQuery = z.infer<typeof attendanceSummaryQuerySchema>;

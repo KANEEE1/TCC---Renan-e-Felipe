@@ -13,7 +13,8 @@ type AsyncRouteHandler = (req: Request, res: Response, next: NextFunction) => Pr
 export class HttpError extends Error {
   constructor(
     public readonly statusCode: number,
-    message: string
+    message: string,
+    public readonly details?: Record<string, unknown>
   ) {
     super(message);
   }
@@ -27,7 +28,7 @@ export function asyncHandler(handler: AsyncRouteHandler) {
 
 export function errorHandler(error: unknown, _req: Request, res: Response, _next: NextFunction) {
   if (error instanceof HttpError) {
-    res.status(error.statusCode).json({ message: error.message });
+    res.status(error.statusCode).json({ ...error.details, message: error.message });
     return;
   }
 

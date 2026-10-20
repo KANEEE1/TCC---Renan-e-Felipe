@@ -11,9 +11,12 @@ function formatDate(data: string) {
   return new Date(`${data.slice(0, 10)}T00:00:00`).toLocaleDateString("pt-BR");
 }
 
-interface TeacherOption {
+interface CandidateOption {
   id: string;
   name: string;
+  lecionaDisciplina: boolean;
+  disponivel: boolean;
+  carga: { aulasSemanais: number; substituicoesMes: number };
 }
 
 export function AbsenceList() {
@@ -22,22 +25,33 @@ export function AbsenceList() {
   const [error, setError] = useState<string | null>(null);
   const [cancelingId, setCancelingId] = useState<string | null>(null);
   const [isManagement, setIsManagement] = useState(false);
-  const [teachers, setTeachers] = useState<TeacherOption[]>([]);
+  const [candidates, setCandidates] = useState<Record<string, CandidateOption[]>>({});
+  const [candidatesError, setCandidatesError] = useState<Record<string, boolean>>({});
   const [selectedSubstitutes, setSelectedSubstitutes] = useState<Record<string, string>>({});
   const [busySubstitutionId, setBusySubstitutionId] = useState<string | null>(null);
 
   useEffect(() => {
     const management = !!getSessionUser()?.roles.includes("GESTAO");
     setIsManagement(management);
-    if (management) {
-      api.get<TeacherOption[]>("/teachers").then(setTeachers).catch(() => setTeachers([]));
-    }
     api
       .get<AbsenceDTO[]>("/absences")
-      .then(setAbsences)
+      .then((data) => {
+        setAbsences(data);
+        if (management) data.filter((absence) => !absence.substituicao).forEach((absence) => loadCandidates(absence.id));
+      })
       .catch(() => setError("Não foi possível carregar as faltas."))
       .finally(() => setLoading(false));
   }, []);
+
+  const loadCandidates = (absenceId: string) =>
+    api
+      .get<CandidateOption[]>(`/substitutions/candidates?ausenciaId=${encodeURIComponent(absenceId)}`)
+      .then((list) => {
+        setCandidatesError((prev) => ({ ...prev, [absenceId]: false }));
+        setCandidates((prev) => ({ ...prev, [absenceId]: list }));
+        if (list.length > 0) setSelectedSubstitutes((prev) => ({ ...prev, [absenceId]: prev[absenceId] ?? list[0].id }));
+      })
+      .catch(() => setCandidatesError((prev) => ({ ...prev, [absenceId]: true })));
 
   const updateSubstitution = (id: string, substituicao: AbsenceDTO["substituicao"]) =>
     setAbsences((prev) => prev.map((absence) => (absence.id === id ? { ...absence, substituicao } : absence)));
@@ -64,6 +78,11 @@ export function AbsenceList() {
     try {
       await api.delete(`/substitutions/${substitutionId}`);
       updateSubstitution(absenceId, null);
+      setSelectedSubstitutes((prev) => {
+        const { [absenceId]: _removed, ...rest } = prev;
+        return rest;
+      });
+      loadCandidates(absenceId);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Não foi possível cancelar a designação.");
     } finally {
@@ -167,31 +186,38 @@ export function AbsenceList() {
                 )}
               </div>
             )}
-            {isManagement && !absence.substituicao && (
-              <div className="mt-2 flex items-center gap-2">
-                <select
-                  value={selectedSubstitutes[absence.id] ?? ""}
-                  onChange={(e) => setSelectedSubstitutes((prev) => ({ ...prev, [absence.id]: e.target.value }))}
-                  className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm text-slate-700"
-                >
-                  <option value="">Selecione um professor</option>
-                  {teachers
-                    .filter((teacher) => teacher.id !== absence.aula.professor.id)
-                    .map((teacher) => (
-                      <option key={teacher.id} value={teacher.id}>
-                        {teacher.name}
+            {isManagement && !absence.substituicao && candidatesError[absence.id] && (
+              <p className="mt-2 text-sm text-rose-500">Não foi possível carregar os candidatos.</p>
+            )}
+            {isManagement && !absence.substituicao && !candidatesError[absence.id] && candidates[absence.id] && (
+              candidates[absence.id].length === 0 ? (
+                <p className="mt-2 text-sm text-slate-400">Nenhum professor elegível</p>
+              ) : (
+                <div className="mt-2 flex items-center gap-2">
+                  <select
+                    value={selectedSubstitutes[absence.id] ?? ""}
+                    onChange={(e) => setSelectedSubstitutes((prev) => ({ ...prev, [absence.id]: e.target.value }))}
+                    className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm text-slate-700"
+                  >
+                    {candidates[absence.id].map((candidate) => (
+                      <option key={candidate.id} value={candidate.id}>
+                        {candidate.name}
+                        {candidate.lecionaDisciplina ? " · Leciona a disciplina" : ""}
+                        {candidate.disponivel ? " · Disponível" : ""}
+                        {` · ${candidate.carga.aulasSemanais} aulas/sem, ${candidate.carga.substituicoesMes} subst./mês`}
                       </option>
                     ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => handleAssign(absence.id)}
-                  disabled={!selectedSubstitutes[absence.id] || busySubstitutionId === absence.id}
-                  className="shrink-0 rounded-lg bg-rose-600 px-3 py-1 text-xs text-white transition-colors hover:bg-rose-700 disabled:opacity-60"
-                >
-                  Designar substituto
-                </button>
-              </div>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => handleAssign(absence.id)}
+                    disabled={!selectedSubstitutes[absence.id] || busySubstitutionId === absence.id}
+                    className="shrink-0 rounded-lg bg-rose-600 px-3 py-1 text-xs text-white transition-colors hover:bg-rose-700 disabled:opacity-60"
+                  >
+                    Designar substituto
+                  </button>
+                </div>
+              )
             )}
           </div>
         ))}

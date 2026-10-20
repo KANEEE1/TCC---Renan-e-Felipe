@@ -26,7 +26,7 @@ export class SubstituicoesRepository {
       select: {
         id: true,
         data: true,
-        aula: { select: { professorId: true, diaSemana: true, horarioInicio: true, horarioFim: true } }
+        aula: { select: { professorId: true, disciplinaId: true, diaSemana: true, horarioInicio: true, horarioFim: true } }
       }
     });
   }
@@ -55,6 +55,41 @@ export class SubstituicoesRepository {
       where: { substitutoId, status: { in: ATIVAS }, ausencia: { data } },
       select: { ausencia: { select: { aula: { select: { horarioInicio: true, horarioFim: true } } } } }
     });
+  }
+
+  findProfessoresAtivos() {
+    return this.db.user.findMany({
+      where: { ativo: true, roles: { has: "PROFESSOR" } },
+      select: { id: true, name: true, disciplinas: { select: { id: true } } }
+    });
+  }
+
+  findDisponibilidades(professorIds: string[], diaSemana: string, periodoLetivo: string) {
+    return this.db.disponibilidade.findMany({
+      where: { professorId: { in: professorIds }, diaSemana, periodoLetivo },
+      select: { professorId: true, horarioInicio: true, horarioFim: true }
+    });
+  }
+
+  findAulasDosProfessores(professorIds: string[]) {
+    return this.db.aula.findMany({
+      where: { professorId: { in: professorIds } },
+      select: { professorId: true, diaSemana: true, horarioInicio: true, horarioFim: true }
+    });
+  }
+
+  findAtivasDosSubstitutosNoPeriodo(substitutoIds: string[], inicio: Date, fim: Date) {
+    return this.db.substituicao.findMany({
+      where: { substitutoId: { in: substitutoIds }, status: { in: ATIVAS }, ausencia: { data: { gte: inicio, lt: fim } } },
+      select: {
+        substitutoId: true,
+        ausencia: { select: { data: true, aula: { select: { horarioInicio: true, horarioFim: true } } } }
+      }
+    });
+  }
+
+  findRecusadasByAusencia(ausenciaId: string) {
+    return this.db.substituicao.findMany({ where: { ausenciaId, status: "RECUSADA" }, select: { substitutoId: true } });
   }
 
   create(data: { ausenciaId: string; substitutoId: string }, designadoPorId: string) {

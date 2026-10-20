@@ -5,4 +5,8 @@ export const createSubstituicaoSchema = z.object({
   substitutoId: z.string().min(1)
 });
 
+export const candidatesQuerySchema = z.object({
+  ausenciaId: z.string().min(1)
+});
+
 export type CreateSubstituicaoInput = z.infer<typeof createSubstituicaoSchema>;

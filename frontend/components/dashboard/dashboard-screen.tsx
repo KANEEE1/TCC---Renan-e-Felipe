@@ -7,6 +7,7 @@ import {
   BookOpen,
   CalendarClock,
   CalendarDays,
+  UserX,
   ChevronRight,
   LogOut,
   Plus,
@@ -164,6 +165,15 @@ export function DashboardScreen() {
               <CalendarClock size={20} className="text-white" />
             </div>
             <span className="text-sm leading-tight text-slate-700">Reuniões e Eventos</span>
+          </Link>
+          <Link
+            href="/absences"
+            className="col-span-2 flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-md transition-shadow hover:shadow-lg"
+          >
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-600">
+              <UserX size={20} className="text-white" />
+            </div>
+            <span className="text-sm leading-tight text-slate-700">Faltas de professores</span>
           </Link>
         </div>
       </div>

@@ -33,11 +33,32 @@ model Reuniao {
   horarioFim    DateTime    @db.Time(0)
   local         String?
   descricao     String?
-  participantes String[]
   criadoPorId   String?
   criadoPor     User?       @relation("CriadorReunioes", fields: [criadoPorId], references: [id], onDelete: SetNull)
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
+
+  participacoes ParticipacaoReuniao[]
+}
+
+enum StatusParticipacao {
+  PENDENTE
+  CONFIRMADO
+  RECUSADO
+}
+
+model ParticipacaoReuniao {
+  id        String             @id @default(cuid())
+  reuniaoId String
+  userId    String
+  status    StatusParticipacao @default(PENDENTE)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  reuniao Reuniao @relation(fields: [reuniaoId], references: [id], onDelete: Cascade)
+  user    User    @relation("ParticipacoesReuniao", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([reuniaoId, userId])
 }
 
 model User {
@@ -57,6 +78,8 @@ model User {
   disponibilidades Disponibilidade[] @relation("ProfessorDisponibilidades")
   disciplinas      Disciplina[]      @relation("ProfessorDisciplinas")
   reunioesCriadas  Reuniao[]         @relation("CriadorReunioes")
+
+  participacoesReuniao ParticipacaoReuniao[] @relation("ParticipacoesReuniao")
 }
 
 model Aluno {

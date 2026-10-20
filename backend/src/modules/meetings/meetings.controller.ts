@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { getActor } from "../../shared/auth.js";
 import { asyncHandler } from "../../shared/http.js";
-import { createMeetingSchema, updateMeetingSchema } from "./meetings.schemas.js";
+import { createMeetingSchema, rsvpSchema, updateMeetingSchema } from "./meetings.schemas.js";
 import type { MeetingsService } from "./meetings.service.js";
 
 export class MeetingsController {
@@ -11,6 +11,10 @@ export class MeetingsController {
     this.router.get("/", asyncHandler(async (req, res) => {
       const actor = getActor(req);
       res.json(await this.meetingsService.list(actor));
+    }));
+
+    this.router.get("/participant-options", asyncHandler(async (_req, res) => {
+      res.json(await this.meetingsService.listParticipantOptions());
     }));
 
     this.router.get("/:id", asyncHandler(async (req, res) => {
@@ -28,6 +32,12 @@ export class MeetingsController {
       const actor = getActor(req);
       const input = updateMeetingSchema.parse(req.body);
       res.json(await this.meetingsService.update(req.params.id as string, input, actor));
+    }));
+
+    this.router.put("/:id/rsvp", asyncHandler(async (req, res) => {
+      const actor = getActor(req);
+      const input = rsvpSchema.parse(req.body);
+      res.json(await this.meetingsService.respond(req.params.id as string, input, actor));
     }));
 
     this.router.delete("/:id", asyncHandler(async (req, res) => {

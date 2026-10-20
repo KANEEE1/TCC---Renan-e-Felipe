@@ -5,9 +5,12 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Calendar, Lock, Save, Trash2, User, Users } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
-import { MEETING_TYPES, toHHMM, type MeetingDTO, type MeetingType } from "./meeting-types";
+import { MEETING_TYPES, STATUS_COLORS, STATUS_LABELS, toHHMM, type MeetingDTO, type MeetingType, type ParticipationStatus } from "./meeting-types";
 
-const AVAILABLE_PARTICIPANTS = ["Ana Silva", "Carlos Santos", "Maria Oliveira", "João Costa", "Pedro Lima", "Direção Escolar", "Equipe Pedagógica", "Todos os alunos"];
+interface UserOption {
+  id: string;
+  name: string;
+}
 
 const TIMES = [
   "07:00", "07:30", "08:00", "08:30", "09:00", "09:30",
@@ -17,7 +20,7 @@ const TIMES = [
   "19:00", "19:30", "20:00"
 ];
 
-const EMPTY = { title: "", type: "aulao" as MeetingType, date: "", startTime: "", endTime: "", location: "", description: "", participants: [] as string[] };
+const EMPTY = { title: "", type: "aulao" as MeetingType, date: "", startTime: "", endTime: "", location: "", description: "", participantIds: [] as string[] };
 
 export function MeetingForm({ meetingId }: { meetingId?: string }) {
   const router = useRouter();
@@ -28,6 +31,15 @@ export function MeetingForm({ meetingId }: { meetingId?: string }) {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [users, setUsers] = useState<UserOption[]>([]);
+  const [responding, setResponding] = useState(false);
+
+  useEffect(() => {
+    api
+      .get<UserOption[]>("/meetings/participant-options")
+      .then(setUsers)
+      .catch(() => setError("Não foi possível carregar os usuários."));
+  }, []);
 
   useEffect(() => {
     if (!meetingId) return;
@@ -44,18 +56,33 @@ export function MeetingForm({ meetingId }: { meetingId?: string }) {
           endTime: toHHMM(m.horarioFim),
           location: m.local ?? "",
           description: m.descricao ?? "",
-          participants: m.participantes
+          participantIds: m.participantes.map((p) => p.userId)
         });
       })
       .catch((err) => setError(err instanceof ApiError && err.status === 404 ? "Reunião não encontrada." : "Não foi possível carregar a reunião."))
       .finally(() => setLoading(false));
   }, [meetingId]);
 
-  const toggleParticipant = (participant: string) => {
+  const toggleParticipant = (userId: string) => {
     setFormData((prev) => ({
       ...prev,
-      participants: prev.participants.includes(participant) ? prev.participants.filter((p) => p !== participant) : [...prev.participants, participant]
+      participantIds: prev.participantIds.includes(userId) ? prev.participantIds.filter((id) => id !== userId) : [...prev.participantIds, userId]
     }));
+  };
+
+  const statusByUser = new Map<string, ParticipationStatus>(meeting?.participantes.map((p) => [p.userId, p.status]));
+
+  const handleRsvp = async (status: "CONFIRMADO" | "RECUSADO") => {
+    if (responding) return;
+    setError(null);
+    setResponding(true);
+    try {
+      setMeeting(await api.put<MeetingDTO>(`/meetings/${meetingId}/rsvp`, { status }));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Não foi possível registrar sua resposta.");
+    } finally {
+      setResponding(false);
+    }
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -73,7 +100,7 @@ export function MeetingForm({ meetingId }: { meetingId?: string }) {
         horarioFim: formData.endTime,
         local: formData.location || undefined,
         descricao: formData.description || undefined,
-        participantes: formData.participants
+        participanteIds: formData.participantIds
       };
       if (meetingId) {
         await api.put(`/meetings/${meetingId}`, payload);
@@ -249,24 +276,57 @@ export function MeetingForm({ meetingId }: { meetingId?: string }) {
           <div className="mb-4 rounded-lg bg-white p-4 shadow">
             <div className="mb-3 flex items-center">
               <Users className="mr-2 text-purple-600" size={20} />
-              <h3 className="text-gray-800">Participantes ({formData.participants.length})</h3>
+              <h3 className="text-gray-800">Participantes ({formData.participantIds.length})</h3>
             </div>
+            {!isEdit && <p className="mb-3 text-xs text-gray-500">Você entra automaticamente como participante confirmado.</p>}
 
             <div className="space-y-2">
-              {AVAILABLE_PARTICIPANTS.map((participant) => (
-                <label
-                  key={participant}
-                  className={`flex cursor-pointer items-center rounded-lg border p-3 transition-colors ${
-                    formData.participants.includes(participant) ? "border-purple-500 bg-purple-50" : "border-gray-300 bg-white hover:bg-gray-50"
-                  }`}
-                >
-                  <input type="checkbox" checked={formData.participants.includes(participant)} onChange={() => toggleParticipant(participant)} className="mr-3" />
-                  <span className="text-gray-800">{participant}</span>
-                </label>
-              ))}
+              {users.map((user) => {
+                const isCreator = user.id === meeting?.criadoPorId;
+                const checked = formData.participantIds.includes(user.id) || isCreator;
+                const status = statusByUser.get(user.id);
+                return (
+                  <label
+                    key={user.id}
+                    className={`flex cursor-pointer items-center rounded-lg border p-3 transition-colors ${
+                      checked ? "border-purple-500 bg-purple-50" : "border-gray-300 bg-white hover:bg-gray-50"
+                    }`}
+                  >
+                    <input type="checkbox" checked={checked} disabled={isCreator} onChange={() => toggleParticipant(user.id)} className="mr-3" />
+                    <span className="flex-1 text-gray-800">{user.name}</span>
+                    {status && <span className={`rounded-full px-2 py-0.5 text-xs ${STATUS_COLORS[status]}`}>{STATUS_LABELS[status]}</span>}
+                  </label>
+                );
+              })}
             </div>
           </div>
         </fieldset>
+
+        {meeting?.permissoes.responder && (
+          <div className="mb-4 rounded-lg bg-white p-4 shadow">
+            <h3 className="mb-3 text-gray-800">
+              Sua presença{meeting.meuStatus ? `: ${STATUS_LABELS[meeting.meuStatus]}` : ""}
+            </h3>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => handleRsvp("CONFIRMADO")}
+                disabled={responding}
+                className={`rounded-lg py-3 text-sm transition-colors disabled:opacity-60 ${meeting.meuStatus === "CONFIRMADO" ? "bg-green-600 text-white" : "bg-green-50 text-green-700 hover:bg-green-100"}`}
+              >
+                Confirmar presença
+              </button>
+              <button
+                type="button"
+                onClick={() => handleRsvp("RECUSADO")}
+                disabled={responding}
+                className={`rounded-lg py-3 text-sm transition-colors disabled:opacity-60 ${meeting.meuStatus === "RECUSADO" ? "bg-red-600 text-white" : "bg-red-50 text-red-700 hover:bg-red-100"}`}
+              >
+                Recusar
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="mb-4 rounded-lg bg-blue-50 p-4">
           <div className="flex items-start">
@@ -279,7 +339,7 @@ export function MeetingForm({ meetingId }: { meetingId?: string }) {
                   Horário: {formData.startTime} - {formData.endTime}
                 </p>
                 <p>Local: {formData.location || "-"}</p>
-                <p>Participantes: {formData.participants.length} pessoa(s)</p>
+                <p>Participantes: {formData.participantIds.length} pessoa(s)</p>
               </div>
             </div>
           </div>

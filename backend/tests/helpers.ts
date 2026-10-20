@@ -15,6 +15,7 @@ export async function resetDb() {
     prisma.disciplina.deleteMany(),
     prisma.turma.deleteMany(),
     prisma.aluno.deleteMany(),
+    prisma.participacaoReuniao.deleteMany(),
     prisma.reuniao.deleteMany(),
     prisma.user.deleteMany()
   ]);

@@ -44,15 +44,30 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction) {
   }
 }
 
+export interface Actor {
+  id: string;
+  roles: Role[];
+}
+
+export function getActor(req: Request): Actor {
+  if (!req.auth) {
+    throw new HttpError(401, "Missing authentication token");
+  }
+
+  return { id: req.auth.sub, roles: req.auth.roles };
+}
+
+export function hasRole(actor: Pick<Actor, "roles">, ...roles: Role[]) {
+  return actor.roles.some((role) => roles.includes(role));
+}
+
 export function requireRole(...roles: Role[]) {
   return (req: Request, _res: Response, next: NextFunction) => {
     if (!req.auth) {
       throw new HttpError(401, "Missing authentication token");
     }
 
-    const hasRole = req.auth.roles.some((role) => roles.includes(role));
-
-    if (!hasRole) {
+    if (!hasRole(req.auth, ...roles)) {
       throw new HttpError(403, "Insufficient permissions");
     }
 

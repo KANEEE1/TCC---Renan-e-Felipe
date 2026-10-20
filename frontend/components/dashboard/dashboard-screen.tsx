@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   BookOpen,
+  CalendarClock,
   CalendarDays,
   ChevronRight,
   LogOut,
@@ -154,6 +155,15 @@ export function DashboardScreen() {
               <UserPlus size={20} className="text-white" />
             </div>
             <span className="text-sm leading-tight text-slate-700">Cadastrar Professor</span>
+          </Link>
+          <Link
+            href="/meetings"
+            className="col-span-2 flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-md transition-shadow hover:shadow-lg"
+          >
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-purple-600">
+              <CalendarClock size={20} className="text-white" />
+            </div>
+            <span className="text-sm leading-tight text-slate-700">Reuniões e Eventos</span>
           </Link>
         </div>
       </div>

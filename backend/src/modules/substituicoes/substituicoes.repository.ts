@@ -4,6 +4,25 @@ const substituicaoInclude = {
   substituto: { select: { id: true, name: true } }
 } as const;
 
+const minhaInclude = {
+  ausencia: {
+    select: {
+      id: true,
+      data: true,
+      aula: {
+        select: {
+          diaSemana: true,
+          horarioInicio: true,
+          horarioFim: true,
+          turma: { select: { id: true, nome: true } },
+          disciplina: { select: { id: true, nome: true } },
+          professor: { select: { id: true, name: true } }
+        }
+      }
+    }
+  }
+} as const;
+
 const ATIVAS: StatusSubstituicao[] = ["PENDENTE", "ACEITA"];
 
 type Db = PrismaClient | Prisma.TransactionClient;
@@ -39,8 +58,11 @@ export class SubstituicoesRepository {
     return this.db.substituicao.findUnique({ where: { id } });
   }
 
-  findAtivaByAusencia(ausenciaId: string) {
-    return this.db.substituicao.findFirst({ where: { ausenciaId, status: { in: ATIVAS } }, select: { id: true } });
+  findAtivaByAusencia(ausenciaId: string, ignorarId?: string) {
+    return this.db.substituicao.findFirst({
+      where: { ausenciaId, status: { in: ATIVAS }, ...(ignorarId && { id: { not: ignorarId } }) },
+      select: { id: true }
+    });
   }
 
   findAulasOfProfessorNoDia(professorId: string, diaSemana: string) {
@@ -50,9 +72,9 @@ export class SubstituicoesRepository {
     });
   }
 
-  findAtivasDoSubstitutoNaData(substitutoId: string, data: Date) {
+  findAtivasDoSubstitutoNaData(substitutoId: string, data: Date, ignorarId?: string) {
     return this.db.substituicao.findMany({
-      where: { substitutoId, status: { in: ATIVAS }, ausencia: { data } },
+      where: { substitutoId, status: { in: ATIVAS }, ausencia: { data }, ...(ignorarId && { id: { not: ignorarId } }) },
       select: { ausencia: { select: { aula: { select: { horarioInicio: true, horarioFim: true } } } } }
     });
   }
@@ -94,6 +116,22 @@ export class SubstituicoesRepository {
 
   create(data: { ausenciaId: string; substitutoId: string }, designadoPorId: string) {
     return this.db.substituicao.create({ data: { ...data, designadoPorId }, include: substituicaoInclude });
+  }
+
+  findByIdComAusencia(id: string) {
+    return this.db.substituicao.findUnique({ where: { id }, include: minhaInclude });
+  }
+
+  findBySubstituto(substitutoId: string, status?: StatusSubstituicao) {
+    return this.db.substituicao.findMany({
+      where: { substitutoId, ...(status && { status }) },
+      include: minhaInclude,
+      orderBy: [{ ausencia: { data: "asc" } }, { id: "asc" }]
+    });
+  }
+
+  responder(id: string, status: "ACEITA" | "RECUSADA", respondidaEm: Date) {
+    return this.db.substituicao.update({ where: { id }, data: { status, respondidaEm }, include: minhaInclude });
   }
 
   remove(id: string) {

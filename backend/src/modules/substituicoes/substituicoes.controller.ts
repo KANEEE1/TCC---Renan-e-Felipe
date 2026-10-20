@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { getActor, requireRole } from "../../shared/auth.js";
 import { asyncHandler } from "../../shared/http.js";
-import { candidatesQuerySchema, createSubstituicaoSchema } from "./substituicoes.schemas.js";
+import { candidatesQuerySchema, createSubstituicaoSchema, mineQuerySchema, respondSubstituicaoSchema } from "./substituicoes.schemas.js";
 import type { SubstituicoesService } from "./substituicoes.service.js";
 
 export class SubstituicoesController {
@@ -11,6 +11,16 @@ export class SubstituicoesController {
     this.router.get("/candidates", requireRole("GESTAO"), asyncHandler(async (req, res) => {
       const { ausenciaId } = candidatesQuerySchema.parse(req.query);
       res.json(await this.substituicoesService.findCandidates(ausenciaId));
+    }));
+
+    this.router.get("/mine", asyncHandler(async (req, res) => {
+      const { status } = mineQuerySchema.parse(req.query);
+      res.json(await this.substituicoesService.findMine(status, getActor(req)));
+    }));
+
+    this.router.put("/:id/response", asyncHandler(async (req, res) => {
+      const input = respondSubstituicaoSchema.parse(req.body);
+      res.json(await this.substituicoesService.respond(req.params.id as string, input, getActor(req)));
     }));
 
     this.router.post("/", requireRole("GESTAO"), asyncHandler(async (req, res) => {

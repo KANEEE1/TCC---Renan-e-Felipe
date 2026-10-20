@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Calendar, Clock, Plus, User } from "lucide-react";
+import { isPastDate } from "@/lib/date";
 import { api, ApiError } from "@/lib/api";
 import { getSessionUser } from "@/lib/auth";
 import { SUBSTITUICAO_STATUS_LABELS, toHHMM, type AbsenceDTO } from "./absence-types";
@@ -17,6 +18,10 @@ interface CandidateOption {
   lecionaDisciplina: boolean;
   disponivel: boolean;
   carga: { aulasSemanais: number; substituicoesMes: number };
+}
+
+function isPast(absence: { data: string }) {
+  return isPastDate(absence.data);
 }
 
 export function AbsenceList() {
@@ -37,7 +42,7 @@ export function AbsenceList() {
       .get<AbsenceDTO[]>("/absences")
       .then((data) => {
         setAbsences(data);
-        if (management) data.filter((absence) => !absence.substituicao).forEach((absence) => loadCandidates(absence.id));
+        if (management) data.filter((absence) => !absence.substituicao && !isPast(absence)).forEach((absence) => loadCandidates(absence.id));
       })
       .catch(() => setError("Não foi possível carregar as faltas."))
       .finally(() => setLoading(false));
@@ -186,10 +191,13 @@ export function AbsenceList() {
                 )}
               </div>
             )}
-            {isManagement && !absence.substituicao && candidatesError[absence.id] && (
+            {isManagement && !absence.substituicao && isPast(absence) && (
+              <p className="mt-2 text-sm text-slate-400">Data já passou: sem designação de substituto.</p>
+            )}
+            {isManagement && !absence.substituicao && !isPast(absence) && candidatesError[absence.id] && (
               <p className="mt-2 text-sm text-rose-500">Não foi possível carregar os candidatos.</p>
             )}
-            {isManagement && !absence.substituicao && !candidatesError[absence.id] && candidates[absence.id] && (
+            {isManagement && !absence.substituicao && !isPast(absence) && !candidatesError[absence.id] && candidates[absence.id] && (
               candidates[absence.id].length === 0 ? (
                 <p className="mt-2 text-sm text-slate-400">Nenhum professor elegível</p>
               ) : (

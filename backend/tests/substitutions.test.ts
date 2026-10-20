@@ -230,4 +230,104 @@ describe("substitutions", () => {
       expect((await designar(s.tokens.gestor, s.ausenciaId, res.body[0].id)).status).toBe(201);
     });
   });
+
+  describe("substitute response", () => {
+    const mine = (token: string, status?: string) =>
+      request(app).get("/substitutions/mine").query(status ? { status } : {}).set(auth(token));
+    const responder = (token: string, id: string, status: string) =>
+      request(app).put(`/substitutions/${id}/response`).set(auth(token)).send({ status });
+
+    it("GET /mine: 401 without token", async () => {
+      expect((await request(app).get("/substitutions/mine")).status).toBe(401);
+    });
+
+    it("GET /mine: returns only own substitutions, filters by status, hides email", async () => {
+      const s = await setup();
+      const t2 = await loginAs("p2@test.com");
+      const t3 = await loginAs("p3@test.com");
+      const aula2 = await s.mkAula(s.p1.id, "QUINTA", "08:00", "10:00", "T2");
+      const ausencia2 = await s.mkAusencia(s.tokens.p1, aula2, nextDate("QUINTA"));
+      const d1 = await designar(s.tokens.gestor, s.ausenciaId, s.p2.id);
+      const d2 = await designar(s.tokens.gestor, ausencia2, s.p2.id);
+      await prisma.substituicao.update({ where: { id: d2.body.id }, data: { status: "RECUSADA" } });
+      const outra = await designar(s.tokens.gestor, ausencia2, s.p3.id);
+      expect(outra.status).toBe(201);
+
+      const all = await mine(t2);
+      expect(all.status).toBe(200);
+      expect(all.body.map((x: { id: string }) => x.id).sort()).toEqual([d1.body.id, d2.body.id].sort());
+      expect(JSON.stringify(all.body)).not.toContain("email");
+      expect(JSON.stringify(all.body)).not.toContain("@test.com");
+
+      const pend = await mine(t2, "PENDENTE");
+      expect(pend.body.map((x: { id: string }) => x.id)).toEqual([d1.body.id]);
+      const rec = await mine(t2, "RECUSADA");
+      expect(rec.body.map((x: { id: string }) => x.id)).toEqual([d2.body.id]);
+
+      const of3 = await mine(t3);
+      expect(of3.body.map((x: { id: string }) => x.id)).toEqual([outra.body.id]);
+    });
+
+    it("substitute accepts (200, ACEITA, respondidaEm set)", async () => {
+      const s = await setup();
+      const d = await designar(s.tokens.gestor, s.ausenciaId, s.p2.id);
+      const res = await responder(await loginAs("p2@test.com"), d.body.id, "ACEITA");
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("ACEITA");
+      expect(res.body.respondidaEm).toBeTruthy();
+    });
+
+    it("substitute refuses (200, RECUSADA) and then gestao can designate another (201)", async () => {
+      const s = await setup();
+      const d = await designar(s.tokens.gestor, s.ausenciaId, s.p2.id);
+      const res = await responder(await loginAs("p2@test.com"), d.body.id, "RECUSADA");
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("RECUSADA");
+      expect(res.body.respondidaEm).toBeTruthy();
+      expect((await designar(s.tokens.gestor, s.ausenciaId, s.p3.id)).status).toBe(201);
+    });
+
+    it("other teacher gets 404; GESTAO non-substitute gets 403; unknown id is 404", async () => {
+      const s = await setup();
+      const d = await designar(s.tokens.gestor, s.ausenciaId, s.p2.id);
+      expect((await responder(await loginAs("p3@test.com"), d.body.id, "ACEITA")).status).toBe(404);
+      expect((await responder(s.tokens.gestor, d.body.id, "ACEITA")).status).toBe(403);
+      expect((await responder(await loginAs("p2@test.com"), "nao-existe", "ACEITA")).status).toBe(404);
+      expect((await prisma.substituicao.findUnique({ where: { id: d.body.id } }))?.status).toBe("PENDENTE");
+    });
+
+    it("409 when already answered; 400 for invalid status", async () => {
+      const s = await setup();
+      const t2 = await loginAs("p2@test.com");
+      const d = await designar(s.tokens.gestor, s.ausenciaId, s.p2.id);
+      expect((await responder(t2, d.body.id, "PENDENTE")).status).toBe(400);
+      expect((await responder(t2, d.body.id, "ACEITA")).status).toBe(200);
+      expect((await responder(t2, d.body.id, "RECUSADA")).status).toBe(409);
+    });
+
+    it("400 when the absence is in the past", async () => {
+      const s = await setup();
+      const d = await designar(s.tokens.gestor, s.ausenciaId, s.p2.id);
+      await prisma.ausenciaAula.update({ where: { id: s.ausenciaId }, data: { data: new Date(`${nextDate("QUARTA", -30)}T00:00:00Z`) } });
+      expect((await responder(await loginAs("p2@test.com"), d.body.id, "ACEITA")).status).toBe(400);
+    });
+
+    it("accept returns 409 on a conflict created after the designation", async () => {
+      const s = await setup();
+      const d = await designar(s.tokens.gestor, s.ausenciaId, s.p2.id);
+      const turma = await prisma.turma.create({ data: { nome: "T-conflito", anoLetivo: 2026 } });
+      await prisma.aula.create({
+        data: {
+          turmaId: turma.id,
+          disciplinaId: s.disciplina.body.id,
+          professorId: s.p2.id,
+          diaSemana: "QUARTA",
+          horarioInicio: new Date("1970-01-01T09:00:00Z"),
+          horarioFim: new Date("1970-01-01T11:00:00Z")
+        }
+      });
+      expect((await responder(await loginAs("p2@test.com"), d.body.id, "ACEITA")).status).toBe(409);
+      expect((await prisma.substituicao.findUnique({ where: { id: d.body.id } }))?.status).toBe("PENDENTE");
+    });
+  });
 });

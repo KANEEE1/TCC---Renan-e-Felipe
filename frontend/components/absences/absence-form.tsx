@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Save } from "lucide-react";
+import { todayInSaoPaulo } from "@/lib/date";
 import { api, ApiError } from "@/lib/api";
 import { getSessionUser } from "@/lib/auth";
 import { DIA_LABELS, toHHMM, weekdayOf } from "./absence-types";
@@ -38,7 +39,7 @@ export function AbsenceForm() {
   }, []);
 
   const selected = aulas.find((aula) => aula.id === aulaId);
-  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
+  const today = todayInSaoPaulo();
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();

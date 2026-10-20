@@ -20,5 +20,11 @@ export const markAttendanceSchema = z.object({
     .min(1)
 });
 
+export const attendanceSummaryQuerySchema = z.object({
+  turmaId: z.string().min(1).optional(),
+  limite: z.coerce.number().min(0).max(100).default(75)
+});
+
+export type AttendanceSummaryQuery = z.infer<typeof attendanceSummaryQuerySchema>;
 export type CreatePresencaInput = z.infer<typeof createPresencaSchema>;
 export type MarkAttendanceInput = z.infer<typeof markAttendanceSchema>;

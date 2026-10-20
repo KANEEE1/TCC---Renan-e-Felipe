@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { asyncHandler } from "../../shared/http.js";
-import { createPresencaSchema, markAttendanceSchema } from "./presenca.schemas.js";
+import { attendanceSummaryQuerySchema, createPresencaSchema, markAttendanceSchema } from "./presenca.schemas.js";
 import type { PresencaService } from "./presenca.service.js";
 
 export class PresencaController {
@@ -9,6 +9,11 @@ export class PresencaController {
   constructor(private readonly presencaService: PresencaService) {
     this.router.get("/", asyncHandler(async (_req, res) => {
       res.json(await this.presencaService.list());
+    }));
+
+    this.router.get("/summary", asyncHandler(async (req, res) => {
+      const query = attendanceSummaryQuerySchema.parse(req.query);
+      res.json(await this.presencaService.summary(query));
     }));
 
     this.router.get("/by-class/:classId", asyncHandler(async (req, res) => {

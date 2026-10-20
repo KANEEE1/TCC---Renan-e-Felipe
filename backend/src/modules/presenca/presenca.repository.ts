@@ -37,6 +37,24 @@ export class PresencaRepository {
     });
   }
 
+  listMatriculasForSummary(turmaIds?: string[]) {
+    return this.prisma.matricula.findMany({
+      where: turmaIds ? { turmaId: { in: turmaIds } } : undefined,
+      select: {
+        alunoId: true,
+        aluno: { select: { nome: true } },
+        turma: { select: { id: true, nome: true } }
+      }
+    });
+  }
+
+  listPresencasForSummary(turmaIds?: string[]) {
+    return this.prisma.presenca.findMany({
+      where: turmaIds ? { aula: { turmaId: { in: turmaIds } } } : undefined,
+      select: { alunoId: true, presente: true }
+    });
+  }
+
   create(data: CreatePresencaInput) {
     return this.prisma.presenca.create({ data, include: presencaInclude });
   }

@@ -121,6 +121,12 @@ export function AttendanceList() {
       </div>
 
       <div className="flex-1 space-y-5 overflow-y-auto px-4 py-4 pb-6">
+        <Link
+          href="/attendance/summary"
+          className="block w-full rounded-xl border border-emerald-200 bg-white py-2.5 text-center text-sm text-emerald-700 transition-colors hover:bg-emerald-50"
+        >
+          Relatório de frequência
+        </Link>
         <section>
           <div className="mb-3 flex items-center gap-2">
             <div className="h-5 w-1 rounded-full bg-blue-500" />

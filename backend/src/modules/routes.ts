@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { requireAuth } from "../shared/auth.js";
 import { alunosController } from "./alunos/alunos.module.js";
+import { ausenciasController } from "./ausencias/ausencias.module.js";
 import { authController } from "./auth/auth.module.js";
 import { dashboardController } from "./dashboard/dashboard.module.js";
 import { disciplinasController } from "./disciplinas/disciplinas.module.js";
@@ -27,6 +28,7 @@ export function registerRoutes(app: Express) {
   app.use("/disciplinas", disciplinasController.router);
   app.use("/matriculas", matriculasController.router);
   app.use("/meetings", requireAuth, meetingsController.router);
+  app.use("/absences", requireAuth, ausenciasController.router);
   app.use("/disponibilidade", disponibilidadeController.router);
   app.use("/grade-horaria", gradeHorariaController.router);
   app.use("/schedule", gradeHorariaController.router);

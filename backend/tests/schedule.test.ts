@@ -30,6 +30,7 @@ describe("schedule", () => {
 
     const weekly = await request(app).get("/schedule/weekly");
     expect(weekly.body).toHaveLength(1);
+    expect(Object.keys(weekly.body[0].professor).sort()).toEqual(["id", "name"]);
 
     const byClass = await request(app).get(`/schedule/by-class/${turmaId}`);
     expect(byClass.body).toHaveLength(1);

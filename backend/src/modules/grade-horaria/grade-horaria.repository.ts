@@ -8,9 +8,7 @@ const aulaInclude = {
   professor: {
     select: {
       id: true,
-      name: true,
-      email: true,
-      roles: true
+      name: true
     }
   }
 };

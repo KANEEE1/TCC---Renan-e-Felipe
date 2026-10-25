@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { asyncHandler } from "../../shared/http.js";
-import { createDisponibilidadeSchema } from "../disponibilidade/disponibilidade.schemas.js";
+import { createDisponibilidadeSchema, updateDisponibilidadeSchema } from "../disponibilidade/disponibilidade.schemas.js";
 import type { DisponibilidadeService } from "../disponibilidade/disponibilidade.service.js";
 import type { GradeHorariaService } from "../grade-horaria/grade-horaria.service.js";
 import { createTeacherSchema, updateTeacherSchema } from "./teachers.schemas.js";
@@ -45,6 +45,18 @@ export class TeachersController {
       res.status(201).json(
         await this.disponibilidadeService.create({ ...input, professorId: req.params.id as string })
       );
+    }));
+
+    this.router.put("/:id/availability/:availabilityId", asyncHandler(async (req, res) => {
+      const input = updateDisponibilidadeSchema.parse(req.body);
+      res.json(
+        await this.disponibilidadeService.update(req.params.availabilityId as string, input, req.params.id as string)
+      );
+    }));
+
+    this.router.delete("/:id/availability/:availabilityId", asyncHandler(async (req, res) => {
+      await this.disponibilidadeService.remove(req.params.availabilityId as string, req.params.id as string);
+      res.status(204).send();
     }));
 
     this.router.get("/:id/schedule", asyncHandler(async (req, res) => {

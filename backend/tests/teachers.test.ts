@@ -67,6 +67,76 @@ describe("teachers", () => {
     expect(res.status).toBe(400);
   });
 
+  it("updates an availability slot", async () => {
+    const teacher = await request(app).post("/teachers").send({ name: "Prof", email: "prof5@test.com", password: "senha1234" });
+    const slot = await request(app)
+      .post(`/teachers/${teacher.body.id}/availability`)
+      .send({ diaSemana: "SEGUNDA", horarioInicio: "08:00", horarioFim: "10:00", periodoLetivo: "2026-1" });
+
+    const res = await request(app)
+      .put(`/teachers/${teacher.body.id}/availability/${slot.body.id}`)
+      .send({ diaSemana: "TERCA", horarioFim: "11:00" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.diaSemana).toBe("TERCA");
+    expect(res.body.horarioFim).toContain("11:00");
+  });
+
+  it("rejects an update that makes the end time before the existing start time", async () => {
+    const teacher = await request(app).post("/teachers").send({ name: "Prof", email: "prof6@test.com", password: "senha1234" });
+    const slot = await request(app)
+      .post(`/teachers/${teacher.body.id}/availability`)
+      .send({ diaSemana: "SEGUNDA", horarioInicio: "08:00", horarioFim: "10:00", periodoLetivo: "2026-1" });
+
+    const res = await request(app)
+      .put(`/teachers/${teacher.body.id}/availability/${slot.body.id}`)
+      .send({ horarioFim: "07:00" });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("removes an availability slot", async () => {
+    const teacher = await request(app).post("/teachers").send({ name: "Prof", email: "prof7@test.com", password: "senha1234" });
+    const slot = await request(app)
+      .post(`/teachers/${teacher.body.id}/availability`)
+      .send({ diaSemana: "SEGUNDA", horarioInicio: "08:00", horarioFim: "10:00", periodoLetivo: "2026-1" });
+
+    const res = await request(app).delete(`/teachers/${teacher.body.id}/availability/${slot.body.id}`);
+    expect(res.status).toBe(204);
+
+    const list = await request(app).get(`/teachers/${teacher.body.id}/availability`);
+    expect(list.body).toHaveLength(0);
+  });
+
+  it("does not let one teacher's route touch another teacher's slot", async () => {
+    const owner = await request(app).post("/teachers").send({ name: "Dono", email: "dono@test.com", password: "senha1234" });
+    const other = await request(app).post("/teachers").send({ name: "Outro", email: "outro@test.com", password: "senha1234" });
+    const slot = await request(app)
+      .post(`/teachers/${owner.body.id}/availability`)
+      .send({ diaSemana: "SEGUNDA", horarioInicio: "08:00", horarioFim: "10:00", periodoLetivo: "2026-1" });
+
+    const res = await request(app).delete(`/teachers/${other.body.id}/availability/${slot.body.id}`);
+    expect(res.status).toBe(404);
+
+    const list = await request(app).get(`/teachers/${owner.body.id}/availability`);
+    expect(list.body).toHaveLength(1);
+  });
+
+  it("returns 409 for a duplicate availability slot", async () => {
+    const teacher = await request(app).post("/teachers").send({ name: "Prof", email: "prof8@test.com", password: "senha1234" });
+    const body = { diaSemana: "SEGUNDA", horarioInicio: "08:00", horarioFim: "10:00", periodoLetivo: "2026-1" };
+
+    await request(app).post(`/teachers/${teacher.body.id}/availability`).send(body);
+    const dup = await request(app).post(`/teachers/${teacher.body.id}/availability`).send(body);
+
+    expect(dup.status).toBe(409);
+  });
+
+  it("returns 404 when deleting an unknown availability slot", async () => {
+    const res = await request(app).delete("/disponibilidade/nonexistent-id");
+    expect(res.status).toBe(404);
+  });
+
   it("returns 404 for an unknown teacher", async () => {
     const res = await request(app).get("/teachers/nonexistent-id");
     expect(res.status).toBe(404);

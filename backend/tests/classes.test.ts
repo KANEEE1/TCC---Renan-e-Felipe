@@ -20,7 +20,7 @@ describe("classes", () => {
     await request(app).post("/classes").send({ nome: "Turma A", anoLetivo: 2026 });
     const dup = await request(app).post("/classes").send({ nome: "Turma A", anoLetivo: 2026 });
 
-    expect(dup.status).toBe(500);
+    expect(dup.status).toBe(409);
   });
 
   it("updates a class", async () => {

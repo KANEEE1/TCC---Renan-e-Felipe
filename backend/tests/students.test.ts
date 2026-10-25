@@ -21,7 +21,7 @@ describe("students", () => {
     await request(app).post("/students").send({ nome: "Aluno 1", email: "aluno@test.com" });
     const dup = await request(app).post("/students").send({ nome: "Aluno 2", email: "aluno@test.com" });
 
-    expect(dup.status).toBe(500);
+    expect(dup.status).toBe(409);
   });
 
   it("fetches a student by id", async () => {

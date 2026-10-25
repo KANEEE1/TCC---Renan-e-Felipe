@@ -51,14 +51,21 @@ export function AttendanceSummary() {
   useEffect(() => {
     const params = new URLSearchParams({ limite: String(Number.isFinite(limite) ? limite : 75) });
     if (turmaId) params.set("turmaId", turmaId);
+    let cancelled = false;
     setError(false);
     api
       .get<SummaryDTO>(`/attendance/summary?${params.toString()}`)
-      .then(setSummary)
+      .then((result) => {
+        if (!cancelled) setSummary(result);
+      })
       .catch(() => {
+        if (cancelled) return;
         setSummary(null);
         setError(true);
       });
+    return () => {
+      cancelled = true;
+    };
   }, [turmaId, limite]);
 
   const withRecords = summary?.items.filter((i) => !i.semRegistros) ?? [];

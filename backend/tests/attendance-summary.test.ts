@@ -93,6 +93,12 @@ describe("GET /attendance/summary", () => {
     expect(all.body.items[0].turmas).toHaveLength(2);
   });
 
+  it("treats an empty limite as the default", async () => {
+    const res = await request(app).get("/attendance/summary?limite=");
+    expect(res.status).toBe(200);
+    expect(res.body.limite).toBe(75);
+  });
+
   it("rejects an invalid limite with 400", async () => {
     const res = await request(app).get("/attendance/summary?limite=150");
     expect(res.status).toBe(400);

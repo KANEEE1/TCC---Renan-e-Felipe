@@ -55,6 +55,10 @@ export class AusenciasService {
       throw new HttpError(403, "Only who registered the absence or management can cancel it");
     }
 
+    if (ausencia.substituicoes.length > 0) {
+      throw new HttpError(409, "Cancel the substitute assignment before cancelling the absence");
+    }
+
     await this.ausenciasRepository.remove(id);
   }
 
@@ -67,6 +71,7 @@ export class AusenciasService {
   }
 
   private toResponse(ausencia: AusenciaWithAula, actor: Actor) {
-    return { ...ausencia, permissoes: { cancelar: this.canCancel(ausencia, actor) } };
+    const { substituicoes, ...rest } = ausencia;
+    return { ...rest, substituicao: substituicoes[0] ?? null, permissoes: { cancelar: this.canCancel(ausencia, actor) } };
   }
 }

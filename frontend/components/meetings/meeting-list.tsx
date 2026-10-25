@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Calendar, Clock, Lock, MapPin, Plus, User } from "lucide-react";
 import { api } from "@/lib/api";
-import { MEETING_TYPES, toHHMM, type MeetingDTO } from "./meeting-types";
+import { MEETING_TYPES, STATUS_COLORS, STATUS_LABELS, toHHMM, type MeetingDTO } from "./meeting-types";
 
 const TYPE_COLORS: Record<MeetingDTO["tipo"], string> = {
   AULAO: "bg-purple-50 text-purple-700 border-purple-200",
@@ -89,6 +89,9 @@ export function MeetingList() {
                 <span className="flex items-center gap-1">
                   <MapPin size={12} /> {meeting.local}
                 </span>
+              )}
+              {meeting.meuStatus && (
+                <span className={`rounded-full px-2 py-0.5 ${STATUS_COLORS[meeting.meuStatus]}`}>Minha presença: {STATUS_LABELS[meeting.meuStatus]}</span>
               )}
               {meeting.criadoPor && (
                 <span className="flex items-center gap-1">

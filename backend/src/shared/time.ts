@@ -2,6 +2,10 @@ export function parseTimeToDate(value: string) {
   return new Date(`1970-01-01T${value}:00.000Z`);
 }
 
+export function formatTimeHHMM(date: Date) {
+  return date.toISOString().slice(11, 16);
+}
+
 const WEEKDAYS = ["DOMINGO", "SEGUNDA", "TERCA", "QUARTA", "QUINTA", "SEXTA", "SABADO"] as const;
 
 export function currentDiaSemana(date: Date = new Date()) {

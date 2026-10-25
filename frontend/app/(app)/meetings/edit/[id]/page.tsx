@@ -1,6 +1,6 @@
-import { MeetingEdit } from "@/components/meetings/meeting-edit";
+import { MeetingForm } from "@/components/meetings/meeting-form";
 
 export default async function MeetingEditPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  return <MeetingEdit meetingId={id} />;
+  return <MeetingForm meetingId={id} />;
 }

@@ -34,6 +34,8 @@ model Reuniao {
   local         String?
   descricao     String?
   participantes String[]
+  criadoPorId   String?
+  criadoPor     User?       @relation("CriadorReunioes", fields: [criadoPorId], references: [id], onDelete: SetNull)
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 }
@@ -54,6 +56,7 @@ model User {
   aulas            Aula[]            @relation("ProfessorAulas")
   disponibilidades Disponibilidade[] @relation("ProfessorDisponibilidades")
   disciplinas      Disciplina[]      @relation("ProfessorDisciplinas")
+  reunioesCriadas  Reuniao[]         @relation("CriadorReunioes")
 }
 
 model Aluno {

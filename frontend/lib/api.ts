@@ -1,4 +1,4 @@
-import { getToken } from "./auth";
+import { clearSession, getToken } from "./auth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3333";
 
@@ -22,6 +22,11 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
   if (res.status === 204) return undefined as T;
 
   const body = await res.json().catch(() => null);
+
+  if (res.status === 401 && token && typeof window !== "undefined") {
+    clearSession();
+    window.location.replace("/");
+  }
 
   if (!res.ok) {
     const message = body?.message ?? `Request failed with status ${res.status}`;

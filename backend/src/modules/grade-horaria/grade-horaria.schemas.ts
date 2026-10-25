@@ -14,7 +14,29 @@ export const createAulaSchema = z.object({
   tipo: tipoAulaSchema.optional()
 });
 
+export const suggestScheduleSchema = z.object({
+  periodoLetivo: z.string().min(1),
+  pedidos: z
+    .array(
+      z.object({
+        professorId: z.string().cuid(),
+        disciplinaId: z.string().cuid(),
+        turmaId: z.string().cuid(),
+        quantidade: z.number().int().min(1).max(20),
+        sala: z.string().min(1).optional(),
+        tipo: tipoAulaSchema.optional()
+      })
+    )
+    .min(1)
+});
+
+export const confirmScheduleSchema = z.object({
+  aulas: z.array(createAulaSchema).min(1)
+});
+
 export const updateAulaSchema = createAulaSchema.partial();
 
 export type CreateAulaInput = z.infer<typeof createAulaSchema>;
 export type UpdateAulaInput = z.infer<typeof updateAulaSchema>;
+export type SuggestScheduleInput = z.infer<typeof suggestScheduleSchema>;
+export type ConfirmScheduleInput = z.infer<typeof confirmScheduleSchema>;

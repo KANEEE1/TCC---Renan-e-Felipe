@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Check, Save } from "lucide-react";
+import { currentPeriodoLetivo } from "@/lib/periodo-letivo";
 import { api, ApiError } from "@/lib/api";
 
 const TIME_SLOTS = [
@@ -28,7 +29,7 @@ const DIA_SEMANA: Record<string, string> = {
   Sexta: "SEXTA"
 };
 
-const PERIODO_LETIVO = `${new Date().getFullYear()}-1`;
+const PERIODO_LETIVO = currentPeriodoLetivo();
 
 interface AvailabilityEntry {
   id: string;

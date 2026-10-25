@@ -97,4 +97,109 @@ describe("schedule", () => {
     const list = await request(app).get("/schedule/weekly");
     expect(list.body).toHaveLength(0);
   });
+
+  async function addAvailability(professorId: string, diaSemana: string, horarioInicio: string, horarioFim: string, periodoLetivo = "2026-1") {
+    const res = await request(app)
+      .post(`/teachers/${professorId}/availability`)
+      .send({ diaSemana, horarioInicio, horarioFim, periodoLetivo });
+    expect(res.status).toBe(201);
+  }
+
+  it("suggest does not persist anything and respects periodoLetivo", async () => {
+    const { turmaId, disciplinaId, professorId } = await setupLessonDeps();
+    await addAvailability(professorId, "SEGUNDA", "08:00", "12:00", "2026-1");
+    const pedidos = [{ professorId, disciplinaId, turmaId, quantidade: 2 }];
+
+    const res = await request(app).post("/schedule/suggest").send({ periodoLetivo: "2026-1", pedidos });
+    expect(res.status).toBe(200);
+    expect(res.body.propostas).toHaveLength(2);
+    expect(res.body.naoAlocados).toHaveLength(0);
+
+    const other = await request(app).post("/schedule/suggest").send({ periodoLetivo: "2026-2", pedidos });
+    expect(other.body.propostas).toHaveLength(0);
+    expect(other.body.naoAlocados[0].motivo).toBe("SEM_DISPONIBILIDADE");
+
+    const weekly = await request(app).get("/schedule/weekly");
+    expect(weekly.body).toHaveLength(0);
+  });
+
+  it("confirm persists the batch", async () => {
+    const { turmaId, disciplinaId, professorId } = await setupLessonDeps();
+    const base = { turmaId, disciplinaId, professorId, diaSemana: "SEGUNDA" };
+
+    const res = await request(app).post("/schedule/confirm").send({
+      aulas: [
+        { ...base, horarioInicio: "08:00", horarioFim: "10:00" },
+        { ...base, horarioInicio: "10:00", horarioFim: "12:00" }
+      ]
+    });
+    expect(res.status).toBe(201);
+
+    const weekly = await request(app).get("/schedule/weekly");
+    expect(weekly.body).toHaveLength(2);
+  });
+
+  it("confirm with one conflict returns 409 and saves nothing", async () => {
+    const { turmaId, disciplinaId, professorId } = await setupLessonDeps();
+    const base = { turmaId, disciplinaId, professorId, diaSemana: "SEGUNDA" };
+    await request(app).post("/schedule").send({ ...base, horarioInicio: "10:00", horarioFim: "12:00" });
+
+    const res = await request(app).post("/schedule/confirm").send({
+      aulas: [
+        { ...base, diaSemana: "TERCA", horarioInicio: "08:00", horarioFim: "10:00" },
+        { ...base, horarioInicio: "11:00", horarioFim: "13:00" }
+      ]
+    });
+    expect(res.status).toBe(409);
+    expect(res.body.conflitos.length).toBeGreaterThan(0);
+
+    const weekly = await request(app).get("/schedule/weekly");
+    expect(weekly.body).toHaveLength(1);
+  });
+
+  it("confirm rejects a batch whose own lessons overlap", async () => {
+    const { turmaId, disciplinaId, professorId } = await setupLessonDeps();
+    const base = { turmaId, disciplinaId, professorId, diaSemana: "QUARTA" };
+
+    const res = await request(app).post("/schedule/confirm").send({
+      aulas: [
+        { ...base, horarioInicio: "08:00", horarioFim: "10:00" },
+        { ...base, horarioInicio: "09:00", horarioFim: "11:00" }
+      ]
+    });
+    expect(res.status).toBe(409);
+
+    const weekly = await request(app).get("/schedule/weekly");
+    expect(weekly.body).toHaveLength(0);
+  });
+
+  it("suggest rejects quantidade 0 with 400", async () => {
+    const { turmaId, disciplinaId, professorId } = await setupLessonDeps();
+    const res = await request(app)
+      .post("/schedule/suggest")
+      .send({ periodoLetivo: "2026-1", pedidos: [{ professorId, disciplinaId, turmaId, quantidade: 0 }] });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects partial overlap for the same teacher with 409", async () => {
+    const { turmaId, disciplinaId, professorId } = await setupLessonDeps();
+    const otherTurma = await request(app).post("/classes").send({ nome: "Outra", anoLetivo: 2026 });
+    const base = { disciplinaId, professorId, diaSemana: "SEGUNDA" };
+
+    await request(app).post("/schedule").send({ ...base, turmaId, horarioInicio: "08:00", horarioFim: "10:00" });
+    const res = await request(app).post("/schedule").send({ ...base, turmaId: otherTurma.body.id, horarioInicio: "09:00", horarioFim: "11:00" });
+    expect(res.status).toBe(409);
+  });
+
+  it("PUT without changing time does not conflict with itself", async () => {
+    const { turmaId, disciplinaId, professorId } = await setupLessonDeps();
+    const created = await request(app)
+      .post("/schedule")
+      .send({ turmaId, disciplinaId, professorId, diaSemana: "SEGUNDA", horarioInicio: "08:00", horarioFim: "10:00" });
+
+    const res = await request(app)
+      .put(`/schedule/${created.body.id}`)
+      .send({ horarioInicio: "08:00", horarioFim: "10:00", sala: "1" });
+    expect(res.status).toBe(200);
+  });
 });

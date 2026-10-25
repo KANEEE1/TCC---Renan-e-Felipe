@@ -11,6 +11,7 @@ import {
   ChevronRight,
   LogOut,
   Plus,
+  Repeat,
   Trophy,
   User,
   UserPlus,
@@ -18,6 +19,7 @@ import {
   Video,
   Zap
 } from "lucide-react";
+import { isPastDate } from "@/lib/date";
 import { api } from "@/lib/api";
 import { clearSession } from "@/lib/auth";
 
@@ -55,10 +57,15 @@ export function DashboardScreen() {
   const router = useRouter();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [userName, setUserName] = useState("Usuário");
+  const [pendingSubstitutions, setPendingSubstitutions] = useState(0);
   const [userRole, setUserRole] = useState("gestão");
 
   useEffect(() => {
     api.get<DashboardSummary>("/dashboard/summary").then(setSummary).catch(() => setSummary(null));
+    api
+      .get<{ ausencia: { data: string } }[]>("/substitutions/mine?status=PENDENTE")
+      .then((list) => setPendingSubstitutions(list.filter((item) => !isPastDate(item.ausencia.data)).length))
+      .catch(() => setPendingSubstitutions(0));
     api
       .get<{ name: string; roles: ("GESTAO" | "PROFESSOR")[] }>("/auth/me")
       .then((me) => {
@@ -174,6 +181,22 @@ export function DashboardScreen() {
               <UserX size={20} className="text-white" />
             </div>
             <span className="text-sm leading-tight text-slate-700">Faltas de professores</span>
+          </Link>
+          <Link
+            href="/substitutions"
+            className={`col-span-2 flex items-center gap-3 rounded-2xl border p-4 text-left shadow-md transition-shadow hover:shadow-lg ${
+              pendingSubstitutions > 0 ? "border-amber-300 bg-amber-50" : "border-slate-200 bg-white"
+            }`}
+          >
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500">
+              <Repeat size={20} className="text-white" />
+            </div>
+            <span className="flex-1 text-sm leading-tight text-slate-700">Minhas substituições</span>
+            {pendingSubstitutions > 0 && (
+              <span className="rounded-full bg-amber-500 px-2.5 py-0.5 text-xs text-white">
+                {pendingSubstitutions} {pendingSubstitutions === 1 ? "pendente" : "pendentes"}
+              </span>
+            )}
           </Link>
         </div>
       </div>

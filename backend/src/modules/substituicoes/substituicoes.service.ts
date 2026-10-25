@@ -1,9 +1,11 @@
+import { hasRole, type Actor } from "../../shared/auth.js";
 import { HttpError } from "../../shared/http.js";
+import type { StatusSubstituicao } from "@prisma/client";
 import { formatTimeHHMM, periodoLetivoOf, todayInSaoPaulo } from "../../shared/time.js";
 import { overlaps } from "../grade-horaria/grade-horaria.allocator.js";
 import { rankCandidatos, type Candidato } from "./substituicoes.ranking.js";
 import type { SubstituicoesRepository } from "./substituicoes.repository.js";
-import type { CreateSubstituicaoInput } from "./substituicoes.schemas.js";
+import type { CreateSubstituicaoInput, RespondSubstituicaoInput } from "./substituicoes.schemas.js";
 
 type Horario = { horarioInicio: Date; horarioFim: Date };
 type Ausencia = { id: string; data: Date; aula: Horario & { professorId: string; disciplinaId: string; diaSemana: string } };
@@ -32,6 +34,47 @@ export class SubstituicoesService {
       }
 
       return repository.create({ ausenciaId: ausencia.id, substitutoId: input.substitutoId }, designadoPorId);
+    });
+  }
+
+  findMine(status: StatusSubstituicao | undefined, actor: Actor) {
+    return this.substituicoesRepository.findBySubstituto(actor.id, status);
+  }
+
+  respond(id: string, input: RespondSubstituicaoInput, actor: Actor) {
+    return this.substituicoesRepository.transaction(async (repository) => {
+      const substituicao = await repository.findByIdComAusencia(id);
+      const isSubstituto = substituicao?.substitutoId === actor.id;
+
+      if (!substituicao || (!isSubstituto && !hasRole(actor, "GESTAO"))) {
+        throw new HttpError(404, "Substitution not found");
+      }
+
+      if (!isSubstituto) {
+        throw new HttpError(403, "Only the designated substitute can respond");
+      }
+
+      if (substituicao.status !== "PENDENTE") {
+        throw new HttpError(409, "Substitution already answered");
+      }
+
+      if (substituicao.ausencia.data.toISOString().slice(0, 10) < todayInSaoPaulo()) {
+        throw new HttpError(400, "Cannot respond to a past absence");
+      }
+
+      if (input.status === "ACEITA") {
+        const [ausencia, substituto] = await Promise.all([
+          repository.findAusenciaById(substituicao.ausenciaId),
+          repository.findUserById(substituicao.substitutoId)
+        ]);
+        const motivo = await this.verificarElegibilidade(repository, ausencia!, substituto, substituicao.id);
+
+        if (motivo) {
+          throw motivo;
+        }
+      }
+
+      return repository.responder(id, input.status, new Date());
     });
   }
 
@@ -115,19 +158,19 @@ export class SubstituicoesService {
     await this.substituicoesRepository.remove(id);
   }
 
-  private async verificarElegibilidade(repository: SubstituicoesRepository, ausencia: Ausencia, substituto: Substituto | null) {
+  private async verificarElegibilidade(repository: SubstituicoesRepository, ausencia: Ausencia, substituto: Substituto | null, ignorarId?: string) {
     const motivo = this.verificarPerfil(ausencia, substituto);
 
     if (motivo) {
       return motivo;
     }
 
-    if (await repository.findAtivaByAusencia(ausencia.id)) {
+    if (await repository.findAtivaByAusencia(ausencia.id, ignorarId)) {
       return new HttpError(409, "Absence already has a substitute");
     }
 
     const aulasDoSubstituto = await repository.findAulasOfProfessorNoDia(substituto!.id, ausencia.aula.diaSemana);
-    const substituicoesNaData = (await repository.findAtivasDoSubstitutoNaData(substituto!.id, ausencia.data)).map(
+    const substituicoesNaData = (await repository.findAtivasDoSubstitutoNaData(substituto!.id, ausencia.data, ignorarId)).map(
       (item) => item.ausencia.aula
     );
 

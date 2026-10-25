@@ -1,13 +1,18 @@
 import { Router } from "express";
 import { getActor, requireRole } from "../../shared/auth.js";
 import { asyncHandler } from "../../shared/http.js";
-import { createSubstituicaoSchema } from "./substituicoes.schemas.js";
+import { candidatesQuerySchema, createSubstituicaoSchema } from "./substituicoes.schemas.js";
 import type { SubstituicoesService } from "./substituicoes.service.js";
 
 export class SubstituicoesController {
   readonly router = Router();
 
   constructor(private readonly substituicoesService: SubstituicoesService) {
+    this.router.get("/candidates", requireRole("GESTAO"), asyncHandler(async (req, res) => {
+      const { ausenciaId } = candidatesQuerySchema.parse(req.query);
+      res.json(await this.substituicoesService.findCandidates(ausenciaId));
+    }));
+
     this.router.post("/", requireRole("GESTAO"), asyncHandler(async (req, res) => {
       const actor = getActor(req);
       const input = createSubstituicaoSchema.parse(req.body);

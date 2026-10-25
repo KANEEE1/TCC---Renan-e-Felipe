@@ -166,4 +166,68 @@ describe("substitutions", () => {
     expect(await prisma.ausenciaAula.count()).toBe(0);
     expect(await prisma.substituicao.count()).toBe(0);
   });
+
+  describe("GET /substitutions/candidates", () => {
+    const candidates = (token: string, ausenciaId: string) =>
+      request(app).get("/substitutions/candidates").query({ ausenciaId }).set(auth(token));
+    const periodo = (data: string) => {
+      const d = new Date(`${data}T00:00:00Z`);
+      return `${d.getUTCFullYear()}-${d.getUTCMonth() < 6 ? 1 : 2}`;
+    };
+    const setDisciplinas = (id: string, disciplinaIds: string[]) =>
+      request(app).put(`/teachers/${id}`).send({ disciplinaIds });
+    const addDisp = (id: string, data: string, inicio = "07:00", fim = "12:00") =>
+      request(app).post(`/teachers/${id}/availability`).send({
+        periodoLetivo: periodo(data),
+        diaSemana: "QUARTA",
+        horarioInicio: inicio,
+        horarioFim: fim
+      });
+
+    it("forbids PROFESSOR, 404 for unknown absence, 409 when PENDENTE exists", async () => {
+      const s = await setup();
+      expect((await candidates(s.tokens.p1, s.ausenciaId)).status).toBe(403);
+      expect((await candidates(s.tokens.gestor, "nao-existe")).status).toBe(404);
+      await designar(s.tokens.gestor, s.ausenciaId, s.p2.id);
+      expect((await candidates(s.tokens.gestor, s.ausenciaId)).status).toBe(409);
+    });
+
+    it("excludes titular, inactive, overlapping and those who refused", async () => {
+      const s = await setup();
+      const p4 = await createUser({ email: "p4@test.com", roles: ["PROFESSOR"], name: "Prof Quatro" });
+      const p5 = await createUser({ email: "p5@test.com", roles: ["PROFESSOR"], name: "Prof Cinco" });
+      await prisma.user.update({ where: { id: s.p3.id }, data: { ativo: false } });
+      await s.mkAula(p4.id, "QUARTA", "09:00", "11:00", "T4");
+      const rec = await designar(s.tokens.gestor, s.ausenciaId, p5.id);
+      await prisma.substituicao.update({ where: { id: rec.body.id }, data: { status: "RECUSADA" } });
+
+      const res = await candidates(s.tokens.gestor, s.ausenciaId);
+      expect(res.status).toBe(200);
+      expect(res.body.map((c: { id: string }) => c.id)).toEqual([s.p2.id]);
+    });
+
+    it("sets lecionaDisciplina and disponivel flags, ranks teachers first and hides email", async () => {
+      const s = await setup();
+      await setDisciplinas(s.p3.id, [s.disciplina.body.id]);
+      await addDisp(s.p2.id, s.data);
+      await addDisp(s.p3.id, s.data, "09:00", "10:00");
+
+      const res = await candidates(s.tokens.gestor, s.ausenciaId);
+      expect(res.status).toBe(200);
+      const byId = Object.fromEntries(res.body.map((c: { id: string }) => [c.id, c]));
+      expect(byId[s.p3.id]).toMatchObject({ lecionaDisciplina: true, disponivel: false });
+      expect(byId[s.p2.id]).toMatchObject({ lecionaDisciplina: false, disponivel: true });
+      expect(res.body[0].id).toBe(s.p3.id);
+      expect(JSON.stringify(res.body)).not.toContain("email");
+      expect(JSON.stringify(res.body)).not.toContain("@test.com");
+    });
+
+    it("designating the first candidate returns 201", async () => {
+      const s = await setup();
+      await setDisciplinas(s.p3.id, [s.disciplina.body.id]);
+      const res = await candidates(s.tokens.gestor, s.ausenciaId);
+      expect(res.body.length).toBeGreaterThan(0);
+      expect((await designar(s.tokens.gestor, s.ausenciaId, res.body[0].id)).status).toBe(201);
+    });
+  });
 });

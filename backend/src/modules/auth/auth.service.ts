@@ -23,6 +23,11 @@ export class AuthService {
       throw new HttpError(401, "Invalid credentials");
     }
 
+    // Só depois da senha conferida, para não revelar quais e-mails existem.
+    if (!user.ativo) {
+      throw new HttpError(403, "Seu acesso foi desativado. Procure a coordenação.");
+    }
+
     return this.session(user);
   }
 

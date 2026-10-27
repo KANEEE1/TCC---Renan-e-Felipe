@@ -15,19 +15,18 @@ interface MeDTO {
   email: string;
   celular: string | null;
   roles: ("GESTAO" | "PROFESSOR")[];
-  departamento: string | null;
-  bio: string | null;
 }
 
 interface TeacherSelfDTO {
   disciplinas: Subject[];
 }
 
-const EMPTY = { name: "", email: "", phone: "", department: "Ciências Exatas", subjectIds: [] as string[], bio: "" };
+const EMPTY = { name: "", email: "", phone: "" };
 
 export function ProfileEdit() {
-  const [subjectOptions, setSubjectOptions] = useState<Subject[]>([]);
   const [formData, setFormData] = useState(EMPTY);
+  // Disciplinas são definidas pela gestão: aqui o professor só as consulta.
+  const [subjects, setSubjects] = useState<Subject[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [isProfessor, setIsProfessor] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,40 +34,23 @@ export function ProfileEdit() {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    api.get<Subject[]>("/disciplinas").then(setSubjectOptions).catch(() => setSubjectOptions([]));
-
     api.get<MeDTO & { id: string }>("/auth/me").then(async (me) => {
       setUserId(me.id);
       const professor = me.roles.includes("PROFESSOR");
       setIsProfessor(professor);
 
-      let subjectIds: string[] = [];
       if (professor) {
         try {
           const teacher = await api.get<TeacherSelfDTO>(`/teachers/${me.id}`);
-          subjectIds = teacher.disciplinas.map((d) => d.id);
+          setSubjects(teacher.disciplinas);
         } catch {
           // self isn't resolvable as a teacher record yet; leave empty
         }
       }
 
-      setFormData({
-        name: me.name,
-        email: me.email,
-        phone: me.celular ?? "",
-        department: me.departamento ?? "Ciências Exatas",
-        subjectIds,
-        bio: me.bio ?? ""
-      });
+      setFormData({ name: me.name, email: me.email, phone: me.celular ?? "" });
     });
   }, []);
-
-  const handleSubjectToggle = (subjectId: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      subjectIds: prev.subjectIds.includes(subjectId) ? prev.subjectIds.filter((id) => id !== subjectId) : [...prev.subjectIds, subjectId]
-    }));
-  };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -80,14 +62,8 @@ export function ProfileEdit() {
     try {
       await api.put("/auth/me", {
         name: formData.name,
-        celular: formData.phone || undefined,
-        departamento: formData.department || undefined,
-        bio: formData.bio || undefined
+        celular: formData.phone || undefined
       });
-
-      if (isProfessor) {
-        await api.put(`/teachers/${userId}`, { disciplinaIds: formData.subjectIds });
-      }
 
       setSaved(true);
     } catch (err) {
@@ -155,64 +131,27 @@ export function ProfileEdit() {
               />
             </div>
 
-            <div>
-              <label className="mb-2 block text-gray-700">Departamento</label>
-              <select
-                value={formData.department}
-                onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="Ciências Exatas">Ciências Exatas</option>
-                <option value="Ciências Humanas">Ciências Humanas</option>
-                <option value="Linguagens">Linguagens</option>
-                <option value="Ciências da Natureza">Ciências da Natureza</option>
-                <option value="Coordenação Pedagógica">Coordenação Pedagógica</option>
-              </select>
-            </div>
-
             {isProfessor && (
               <div>
-                <label className="mb-2 block text-gray-700">Disciplinas que Leciona</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {subjectOptions.map((subject) => (
-                    <label
-                      key={subject.id}
-                      className={`flex cursor-pointer items-center rounded-lg border p-3 transition-colors ${
-                        formData.subjectIds.includes(subject.id) ? "border-blue-500 bg-blue-50" : "border-gray-300 bg-white"
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={formData.subjectIds.includes(subject.id)}
-                        onChange={() => handleSubjectToggle(subject.id)}
-                        className="mr-2"
-                      />
-                      <span className="text-sm text-gray-900">{subject.nome}</span>
-                    </label>
-                  ))}
-                </div>
+                <span className="mb-2 block text-gray-700">Disciplinas que leciona</span>
+                {subjects.length === 0 ? (
+                  <p className="text-sm text-gray-500">Nenhuma disciplina atribuída.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {subjects.map((subject) => (
+                      <span key={subject.id} className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-sm text-blue-700">
+                        {subject.nome}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <p className="mt-1 text-xs text-gray-400">Definidas pela coordenação.</p>
               </div>
             )}
-
-            <div>
-              <label className="mb-2 block text-gray-700">Biografia</label>
-              <textarea
-                value={formData.bio}
-                onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
-                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Fale um pouco sobre você..."
-                rows={4}
-              />
-            </div>
           </div>
 
           {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
           {saved && <p className="mt-3 text-sm text-emerald-600">Perfil atualizado.</p>}
-        </div>
-
-        <div className="rounded-lg border-l-4 border-blue-500 bg-blue-50 p-4">
-          <h4 className="text-blue-800">Informação</h4>
-          <p className="mt-1 text-sm text-blue-700">Para alterar sua senha, e-mail ou outras configurações de conta, entre em contato com a coordenação.</p>
         </div>
 
         <div className="fixed bottom-16 left-0 right-0 z-40 border-t bg-white p-4">

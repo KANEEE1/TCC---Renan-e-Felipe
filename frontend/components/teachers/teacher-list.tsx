@@ -36,19 +36,15 @@ interface Teacher {
 export function TeacherList() {
   const [searchTerm, setSearchTerm] = useState("");
   const [teachers, setTeachers] = useState<Teacher[]>([]);
-  // "Editar" (disciplinas e status) é da gestão. "Horários": o próprio professor edita; a gestão só visualiza.
-  const [sessionUserId, setSessionUserId] = useState<string | null>(null);
+  // "Editar" (disciplinas e status) é da gestão. "Disponibilidade" é visível a todos; só o próprio professor a altera.
   const [isManagement, setIsManagement] = useState(false);
 
   useEffect(() => {
-    const user = getSessionUser();
-    setSessionUserId(user?.id ?? null);
-    setIsManagement(!!user?.roles.includes("GESTAO"));
+    setIsManagement(!!getSessionUser()?.roles.includes("GESTAO"));
     api.get<Teacher[]>("/teachers").then(setTeachers).catch(() => setTeachers([]));
   }, []);
 
-  const canSeeAvailability = (teacherId: string) => isManagement || teacherId === sessionUserId;
-  const actionCount = (teacherId: string) => (isManagement ? 1 : 0) + 1 + (canSeeAvailability(teacherId) ? 1 : 0);
+  const actionCount = isManagement ? 3 : 2;
 
   const filteredTeachers = teachers.filter(
     (teacher) =>
@@ -136,7 +132,7 @@ export function TeacherList() {
               </div>
             </div>
 
-            <div className={`grid divide-x divide-slate-100 border-t border-slate-100 ${GRID_COLS[actionCount(teacher.id)]}`}>
+            <div className={`grid divide-x divide-slate-100 border-t border-slate-100 ${GRID_COLS[actionCount]}`}>
               {isManagement && (
                 <Link
                   href={`/teachers/edit/${teacher.id}`}
@@ -153,15 +149,13 @@ export function TeacherList() {
                 <BookOpen size={14} />
                 Agenda
               </Link>
-              {canSeeAvailability(teacher.id) && (
-                <Link
-                  href={`/teachers/${teacher.id}/availability`}
-                  className="flex items-center justify-center gap-1.5 py-3 text-xs text-slate-500 transition-colors hover:bg-purple-50 hover:text-purple-600"
-                >
-                  <Calendar size={14} />
-                  Horários
-                </Link>
-              )}
+              <Link
+                href={`/teachers/${teacher.id}/availability`}
+                className="flex items-center justify-center gap-1.5 py-3 text-xs text-slate-500 transition-colors hover:bg-purple-50 hover:text-purple-600"
+              >
+                <Calendar size={14} />
+                Disponibilidade
+              </Link>
             </div>
           </div>
         ))}

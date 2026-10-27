@@ -14,11 +14,6 @@ interface ClassOption {
 interface StudentDetail {
   nome: string;
   numero: string | null;
-  email: string | null;
-  telefone: string | null;
-  dataNascimento: string | null;
-  cpf: string | null;
-  endereco: string | null;
   matriculas: { turma: { id: string } }[];
 }
 
@@ -27,7 +22,8 @@ type StudentFormProps = {
   studentId?: string;
 };
 
-const EMPTY = { name: "", number: "", classId: "", email: "", phone: "", birthDate: "", cpf: "", address: "" };
+// Cadastro mínimo (LGPD): nome, número e turma. Os demais campos do aluno ficam fora do formulário.
+const EMPTY = { name: "", number: "", classId: "" };
 
 export function StudentForm({ isEdit = false, studentId }: StudentFormProps) {
   const router = useRouter();
@@ -46,12 +42,7 @@ export function StudentForm({ isEdit = false, studentId }: StudentFormProps) {
       setFormData({
         name: student.nome,
         number: student.numero ?? "",
-        classId: student.matriculas[0]?.turma.id ?? "",
-        email: student.email ?? "",
-        phone: student.telefone ?? "",
-        birthDate: student.dataNascimento ? student.dataNascimento.slice(0, 10) : "",
-        cpf: student.cpf ?? "",
-        address: student.endereco ?? ""
+        classId: student.matriculas[0]?.turma.id ?? ""
       });
     });
   }, [isEdit, studentId]);
@@ -63,12 +54,7 @@ export function StudentForm({ isEdit = false, studentId }: StudentFormProps) {
 
     const payload = {
       nome: formData.name,
-      numero: formData.number || undefined,
-      email: formData.email || undefined,
-      telefone: formData.phone || undefined,
-      dataNascimento: formData.birthDate || undefined,
-      cpf: formData.cpf || undefined,
-      endereco: formData.address || undefined
+      numero: formData.number || undefined
     };
 
     try {
@@ -140,60 +126,6 @@ export function StudentForm({ isEdit = false, studentId }: StudentFormProps) {
                   ))}
                 </select>
               </div>
-            </div>
-
-            <div>
-              <label className="mb-2 block text-gray-700">Data de Nascimento</label>
-              <input
-                type="date"
-                value={formData.birthDate}
-                onChange={(e) => setFormData({ ...formData, birthDate: e.target.value })}
-                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-black focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-
-            <div>
-              <label className="mb-2 block text-gray-700">E-mail</label>
-              <input
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-black focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                placeholder="email@aluno.com"
-              />
-            </div>
-
-            <div>
-              <label className="mb-2 block text-gray-700">Telefone</label>
-              <input
-                type="tel"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-black focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                placeholder="(11) 98765-4321"
-              />
-            </div>
-
-            <div>
-              <label className="mb-2 block text-gray-700">CPF</label>
-              <input
-                type="text"
-                value={formData.cpf}
-                onChange={(e) => setFormData({ ...formData, cpf: e.target.value })}
-                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-black focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                placeholder="123.456.789-00"
-              />
-            </div>
-
-            <div>
-              <label className="mb-2 block text-gray-700">Endereço</label>
-              <textarea
-                value={formData.address}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-black focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                placeholder="Endereço completo"
-                rows={2}
-              />
             </div>
           </div>
 

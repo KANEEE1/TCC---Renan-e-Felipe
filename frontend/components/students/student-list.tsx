@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { BarChart3, Edit, Mail, Phone, Plus, Search } from "lucide-react";
+import { BarChart3, Edit, Plus, Search } from "lucide-react";
 import { api } from "@/lib/api";
 
 const AVATAR_GRADIENTS = [
@@ -22,8 +22,6 @@ interface Student {
   id: string;
   nome: string;
   numero: string | null;
-  email: string | null;
-  telefone: string | null;
   matriculas: { turma: { nome: string } }[];
 }
 
@@ -105,16 +103,7 @@ export function StudentList() {
                 </div>
               </div>
 
-              <div className="mb-3 space-y-1">
-                <div className="flex items-center gap-2 text-xs text-slate-400">
-                  <Mail size={12} className="text-slate-300" />
-                  {student.email ?? "—"}
-                </div>
-                <div className="flex items-center gap-2 text-xs text-slate-400">
-                  <Phone size={12} className="text-slate-300" />
-                  {student.telefone ?? "—"}
-                </div>
-              </div>
+              {student.numero && <p className="mb-3 text-xs text-slate-400">Nº {student.numero}</p>}
 
               <div className="grid grid-cols-2 gap-2">
                 <Link

@@ -116,19 +116,37 @@ model Turma {
 
   aulas      Aula[]
   matriculas Matricula[]
+  cargas     CargaDisciplinaTurma[]
 
   @@unique([nome, anoLetivo])
 }
 
 model Disciplina {
-  id        String   @id @default(cuid())
-  nome      String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              String   @id @default(cuid())
+  nome            String
+  nomeNormalizado String   @unique
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   aulas       Aula[]
-  professores User[]     @relation("ProfessorDisciplinas")
+  professores User[]                 @relation("ProfessorDisciplinas")
   simulados   Simulado[]
+  cargas      CargaDisciplinaTurma[]
+}
+
+model CargaDisciplinaTurma {
+  id             String     @id @default(cuid())
+  turmaId        String
+  disciplinaId   String
+  aulasPorSemana Int
+  duracaoMinutos Int
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  turma          Turma      @relation(fields: [turmaId], references: [id], onDelete: Cascade)
+  disciplina     Disciplina @relation(fields: [disciplinaId], references: [id], onDelete: Restrict)
+
+  @@unique([turmaId, disciplinaId])
+  @@index([disciplinaId])
 }
 
 model Disponibilidade {

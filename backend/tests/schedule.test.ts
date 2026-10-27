@@ -3,8 +3,12 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { app, resetDb } from "./helpers.js";
 
 async function setupLessonDeps() {
-  const turma = await request(app).post("/classes").send({ nome: "Turma Sched", anoLetivo: 2026 });
   const disciplina = await request(app).post("/disciplinas").send({ nome: "Física" });
+  const turma = await request(app).post("/classes").send({
+    nome: "Turma Sched",
+    anoLetivo: 2026,
+    disciplinas: [{ disciplinaId: disciplina.body.id, aulasPorSemana: 2, duracaoMinutos: 120 }]
+  });
   const teacher = await request(app).post("/teachers").send({ name: "Prof Sched", email: "prof.sched@test.com", password: "senha1234" });
 
   return { turmaId: turma.body.id, disciplinaId: disciplina.body.id, professorId: teacher.body.id };
@@ -122,6 +126,53 @@ describe("schedule", () => {
 
     const weekly = await request(app).get("/schedule/weekly");
     expect(weekly.body).toHaveLength(0);
+  });
+
+  it("suggest uses the class matrix duration and rejects requests without a matrix entry", async () => {
+    const { turmaId, disciplinaId, professorId } = await setupLessonDeps();
+    await request(app).put(`/classes/${turmaId}`).send({ disciplinas: [{ disciplinaId, aulasPorSemana: 2, duracaoMinutos: 60 }] });
+    await addAvailability(professorId, "SEGUNDA", "08:00", "10:00");
+
+    const res = await request(app)
+      .post("/schedule/suggest")
+      .send({ periodoLetivo: "2026-1", pedidos: [{ professorId, disciplinaId, turmaId, quantidade: 2 }] });
+    expect(res.status).toBe(200);
+    expect(res.body.propostas.map((p: { horarioInicio: string; horarioFim: string }) => [p.horarioInicio, p.horarioFim])).toEqual([
+      ["08:00", "09:00"],
+      ["09:00", "10:00"]
+    ]);
+
+    await request(app).put(`/classes/${turmaId}`).send({ disciplinas: [] });
+    const semCarga = await request(app)
+      .post("/schedule/suggest")
+      .send({ periodoLetivo: "2026-1", pedidos: [{ professorId, disciplinaId, turmaId, quantidade: 2 }] });
+    expect(semCarga.status).toBe(400);
+    expect(semCarga.body.semCarga).toEqual([{ turmaId, disciplinaId }]);
+  });
+
+  it("suggest uses 90-minute matrix duration for horarioFim", async () => {
+    const { turmaId, disciplinaId, professorId } = await setupLessonDeps();
+    await request(app).put(`/classes/${turmaId}`).send({ disciplinas: [{ disciplinaId, aulasPorSemana: 1, duracaoMinutos: 90 }] });
+    await addAvailability(professorId, "SEGUNDA", "08:00", "12:00");
+
+    const res = await request(app)
+      .post("/schedule/suggest")
+      .send({ periodoLetivo: "2026-1", pedidos: [{ professorId, disciplinaId, turmaId, quantidade: 1 }] });
+    expect(res.status).toBe(200);
+    expect(res.body.propostas[0]).toMatchObject({ horarioInicio: "08:00", horarioFim: "09:30" });
+  });
+
+  it("suggest reports JANELA_INSUFICIENTE when duration exceeds the availability window", async () => {
+    const { turmaId, disciplinaId, professorId } = await setupLessonDeps();
+    await request(app).put(`/classes/${turmaId}`).send({ disciplinas: [{ disciplinaId, aulasPorSemana: 1, duracaoMinutos: 120 }] });
+    await addAvailability(professorId, "SEGUNDA", "08:00", "09:00");
+
+    const res = await request(app)
+      .post("/schedule/suggest")
+      .send({ periodoLetivo: "2026-1", pedidos: [{ professorId, disciplinaId, turmaId, quantidade: 1 }] });
+    expect(res.status).toBe(200);
+    expect(res.body.propostas).toHaveLength(0);
+    expect(res.body.naoAlocados[0].motivo).toBe("JANELA_INSUFICIENTE");
   });
 
   it("confirm persists the batch", async () => {

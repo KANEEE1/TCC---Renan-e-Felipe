@@ -49,6 +49,12 @@ export class GradeHorariaRepository {
     });
   }
 
+  listCargas(pares: { turmaId: string; disciplinaId: string }[]) {
+    return this.prisma.cargaDisciplinaTurma.findMany({
+      where: { OR: pares.map(({ turmaId, disciplinaId }) => ({ turmaId, disciplinaId })) }
+    });
+  }
+
   createMany(data: CreateAulaInput[]) {
     return this.prisma.$transaction(
       data.map((item) =>

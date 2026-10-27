@@ -21,12 +21,25 @@ describe("overlaps", () => {
 });
 
 describe("allocate", () => {
-  const pedido = { professorId: "p1", turmaId: "t1", quantidade: 1 };
+  const pedido = { professorId: "p1", turmaId: "t1", quantidade: 1, duracaoMinutos: 120 };
 
   it("yields 1 lesson from a 3h window", () => {
     const { propostas } = allocate([pedido], [janela("p1", "SEGUNDA", "08:00", "11:00")], []);
     expect(propostas).toHaveLength(1);
     expect(propostas[0]).toMatchObject({ diaSemana: "SEGUNDA", horarioInicio: "08:00", horarioFim: "10:00" });
+  });
+
+  it("uses the requested lesson duration", () => {
+    const { propostas } = allocate(
+      [{ ...pedido, quantidade: 3, duracaoMinutos: 50 }],
+      [janela("p1", "SEGUNDA", "08:00", "10:30")],
+      []
+    );
+    expect(propostas.map((p) => [p.horarioInicio, p.horarioFim])).toEqual([
+      ["08:00", "08:50"],
+      ["08:50", "09:40"],
+      ["09:40", "10:30"]
+    ]);
   });
 
   it("yields 2 lessons from a 4h window", () => {
@@ -80,7 +93,7 @@ describe("allocate", () => {
 
   it("does not collide two requests of the same teacher", () => {
     const { propostas } = allocate(
-      [pedido, { professorId: "p1", turmaId: "t2", quantidade: 1 }],
+      [pedido, { professorId: "p1", turmaId: "t2", quantidade: 1, duracaoMinutos: 120 }],
       [janela("p1", "SEGUNDA", "08:00", "12:00")],
       []
     );
@@ -100,8 +113,8 @@ describe("allocate", () => {
 
   it("is deterministic", () => {
     const pedidos = [
-      { professorId: "p1", turmaId: "t1", quantidade: 3 },
-      { professorId: "p2", turmaId: "t1", quantidade: 2 }
+      { professorId: "p1", turmaId: "t1", quantidade: 3, duracaoMinutos: 120 },
+      { professorId: "p2", turmaId: "t1", quantidade: 2, duracaoMinutos: 120 }
     ];
     const janelas = [
       janela("p1", "QUARTA", "08:00", "12:00"),

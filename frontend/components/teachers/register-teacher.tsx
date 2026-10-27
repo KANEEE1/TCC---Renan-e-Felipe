@@ -263,6 +263,14 @@ export function RegisterTeacher() {
               <p className="mb-3 flex items-center gap-1.5 text-xs uppercase tracking-wide text-slate-400">
                 <BookOpen size={13} /> Disciplinas *
               </p>
+              {subjectOptions.length === 0 && (
+                <p className="text-sm text-slate-500">
+                  Nenhuma disciplina cadastrada.{" "}
+                  <Link href="/disciplinas" className="text-blue-600 underline">
+                    Cadastrar disciplinas
+                  </Link>
+                </p>
+              )}
               <div className="grid grid-cols-2 gap-2">
                 {subjectOptions.map((subject) => {
                   const active = subjectIds.includes(subject.id);

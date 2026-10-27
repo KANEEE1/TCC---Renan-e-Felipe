@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import request from "supertest";
 import { createApp } from "../src/app.js";
+import { signAuthToken } from "../src/shared/auth.js";
 import { prisma } from "../src/shared/prisma.js";
 
 export const app = createApp();
@@ -41,4 +42,9 @@ export async function createUser(overrides: { email: string; roles?: ("GESTAO" |
 export async function loginAs(email: string, password = "senha1234") {
   const res = await request(app).post("/auth/login").send({ email, password });
   return res.body.token as string;
+}
+
+// Header de autenticação de um professor pelo id, sem passar pelo login.
+export function asTeacher(professorId: string) {
+  return { Authorization: `Bearer ${signAuthToken({ sub: professorId, roles: ["PROFESSOR"] })}` };
 }

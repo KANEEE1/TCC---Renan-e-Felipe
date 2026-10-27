@@ -1,5 +1,6 @@
-import { Router } from "express";
-import { asyncHandler } from "../../shared/http.js";
+import { Router, type NextFunction, type Request, type Response } from "express";
+import { getActor, requireAuth } from "../../shared/auth.js";
+import { asyncHandler, HttpError } from "../../shared/http.js";
 import { createDisponibilidadeSchema, updateDisponibilidadeSchema } from "../disponibilidade/disponibilidade.schemas.js";
 import type { DisponibilidadeService } from "../disponibilidade/disponibilidade.service.js";
 import type { GradeHorariaService } from "../grade-horaria/grade-horaria.service.js";
@@ -7,6 +8,15 @@ import { createTeacherSchema, updateTeacherSchema } from "./teachers.schemas.js"
 import type { TeachersService } from "./teachers.service.js";
 
 const createAvailabilityForTeacherSchema = createDisponibilidadeSchema.omit({ professorId: true });
+
+// Disponibilidade é do professor: só ele altera a própria (a gestão apenas consulta).
+function requireSelf(req: Request, _res: Response, next: NextFunction) {
+  if (getActor(req).id !== req.params.id) {
+    throw new HttpError(403, "Somente o próprio professor pode alterar a disponibilidade");
+  }
+
+  next();
+}
 
 export class TeachersController {
   readonly router = Router();
@@ -39,7 +49,7 @@ export class TeachersController {
       res.json(await this.disponibilidadeService.listByProfessor(req.params.id as string));
     }));
 
-    this.router.post("/:id/availability", asyncHandler(async (req, res) => {
+    this.router.post("/:id/availability", requireAuth, requireSelf, asyncHandler(async (req, res) => {
       await this.teachersService.getById(req.params.id as string);
       const input = createAvailabilityForTeacherSchema.parse(req.body);
       res.status(201).json(
@@ -47,14 +57,14 @@ export class TeachersController {
       );
     }));
 
-    this.router.put("/:id/availability/:availabilityId", asyncHandler(async (req, res) => {
+    this.router.put("/:id/availability/:availabilityId", requireAuth, requireSelf, asyncHandler(async (req, res) => {
       const input = updateDisponibilidadeSchema.parse(req.body);
       res.json(
         await this.disponibilidadeService.update(req.params.availabilityId as string, input, req.params.id as string)
       );
     }));
 
-    this.router.delete("/:id/availability/:availabilityId", asyncHandler(async (req, res) => {
+    this.router.delete("/:id/availability/:availabilityId", requireAuth, requireSelf, asyncHandler(async (req, res) => {
       await this.disponibilidadeService.remove(req.params.availabilityId as string, req.params.id as string);
       res.status(204).send();
     }));

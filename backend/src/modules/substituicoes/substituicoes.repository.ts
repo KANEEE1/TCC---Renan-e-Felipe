@@ -86,9 +86,9 @@ export class SubstituicoesRepository {
     });
   }
 
-  findDisponibilidades(professorIds: string[], diaSemana: string, periodoLetivo: string) {
+  findDisponibilidades(professorIds: string[], diaSemana: string) {
     return this.db.disponibilidade.findMany({
-      where: { professorId: { in: professorIds }, diaSemana, periodoLetivo },
+      where: { professorId: { in: professorIds }, diaSemana },
       select: { professorId: true, horarioInicio: true, horarioFim: true }
     });
   }

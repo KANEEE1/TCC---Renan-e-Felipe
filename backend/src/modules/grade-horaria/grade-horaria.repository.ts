@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import { parseTimeToDate } from "../../shared/time.js";
 import type { CreateAulaInput, UpdateAulaInput } from "./grade-horaria.schemas.js";
 
@@ -14,7 +14,74 @@ const aulaInclude = {
 };
 
 export class GradeHorariaRepository {
-  constructor(private readonly prisma: PrismaClient) {}
+  constructor(
+    private readonly prisma: PrismaClient,
+    private readonly db: Prisma.TransactionClient | PrismaClient = prisma
+  ) {}
+
+  transaction<T>(fn: (repository: GradeHorariaRepository) => Promise<T>) {
+    return this.prisma.$transaction((tx) => fn(new GradeHorariaRepository(this.prisma, tx)), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable
+    });
+  }
+
+  findTurma(id: string) {
+    return this.db.turma.findUnique({ where: { id }, select: { id: true, gradeInicio: true, gradeFim: true } });
+  }
+
+  listCargasDaTurma(turmaId: string) {
+    return this.db.cargaDisciplinaTurma.findMany({
+      where: { turmaId },
+      include: { disciplina: { select: { id: true, nome: true } } }
+    });
+  }
+
+  listJanelasDaTurma(turmaId: string) {
+    return this.db.janelaTurma.findMany({ where: { turmaId } });
+  }
+
+  listProfessoresAtivosDasDisciplinas(disciplinaIds: string[], excluidos: string[]) {
+    return this.db.user.findMany({
+      where: {
+        ativo: true,
+        roles: { has: "PROFESSOR" },
+        id: { notIn: excluidos },
+        disciplinas: { some: { id: { in: disciplinaIds } } }
+      },
+      select: { id: true, name: true, disciplinas: { select: { id: true } } }
+    });
+  }
+
+  listDisponibilidadesDosProfessores(professorIds: string[]) {
+    return this.db.disponibilidade.findMany({ where: { professorId: { in: professorIds } } });
+  }
+
+  listAulasDosProfessoresForaDaTurma(professorIds: string[], turmaId: string) {
+    return this.db.aula.findMany({ where: { professorId: { in: professorIds }, turmaId: { not: turmaId } } });
+  }
+
+  countAulasDaTurma(turmaId: string) {
+    return this.db.aula.count({ where: { turmaId } });
+  }
+
+  countAulasComRegistro(turmaId: string) {
+    return this.db.aula.count({
+      where: { turmaId, OR: [{ presencas: { some: {} } }, { ausencias: { some: {} } }] }
+    });
+  }
+
+  async replaceAulasDaTurma(turmaId: string, aulas: Omit<CreateAulaInput, "turmaId">[]) {
+    await this.db.aula.deleteMany({ where: { turmaId } });
+    const { count } = await this.db.aula.createMany({
+      data: aulas.map((aula) => ({
+        ...aula,
+        turmaId,
+        horarioInicio: parseTimeToDate(aula.horarioInicio),
+        horarioFim: parseTimeToDate(aula.horarioFim)
+      }))
+    });
+    return count;
+  }
 
   list() {
     return this.prisma.aula.findMany({

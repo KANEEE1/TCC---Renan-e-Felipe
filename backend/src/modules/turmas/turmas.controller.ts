@@ -1,8 +1,9 @@
 import { Router } from "express";
+import { requireAuth, requireRole } from "../../shared/auth.js";
 import { asyncHandler } from "../../shared/http.js";
 import { assignStudentsSchema } from "../matriculas/matriculas.schemas.js";
 import type { MatriculasService } from "../matriculas/matriculas.service.js";
-import { createTurmaSchema, updateTurmaSchema } from "./turmas.schemas.js";
+import { createTurmaSchema, putJanelasSchema, updateTurmaSchema } from "./turmas.schemas.js";
 import type { TurmasService } from "./turmas.service.js";
 
 export class TurmasController {
@@ -18,6 +19,15 @@ export class TurmasController {
 
     this.router.get("/:id", asyncHandler(async (req, res) => {
       res.json(await this.turmasService.getById(req.params.id as string));
+    }));
+
+    this.router.get("/:id/janelas", asyncHandler(async (req, res) => {
+      res.json(await this.turmasService.listJanelas(req.params.id as string));
+    }));
+
+    this.router.put("/:id/janelas", requireAuth, requireRole("GESTAO"), asyncHandler(async (req, res) => {
+      const input = putJanelasSchema.parse(req.body);
+      res.json(await this.turmasService.replaceJanelas(req.params.id as string, input));
     }));
 
     this.router.post("/", asyncHandler(async (req, res) => {

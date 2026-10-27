@@ -170,15 +170,10 @@ describe("substitutions", () => {
   describe("GET /substitutions/candidates", () => {
     const candidates = (token: string, ausenciaId: string) =>
       request(app).get("/substitutions/candidates").query({ ausenciaId }).set(auth(token));
-    const periodo = (data: string) => {
-      const d = new Date(`${data}T00:00:00Z`);
-      return `${d.getUTCFullYear()}-${d.getUTCMonth() < 6 ? 1 : 2}`;
-    };
     const setDisciplinas = (id: string, disciplinaIds: string[]) =>
       request(app).put(`/teachers/${id}`).set(asGestao()).send({ disciplinaIds });
     const addDisp = (id: string, data: string, inicio = "07:00", fim = "12:00") =>
       request(app).post(`/teachers/${id}/availability`).set(asTeacher(id)).send({
-        periodoLetivo: periodo(data),
         diaSemana: "QUARTA",
         horarioInicio: inicio,
         horarioFim: fim

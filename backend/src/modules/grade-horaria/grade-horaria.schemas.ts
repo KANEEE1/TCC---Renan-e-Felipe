@@ -15,7 +15,6 @@ export const createAulaSchema = z.object({
 });
 
 export const suggestScheduleSchema = z.object({
-  periodoLetivo: z.string().min(1),
   pedidos: z
     .array(
       z.object({
@@ -34,9 +33,23 @@ export const confirmScheduleSchema = z.object({
   aulas: z.array(createAulaSchema).min(1)
 });
 
+export const generateScheduleSchema = z.object({
+  turmaId: z.string().cuid(),
+  professoresExcluidos: z.array(z.string().cuid()).optional()
+});
+
+export const replaceScheduleSchema = z.object({
+  turmaId: z.string().cuid(),
+  aulas: z
+    .array(createAulaSchema.omit({ turmaId: true, sala: true, tipo: true }))
+    .min(1)
+});
+
 export const updateAulaSchema = createAulaSchema.partial();
 
 export type CreateAulaInput = z.infer<typeof createAulaSchema>;
 export type UpdateAulaInput = z.infer<typeof updateAulaSchema>;
 export type SuggestScheduleInput = z.infer<typeof suggestScheduleSchema>;
 export type ConfirmScheduleInput = z.infer<typeof confirmScheduleSchema>;
+export type GenerateScheduleInput = z.infer<typeof generateScheduleSchema>;
+export type ReplaceScheduleInput = z.infer<typeof replaceScheduleSchema>;

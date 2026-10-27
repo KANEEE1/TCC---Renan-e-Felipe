@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
+import { parseTimeToDate } from "../../shared/time.js";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -8,6 +9,12 @@ export interface LinhaMatriz {
   disciplinaId: string;
   aulasPorSemana: number;
   duracaoMinutos: number;
+}
+
+export interface JanelaHorario {
+  diaSemana: string;
+  horarioInicio: string;
+  horarioFim: string;
 }
 
 const cargasInclude = {
@@ -74,5 +81,25 @@ export class TurmasRepository {
   async substituirMatriz(turmaId: string, linhas: LinhaMatriz[]) {
     await this.db.cargaDisciplinaTurma.deleteMany({ where: { turmaId } });
     await this.db.cargaDisciplinaTurma.createMany({ data: linhas.map((linha) => ({ ...linha, turmaId })) });
+  }
+
+  exists(id: string) {
+    return this.db.turma.findUnique({ where: { id }, select: { id: true } });
+  }
+
+  listJanelas(turmaId: string) {
+    return this.db.janelaTurma.findMany({ where: { turmaId } });
+  }
+
+  async substituirJanelas(turmaId: string, janelas: JanelaHorario[]) {
+    await this.db.janelaTurma.deleteMany({ where: { turmaId } });
+    await this.db.janelaTurma.createMany({
+      data: janelas.map((janela) => ({
+        turmaId,
+        diaSemana: janela.diaSemana,
+        horarioInicio: parseTimeToDate(janela.horarioInicio),
+        horarioFim: parseTimeToDate(janela.horarioFim)
+      }))
+    });
   }
 }

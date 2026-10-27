@@ -1,6 +1,14 @@
 import { Router } from "express";
+import { requireAuth, requireRole } from "../../shared/auth.js";
 import { asyncHandler } from "../../shared/http.js";
-import { confirmScheduleSchema, createAulaSchema, suggestScheduleSchema, updateAulaSchema } from "./grade-horaria.schemas.js";
+import {
+  confirmScheduleSchema,
+  createAulaSchema,
+  generateScheduleSchema,
+  replaceScheduleSchema,
+  suggestScheduleSchema,
+  updateAulaSchema
+} from "./grade-horaria.schemas.js";
 import type { GradeHorariaService } from "./grade-horaria.service.js";
 
 export class GradeHorariaController {
@@ -27,6 +35,16 @@ export class GradeHorariaController {
     this.router.post("/confirm", asyncHandler(async (req, res) => {
       const input = confirmScheduleSchema.parse(req.body);
       res.status(201).json({ criadas: await this.gradeHorariaService.confirm(input) });
+    }));
+
+    this.router.post("/generate", requireAuth, requireRole("GESTAO"), asyncHandler(async (req, res) => {
+      const input = generateScheduleSchema.parse(req.body);
+      res.json(await this.gradeHorariaService.generate(input));
+    }));
+
+    this.router.post("/replace", requireAuth, requireRole("GESTAO"), asyncHandler(async (req, res) => {
+      const input = replaceScheduleSchema.parse(req.body);
+      res.status(201).json({ criadas: await this.gradeHorariaService.replace(input) });
     }));
 
     this.router.post("/", asyncHandler(async (req, res) => {

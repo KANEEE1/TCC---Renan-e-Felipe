@@ -16,6 +16,52 @@ describe("classes", () => {
     expect(list.body).toHaveLength(1);
   });
 
+  it("saves and returns the grade period as YYYY-MM-DD", async () => {
+    const base = { nome: "Turma P", anoLetivo: 2026 };
+    const created = await request(app).post("/classes").send({ ...base, gradeInicio: "2026-08-03", gradeFim: "2026-12-18" });
+    expect(created.status).toBe(201);
+    expect(created.body).toMatchObject({ gradeInicio: "2026-08-03", gradeFim: "2026-12-18" });
+
+    const got = await request(app).get(`/classes/${created.body.id}`);
+    expect(got.body).toMatchObject({ gradeInicio: "2026-08-03", gradeFim: "2026-12-18" });
+    const list = await request(app).get("/classes");
+    expect(list.body[0]).toMatchObject({ gradeInicio: "2026-08-03", gradeFim: "2026-12-18" });
+
+    const upd = await request(app).put(`/classes/${created.body.id}`).send({ gradeFim: "2026-12-20" });
+    expect(upd.status).toBe(200);
+    expect(upd.body).toMatchObject({ gradeInicio: "2026-08-03", gradeFim: "2026-12-20" });
+
+    const none = await request(app).post("/classes").send({ nome: "Sem período", anoLetivo: 2026 });
+    expect(none.body).toMatchObject({ gradeInicio: null, gradeFim: null });
+  });
+
+  it("a PUT with only the period keeps the shift and the curriculum matrix", async () => {
+    const created = await request(app)
+      .post("/classes")
+      .send({ nome: "Turma M", anoLetivo: 2026, turno: "Manhã", disciplinas: [{ nome: "Física", aulasPorSemana: 2, duracaoMinutos: 90 }] });
+    expect(created.status).toBe(201);
+
+    const upd = await request(app).put(`/classes/${created.body.id}`).send({ gradeInicio: "2026-02-02", gradeFim: "2026-06-30" });
+    expect(upd.status).toBe(200);
+    expect(upd.body).toMatchObject({ turno: "Manhã", gradeInicio: "2026-02-02", gradeFim: "2026-06-30" });
+    expect(upd.body.cargas).toEqual([expect.objectContaining({ aulasPorSemana: 2, duracaoMinutos: 90 })]);
+  });
+
+  it("validates the grade period", async () => {
+    const base = { nome: "Turma V", anoLetivo: 2026 };
+    const post = (extra: object) => request(app).post("/classes").send({ ...base, ...extra });
+    expect((await post({ gradeInicio: "2026-08-03" })).status).toBe(400);
+    expect((await post({ gradeFim: "2026-08-03" })).status).toBe(400);
+    expect((await post({ gradeInicio: "2026-12-18", gradeFim: "2026-08-03" })).status).toBe(400);
+    expect((await post({ gradeInicio: "2026-02-30", gradeFim: "2026-08-03" })).status).toBe(400);
+    expect((await post({ gradeInicio: "abc", gradeFim: "2026-08-03" })).status).toBe(400);
+    expect(await request(app).get("/classes").then((r) => r.body)).toHaveLength(0);
+
+    const ok = await post({ gradeInicio: "2026-08-03", gradeFim: "2026-12-18" });
+    const bad = await request(app).put(`/classes/${ok.body.id}`).send({ gradeFim: "2026-01-01" });
+    expect(bad.status).toBe(400);
+  });
+
   it("rejects a duplicate nome+anoLetivo combination", async () => {
     await request(app).post("/classes").send({ nome: "Turma A", anoLetivo: 2026 });
     const dup = await request(app).post("/classes").send({ nome: "Turma A", anoLetivo: 2026 });

@@ -14,7 +14,6 @@ const timeSchema = z.string().regex(/^\d{2}:\d{2}$/);
 
 export const createDisponibilidadeSchema = z.object({
   professorId: z.string().cuid(),
-  periodoLetivo: z.string().min(1),
   diaSemana: diaSemanaSchema,
   horarioInicio: timeSchema,
   horarioFim: timeSchema
@@ -22,7 +21,6 @@ export const createDisponibilidadeSchema = z.object({
 
 export const updateDisponibilidadeSchema = z
   .object({
-    periodoLetivo: z.string().min(1),
     diaSemana: diaSemanaSchema,
     horarioInicio: timeSchema,
     horarioFim: timeSchema

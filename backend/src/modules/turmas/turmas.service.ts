@@ -1,13 +1,14 @@
 import { HttpError } from "../../shared/http.js";
+import { formatTimeHHMM, parseDateOnly } from "../../shared/time.js";
 import { normalizarNome } from "../../shared/normalizar-nome.js";
-import type { CargaInput, CreateTurmaInput, UpdateTurmaInput } from "./turmas.schemas.js";
-import type { LinhaMatriz, TurmasRepository } from "./turmas.repository.js";
+import type { CargaInput, CreateTurmaInput, PutJanelasInput, UpdateTurmaInput } from "./turmas.schemas.js";
+import type { JanelaHorario, LinhaMatriz, TurmasRepository } from "./turmas.repository.js";
 
 export class TurmasService {
   constructor(private readonly turmasRepository: TurmasRepository) {}
 
-  list() {
-    return this.turmasRepository.list();
+  async list() {
+    return (await this.turmasRepository.list()).map(formatPeriodo);
   }
 
   async getById(id: string) {
@@ -17,11 +18,13 @@ export class TurmasService {
       throw new HttpError(404, "Class not found");
     }
 
-    return turma;
+    return formatPeriodo(turma);
   }
 
   async create(input: CreateTurmaInput) {
-    const { disciplinas, ...data } = input;
+    const { disciplinas, ...rest } = input;
+    assertPeriodo(rest.gradeInicio, rest.gradeFim);
+    const data = toData(rest);
 
     const turmaId = await this.turmasRepository.transaction(async (repository) => {
       const turma = await repository.create(data);
@@ -35,8 +38,10 @@ export class TurmasService {
   }
 
   async update(id: string, input: UpdateTurmaInput) {
-    await this.getById(id);
-    const { disciplinas, ...data } = input;
+    const atual = await this.getById(id);
+    const { disciplinas, ...rest } = input;
+    assertPeriodo(rest.gradeInicio ?? atual.gradeInicio ?? undefined, rest.gradeFim ?? atual.gradeFim ?? undefined);
+    const data = toData(rest);
 
     await this.turmasRepository.transaction(async (repository) => {
       await repository.update(id, data);
@@ -46,6 +51,39 @@ export class TurmasService {
     });
 
     return this.getById(id);
+  }
+
+  async listJanelas(turmaId: string): Promise<JanelaHorario[]> {
+    if (!(await this.turmasRepository.exists(turmaId))) {
+      throw new HttpError(404, "Class not found");
+    }
+
+    const janelas = (await this.turmasRepository.listJanelas(turmaId)).map((janela) => ({
+      diaSemana: janela.diaSemana,
+      horarioInicio: formatTimeHHMM(janela.horarioInicio),
+      horarioFim: formatTimeHHMM(janela.horarioFim)
+    }));
+    return ordenarJanelas(janelas);
+  }
+
+  async replaceJanelas(turmaId: string, input: PutJanelasInput) {
+    if (!(await this.turmasRepository.exists(turmaId))) {
+      throw new HttpError(404, "Class not found");
+    }
+
+    const janelas = ordenarJanelas(input.janelas);
+    janelas.forEach((janela, index) => {
+      if (janela.horarioFim <= janela.horarioInicio) {
+        throw new HttpError(400, "O fim da janela deve ser depois do início");
+      }
+      const anterior = janelas[index - 1];
+      if (anterior && anterior.diaSemana === janela.diaSemana && janela.horarioInicio < anterior.horarioFim) {
+        throw new HttpError(400, "Janelas sobrepostas no mesmo dia");
+      }
+    });
+
+    await this.turmasRepository.transaction((repository) => repository.substituirJanelas(turmaId, janelas));
+    return this.listJanelas(turmaId);
   }
 
   private async resolverMatriz(repository: TurmasRepository, cargas: CargaInput[]) {
@@ -80,4 +118,38 @@ export class TurmasService {
 
     return linhas;
   }
+}
+
+const ORDEM_DIAS = ["SEGUNDA", "TERCA", "QUARTA", "QUINTA", "SEXTA", "SABADO", "DOMINGO"];
+
+function ordenarJanelas<T extends JanelaHorario>(janelas: T[]) {
+  return [...janelas].sort(
+    (a, b) =>
+      ORDEM_DIAS.indexOf(a.diaSemana) - ORDEM_DIAS.indexOf(b.diaSemana) || a.horarioInicio.localeCompare(b.horarioInicio)
+  );
+}
+
+function assertPeriodo(inicio?: string, fim?: string) {
+  if ((inicio === undefined) !== (fim === undefined)) {
+    throw new HttpError(400, "Informe gradeInicio e gradeFim juntos");
+  }
+  if (inicio !== undefined && fim !== undefined && fim < inicio) {
+    throw new HttpError(400, "gradeFim deve ser igual ou posterior a gradeInicio");
+  }
+}
+
+function toData<T extends { gradeInicio?: string; gradeFim?: string }>({ gradeInicio, gradeFim, ...rest }: T) {
+  return {
+    ...rest,
+    ...(gradeInicio !== undefined && { gradeInicio: parseDateOnly(gradeInicio) }),
+    ...(gradeFim !== undefined && { gradeFim: parseDateOnly(gradeFim) })
+  };
+}
+
+function formatPeriodo<T extends { gradeInicio: Date | null; gradeFim: Date | null }>(turma: T) {
+  return {
+    ...turma,
+    gradeInicio: turma.gradeInicio?.toISOString().slice(0, 10) ?? null,
+    gradeFim: turma.gradeFim?.toISOString().slice(0, 10) ?? null
+  };
 }

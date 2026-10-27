@@ -1,19 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { DayPicker, type DateRange } from "react-day-picker";
-import { ptBR } from "react-day-picker/locale";
-import "react-day-picker/style.css";
+import { useRef } from "react";
+import { CalendarDays } from "lucide-react";
 
 // Datas "YYYY-MM-DD" são tratadas sem fuso (split), nunca via new Date(string).
 export function parseIsoDate(iso: string) {
   const [y, m, d] = iso.split("-").map(Number);
   return new Date(y, m - 1, d);
-}
-
-export function toIsoDate(date: Date) {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
 export function formatIsoDate(iso: string) {
@@ -36,72 +29,62 @@ interface PeriodPickerProps {
   onChange: (inicio: string | null, fim: string | null) => void;
 }
 
-export function PeriodPicker({ inicio, fim, onChange }: PeriodPickerProps) {
-  const [months, setMonths] = useState(1);
-  const year = new Date().getFullYear();
-
-  useEffect(() => {
-    const query = window.matchMedia("(min-width: 768px)");
-    const update = () => setMonths(query.matches ? 2 : 1);
-    update();
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
-  }, []);
-
-  const shortcuts = [
-    { label: "1º semestre", from: `${year}-01-01`, to: `${year}-06-30` },
-    { label: "2º semestre", from: `${year}-07-01`, to: `${year}-12-31` },
-    { label: "Ano inteiro", from: `${year}-01-01`, to: `${year}-12-31` }
-  ];
-
-  const selected: DateRange | undefined = inicio
-    ? { from: parseIsoDate(inicio), to: fim ? parseIsoDate(fim) : undefined }
-    : undefined;
+function DateField({
+  label,
+  value,
+  min,
+  onChange
+}: {
+  label: string;
+  value: string | null;
+  min?: string;
+  onChange: (value: string | null) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap gap-2">
-        {shortcuts.map((s) => {
-          const active = inicio === s.from && fim === s.to;
-          return (
-            <button
-              key={s.label}
-              type="button"
-              aria-pressed={active}
-              onClick={() => onChange(s.from, s.to)}
-              className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
-                active
-                  ? "border-teal-600 bg-teal-600 text-white"
-                  : "border-gray-300 bg-white text-gray-700 hover:border-teal-400"
-              }`}
-            >
-              {s.label}
-            </button>
-          );
-        })}
+    <label
+      className="group flex cursor-pointer flex-col gap-1.5 rounded-2xl border border-slate-200 bg-white p-4 transition-colors focus-within:border-teal-500 focus-within:ring-2 focus-within:ring-teal-100 hover:border-teal-300"
+      // Abre o seletor nativo ao tocar em qualquer parte do campo (onde o navegador suporta).
+      onClick={() => inputRef.current?.showPicker?.()}
+    >
+      <span className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">
+        <CalendarDays size={14} className="text-teal-600" />
+        {label}
+      </span>
+      <input
+        ref={inputRef}
+        type="date"
+        lang="pt-BR"
+        value={value ?? ""}
+        min={min}
+        onChange={(event) => onChange(event.target.value || null)}
+        className="w-full bg-transparent text-lg font-semibold text-slate-800 outline-none [color-scheme:light]"
+      />
+      <span className="text-xs text-slate-400">{value ? formatIsoDate(value) : "Selecione a data"}</span>
+    </label>
+  );
+}
+
+export function PeriodPicker({ inicio, fim, onChange }: PeriodPickerProps) {
+  const invalido = Boolean(inicio && fim && fim < inicio);
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <DateField label="Data inicial" value={inicio} onChange={(value) => onChange(value, fim)} />
+        <DateField label="Data final" value={fim} min={inicio ?? undefined} onChange={(value) => onChange(inicio, value)} />
       </div>
 
-      <div className="flex justify-center overflow-x-auto [--rdp-accent-background-color:#ccfbf1] [--rdp-accent-color:#0d9488] [--rdp-range_middle-color:#134e4a] [--rdp-selected-border:2px_solid_#0d9488]">
-        <DayPicker
-          mode="range"
-          locale={ptBR}
-          numberOfMonths={months}
-          defaultMonth={inicio ? parseIsoDate(inicio) : new Date()}
-          selected={selected}
-          onSelect={(range) => onChange(range?.from ? toIsoDate(range.from) : null, range?.to ? toIsoDate(range.to) : null)}
-        />
-      </div>
-
-      <p className="text-center text-sm text-gray-600">
-        {inicio && fim ? (
-          <>
-            <strong className="text-teal-700">{formatPeriodo(inicio, fim)}</strong> · {weeksBetween(inicio, fim)} semana
-            {weeksBetween(inicio, fim) !== 1 ? "s" : ""}
-          </>
-        ) : (
-          "Selecione a data de início e a de fim."
-        )}
-      </p>
+      {invalido ? (
+        <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">A data final deve ser igual ou posterior à inicial.</p>
+      ) : inicio && fim ? (
+        <p className="rounded-xl bg-teal-50 px-4 py-3 text-sm text-teal-800">
+          A grade vale de <strong>{formatPeriodo(inicio, fim)}</strong> · {weeksBetween(inicio, fim)} semanas
+        </p>
+      ) : (
+        <p className="text-sm text-slate-400">Escolha a data inicial e a final da grade.</p>
+      )}
     </div>
   );
 }

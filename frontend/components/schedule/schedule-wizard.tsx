@@ -398,7 +398,7 @@ export function ScheduleWizard() {
     step === 1
       ? { label: "Continuar", onClick: () => classId && setStep(2), disabled: !classId || !detail }
       : step === 2
-        ? { label: "Salvar e continuar", onClick: savePeriod, disabled: busy || !gradeInicio || !gradeFim }
+        ? { label: "Salvar e continuar", onClick: savePeriod, disabled: busy || !gradeInicio || !gradeFim || gradeFim < gradeInicio }
         : step === 3
           ? { label: "Salvar e continuar", onClick: saveCurriculum, disabled: busy || rows.length === 0 }
           : step === 4

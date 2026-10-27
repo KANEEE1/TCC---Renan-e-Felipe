@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 
 const publicUserSelect = {
   id: true,
@@ -13,46 +13,61 @@ const publicUserSelect = {
   updatedAt: true
 } satisfies Prisma.UserSelect;
 
+type Db = PrismaClient | Prisma.TransactionClient;
+
 export class UsersRepository {
-  constructor(private readonly prisma: PrismaClient) {}
+  constructor(
+    private readonly prisma: PrismaClient,
+    private readonly db: Db = prisma
+  ) {}
+
+  transaction<T>(fn: (repository: UsersRepository) => Promise<T>) {
+    return this.prisma.$transaction((tx) => fn(new UsersRepository(this.prisma, tx)), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable
+    });
+  }
+
+  countGestores() {
+    return this.db.user.count({ where: { roles: { has: "GESTAO" } } });
+  }
 
   list() {
-    return this.prisma.user.findMany({
+    return this.db.user.findMany({
       orderBy: { name: "asc" },
       select: publicUserSelect
     });
   }
 
   findByEmail(email: string) {
-    return this.prisma.user.findUnique({
+    return this.db.user.findUnique({
       where: { email },
       select: publicUserSelect
     });
   }
 
   findById(id: string) {
-    return this.prisma.user.findUnique({
+    return this.db.user.findUnique({
       where: { id },
       select: publicUserSelect
     });
   }
 
   findAuthByEmail(email: string) {
-    return this.prisma.user.findUnique({
+    return this.db.user.findUnique({
       where: { email },
       select: { id: true, email: true, roles: true, passwordHash: true }
     });
   }
 
   create(data: Prisma.UserCreateInput) {
-    return this.prisma.user.create({
+    return this.db.user.create({
       data,
       select: publicUserSelect
     });
   }
 
   update(id: string, data: Prisma.UserUpdateInput) {
-    return this.prisma.user.update({
+    return this.db.user.update({
       where: { id },
       data,
       select: publicUserSelect

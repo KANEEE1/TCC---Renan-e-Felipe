@@ -1,3 +1,4 @@
+import bcrypt from "bcryptjs";
 import request from "supertest";
 import { createApp } from "../src/app.js";
 import { prisma } from "../src/shared/prisma.js";
@@ -24,16 +25,16 @@ export async function resetDb() {
 }
 
 export async function createUser(overrides: { email: string; roles?: ("GESTAO" | "PROFESSOR")[]; password?: string; name?: string }) {
-  const res = await request(app)
-    .post("/users")
-    .send({
+  // Direto no banco: POST /users exige um gestor autenticado.
+  return prisma.user.create({
+    data: {
       name: overrides.name ?? "Test User",
       email: overrides.email,
-      password: overrides.password ?? "senha1234",
+      passwordHash: await bcrypt.hash(overrides.password ?? "senha1234", 4),
       roles: overrides.roles ?? ["GESTAO"]
-    });
-
-  return res.body as { id: string; email: string };
+    },
+    select: { id: true, email: true }
+  });
 }
 
 export async function loginAs(email: string, password = "senha1234") {

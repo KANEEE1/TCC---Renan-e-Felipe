@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { requireAuth, requireRole } from "../../shared/auth.js";
 import { asyncHandler } from "../../shared/http.js";
 import { createUserSchema } from "./users.schemas.js";
 import type { UsersService } from "./users.service.js";
@@ -7,6 +8,8 @@ export class UsersController {
   readonly router = Router();
 
   constructor(private readonly usersService: UsersService) {
+    this.router.use(requireAuth, requireRole("GESTAO"));
+
     this.router.get("/", asyncHandler(async (_req, res) => {
       res.json(await this.usersService.list());
     }));

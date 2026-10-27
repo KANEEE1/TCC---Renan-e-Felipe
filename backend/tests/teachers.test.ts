@@ -1,6 +1,6 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
-import { app, resetDb } from "./helpers.js";
+import { app, createUser, resetDb } from "./helpers.js";
 
 describe("teachers", () => {
   beforeEach(async () => {
@@ -25,7 +25,7 @@ describe("teachers", () => {
   });
 
   it("only lists users with the PROFESSOR role", async () => {
-    await request(app).post("/users").send({ name: "Gestor", email: "gestor@test.com", password: "senha1234", roles: ["GESTAO"] });
+    await createUser({ name: "Gestor", email: "gestor@test.com", roles: ["GESTAO"] });
     await request(app).post("/teachers").send({ name: "Prof", email: "prof@test.com", password: "senha1234" });
 
     const list = await request(app).get("/teachers");

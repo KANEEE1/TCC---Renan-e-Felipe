@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { BookOpen, Calendar, Edit, Mail, Phone, Plus, Search, UserPlus } from "lucide-react";
+import { BookOpen, Calendar, Edit, Mail, Phone, Search, UserPlus } from "lucide-react";
 import { api } from "@/lib/api";
 
 const isCoordinator = true;
@@ -64,24 +64,8 @@ export function TeacherList() {
                 <UserPlus size={18} className="text-white" />
               </Link>
             )}
-            <Link
-              href="/teachers/add"
-              className="flex h-10 w-10 items-center justify-center rounded-xl bg-white shadow-sm transition-colors hover:bg-blue-50"
-            >
-              <Plus size={20} className="text-blue-600" />
-            </Link>
           </div>
         </div>
-
-        {isCoordinator && (
-          <Link
-            href="/teachers/register"
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/15 py-2.5 text-sm text-white transition-colors hover:bg-white/25"
-          >
-            <UserPlus size={16} />
-            Cadastrar Acesso de Professor
-          </Link>
-        )}
       </div>
 
       <div className="-mt-3 mb-4 px-4">

@@ -69,6 +69,20 @@ describe("auth", () => {
     expect(res.body.name).toBe("Gestão Teste");
   });
 
+  it("lets the user edit only name and phone via PUT /auth/me", async () => {
+    await createUser({ email: "prof@test.com", roles: ["PROFESSOR"] });
+    const token = await loginAs("prof@test.com");
+    const put = (body: Record<string, unknown>) =>
+      request(app).put("/auth/me").set("Authorization", `Bearer ${token}`).send(body);
+
+    const ok = await put({ name: "Novo Nome", celular: "(11) 90000-0000" });
+    expect(ok.status).toBe(200);
+    expect(ok.body).toMatchObject({ name: "Novo Nome", celular: "(11) 90000-0000" });
+
+    expect((await put({ departamento: "Exatas" })).status).toBe(400);
+    expect((await put({ bio: "Sobre mim" })).status).toBe(400);
+  });
+
   it("rejects a request with a malformed token", async () => {
     const res = await request(app).get("/auth/me").set("Authorization", "Bearer not-a-real-token");
     expect(res.status).toBe(401);

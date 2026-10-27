@@ -81,7 +81,7 @@ export function AssignStudents({ classId }: { classId: string }) {
 
         <div className="rounded-lg bg-indigo-500 p-3">
           <div className="text-sm text-indigo-100">Turma: {className || "..."}</div>
-          <div className="text-sm text-indigo-100">Capacidade: {capacity ?? "—"} alunos</div>
+          {capacity !== null && <div className="text-sm text-indigo-100">Capacidade: {capacity} alunos</div>}
         </div>
       </div>
 

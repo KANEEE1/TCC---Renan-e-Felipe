@@ -1,5 +1,5 @@
-import { SmartScheduleBuilder } from "@/components/schedule/smart-schedule-builder";
+import { ScheduleWizard } from "@/components/schedule/schedule-wizard";
 
 export default function SmartScheduleBuilderPage() {
-  return <SmartScheduleBuilder />;
+  return <ScheduleWizard />;
 }

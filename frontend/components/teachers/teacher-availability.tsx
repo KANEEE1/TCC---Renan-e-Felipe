@@ -1,32 +1,22 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Save, Trash2 } from "lucide-react";
 import { currentPeriodoLetivo } from "@/lib/periodo-letivo";
 import { api, ApiError } from "@/lib/api";
 import { getSessionUser } from "@/lib/auth";
-
-// Semana no estilo de agenda: colunas por dia, linhas de 30 minutos entre START_HOUR e END_HOUR.
-const DAYS = [
-  { key: "SEGUNDA", short: "SEG" },
-  { key: "TERCA", short: "TER" },
-  { key: "QUARTA", short: "QUA" },
-  { key: "QUINTA", short: "QUI" },
-  { key: "SEXTA", short: "SEX" },
-  { key: "SABADO", short: "SÁB" },
-  { key: "DOMINGO", short: "DOM" }
-];
-// Date.getDay(): 0 = domingo.
-const TODAY_INDEX = (new Date().getDay() + 6) % 7;
-
-const START_HOUR = 0;
-const END_HOUR = 24;
-// Ao abrir, a grade rola até este horário (como o Google Agenda), sem esconder a madrugada.
-const SCROLL_TO_HOUR = 7;
-const SLOT_MINUTES = 30;
-const SLOTS = ((END_HOUR - START_HOUR) * 60) / SLOT_MINUTES;
-const ROW_HEIGHT = 22;
+import {
+  DAYS,
+  SLOTS,
+  WeekGrid,
+  emptyGrid,
+  formatHours,
+  intervalsOf,
+  slotToApiTime,
+  timeToSlot,
+  type Grid
+} from "@/components/schedule/week-grid";
 
 const PERIODO_LETIVO = currentPeriodoLetivo();
 
@@ -38,57 +28,8 @@ interface AvailabilityEntry {
   periodoLetivo: string;
 }
 
-interface Interval {
-  inicio: string;
-  fim: string;
-  from: number;
-  to: number;
-}
-
-type Grid = boolean[][];
-
-function emptyGrid(): Grid {
-  return DAYS.map(() => Array<boolean>(SLOTS).fill(false));
-}
-
 function toHHMM(iso: string) {
   return new Date(iso).toISOString().slice(11, 16);
-}
-
-function slotToTime(slot: number) {
-  const minutes = START_HOUR * 60 + slot * SLOT_MINUTES;
-  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
-}
-
-// O banco guarda horário do dia (sem "24:00"): o fim da última meia-hora é gravado como 23:59.
-function slotToApiTime(slot: number) {
-  return slot === SLOTS ? "23:59" : slotToTime(slot);
-}
-
-function timeToSlot(time: string) {
-  const [h, m] = time.split(":").map(Number);
-  return Math.round((h * 60 + m - START_HOUR * 60) / SLOT_MINUTES);
-}
-
-// Junta meias-horas marcadas e consecutivas em intervalos (ex.: 08:00–12:00).
-function intervalsOf(column: boolean[]): Interval[] {
-  const result: Interval[] = [];
-  let from = -1;
-  for (let i = 0; i <= column.length; i++) {
-    if (i < column.length && column[i]) {
-      if (from === -1) from = i;
-    } else if (from !== -1) {
-      result.push({ from, to: i, inicio: slotToTime(from), fim: slotToTime(i) });
-      from = -1;
-    }
-  }
-  return result;
-}
-
-function formatHours(slots: number) {
-  const minutes = slots * SLOT_MINUTES;
-  const hours = Math.floor(minutes / 60);
-  return minutes % 60 === 0 ? `${hours}h` : `${hours}h30`;
 }
 
 export function TeacherAvailability({ teacherId }: { teacherId: string }) {
@@ -102,12 +43,6 @@ export function TeacherAvailability({ teacherId }: { teacherId: string }) {
   const [success, setSuccess] = useState(false);
   // Só o próprio professor edita; os demais (inclusive a gestão) apenas consultam.
   const [canEdit, setCanEdit] = useState(false);
-
-  const drag = useRef<{ day: number; from: number; mode: boolean; base: boolean[] } | null>(null);
-  // Registrado no pointerdown: o evento de clique nem sempre informa se veio de toque (Safari antigo).
-  const lastPointerType = useRef<string>("mouse");
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const scrolledOnce = useRef(false);
 
   const load = useCallback(() => {
     api
@@ -136,56 +71,10 @@ export function TeacherAvailability({ teacherId }: { teacherId: string }) {
     load();
   }, [teacherId, load]);
 
-  useEffect(() => {
-    if (!loaded || scrolledOnce.current || !scrollRef.current) return;
-    scrollRef.current.scrollTop = SCROLL_TO_HOUR * (60 / SLOT_MINUTES) * ROW_HEIGHT;
-    scrolledOnce.current = true;
-  }, [loaded]);
-
-  useEffect(() => {
-    const stop = () => {
-      drag.current = null;
-    };
-    window.addEventListener("pointerup", stop);
-    window.addEventListener("pointercancel", stop);
-    return () => {
-      window.removeEventListener("pointerup", stop);
-      window.removeEventListener("pointercancel", stop);
-    };
-  }, []);
-
-  const paint = (day: number, from: number, to: number, mode: boolean, base: boolean[]) => {
-    const column = [...base];
-    for (let i = Math.min(from, to); i <= Math.max(from, to); i++) column[i] = mode;
-    setGrid((prev) => prev.map((col, index) => (index === day ? column : col)));
+  const handleGridChange = (next: Grid) => {
+    setGrid(next);
     setDirty(true);
     setSuccess(false);
-  };
-
-  // Mouse/caneta: clicar e arrastar na mesma coluna marca (ou desmarca, se começou num horário marcado).
-  const handlePointerDown = (event: React.PointerEvent, day: number, slot: number) => {
-    lastPointerType.current = event.pointerType;
-    if (!canEdit || event.pointerType === "touch") return;
-    event.preventDefault();
-    const base = grid[day];
-    drag.current = { day, from: slot, mode: !base[slot], base };
-    paint(day, slot, slot, !base[slot], base);
-  };
-
-  const handlePointerMove = (event: React.PointerEvent) => {
-    const current = drag.current;
-    if (!current) return;
-    const cell = (document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null)?.closest<HTMLElement>(
-      "[data-slot]"
-    );
-    if (!cell || Number(cell.dataset.day) !== current.day) return;
-    paint(current.day, current.from, Number(cell.dataset.slot), current.mode, current.base);
-  };
-
-  // Toque: cada toque alterna meia hora, para não atrapalhar a rolagem da tela.
-  const handleTap = (day: number, slot: number) => {
-    if (!canEdit || lastPointerType.current !== "touch") return;
-    paint(day, slot, slot, !grid[day][slot], grid[day]);
   };
 
   const clearAll = () => {
@@ -267,69 +156,16 @@ export function TeacherAvailability({ teacherId }: { teacherId: string }) {
         )}
       </div>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto pb-36" onPointerMove={handlePointerMove}>
-        <div className="sticky top-0 z-20 grid grid-cols-[44px_repeat(7,minmax(0,1fr))] border-b border-slate-200 bg-white">
-          <div />
-          {DAYS.map((day, index) => (
-            <div key={day.key} className="py-2 text-center">
-              <span
-                className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                  index === TODAY_INDEX ? "bg-blue-600 text-white" : "text-slate-500"
-                }`}
-              >
-                {day.short}
-              </span>
-            </div>
-          ))}
-        </div>
-
+      <WeekGrid
+        value={grid}
+        onChange={handleGridChange}
+        readOnly={!canEdit}
+        ready={loaded}
+        className="flex-1 pb-36"
+      >
         {!loaded && !error && <p className="py-10 text-center text-sm text-slate-400">Carregando...</p>}
-
-        {loaded && (
-          <div className="grid select-none grid-cols-[44px_repeat(7,minmax(0,1fr))]" style={{ touchAction: "pan-y" }}>
-            <div className="relative">
-              {Array.from({ length: SLOTS }, (_, slot) =>
-                slot % 2 === 0 ? (
-                  <div key={slot} className="relative" style={{ height: ROW_HEIGHT * 2 }}>
-                    <span className="absolute -top-2 right-1.5 text-[10px] text-slate-400">{slotToTime(slot)}</span>
-                  </div>
-                ) : null
-              )}
-            </div>
-
-            {DAYS.map((day, dayIndex) => (
-              <div key={day.key} className="relative border-l border-slate-200">
-                {Array.from({ length: SLOTS }, (_, slot) => (
-                  <div
-                    key={slot}
-                    data-day={dayIndex}
-                    data-slot={slot}
-                    onPointerDown={(event) => handlePointerDown(event, dayIndex, slot)}
-                    onClick={() => handleTap(dayIndex, slot)}
-                    className={`${slot % 2 === 0 ? "border-t border-slate-200" : "border-t border-dashed border-slate-100"} ${
-                      canEdit ? "cursor-pointer hover:bg-blue-50" : ""
-                    }`}
-                    style={{ height: ROW_HEIGHT }}
-                  />
-                ))}
-
-                {intervalsOf(grid[dayIndex]).map((interval) => (
-                  <div
-                    key={interval.from}
-                    className="pointer-events-none absolute left-0.5 right-0.5 overflow-hidden rounded-md bg-blue-600 px-1 py-0.5 text-[10px] leading-tight text-white shadow-sm"
-                    style={{ top: interval.from * ROW_HEIGHT + 1, height: (interval.to - interval.from) * ROW_HEIGHT - 2 }}
-                  >
-                    <span className="block font-medium">{interval.inicio}</span>
-                    {interval.to - interval.from > 1 && <span className="block opacity-90">{interval.fim}</span>}
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-        )}
-
         {error && <p className="px-4 py-3 text-sm text-red-600">{error}</p>}
-      </div>
+      </WeekGrid>
 
       {canEdit && (
         <div className="fixed bottom-16 left-0 right-0 z-40 border-t bg-white p-4">

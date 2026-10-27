@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { diaSemanaSchema } from "../disponibilidade/disponibilidade.schemas.js";
 
 const cargaSchema = z
   .object({
@@ -26,3 +27,17 @@ export const updateTurmaSchema = createTurmaSchema.partial();
 export type CargaInput = z.infer<typeof cargaSchema>;
 export type CreateTurmaInput = z.infer<typeof createTurmaSchema>;
 export type UpdateTurmaInput = z.infer<typeof updateTurmaSchema>;
+
+const horarioSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
+
+export const putJanelasSchema = z.object({
+  janelas: z.array(
+    z.object({
+      diaSemana: diaSemanaSchema,
+      horarioInicio: horarioSchema,
+      horarioFim: horarioSchema
+    })
+  )
+});
+
+export type PutJanelasInput = z.infer<typeof putJanelasSchema>;

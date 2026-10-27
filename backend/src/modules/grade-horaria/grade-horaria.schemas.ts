@@ -34,9 +34,24 @@ export const confirmScheduleSchema = z.object({
   aulas: z.array(createAulaSchema).min(1)
 });
 
+export const generateScheduleSchema = z.object({
+  turmaId: z.string().cuid(),
+  periodoLetivo: z.string().min(1),
+  professoresExcluidos: z.array(z.string().cuid()).optional()
+});
+
+export const replaceScheduleSchema = z.object({
+  turmaId: z.string().cuid(),
+  aulas: z
+    .array(createAulaSchema.omit({ turmaId: true, sala: true, tipo: true }))
+    .min(1)
+});
+
 export const updateAulaSchema = createAulaSchema.partial();
 
 export type CreateAulaInput = z.infer<typeof createAulaSchema>;
 export type UpdateAulaInput = z.infer<typeof updateAulaSchema>;
 export type SuggestScheduleInput = z.infer<typeof suggestScheduleSchema>;
 export type ConfirmScheduleInput = z.infer<typeof confirmScheduleSchema>;
+export type GenerateScheduleInput = z.infer<typeof generateScheduleSchema>;
+export type ReplaceScheduleInput = z.infer<typeof replaceScheduleSchema>;

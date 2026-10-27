@@ -39,12 +39,12 @@ export interface NaoAlocado {
   motivo: MotivoNaoAlocado;
 }
 
-function toMinutes(time: string) {
+export function toMinutes(time: string) {
   const [hours, minutes] = time.split(":").map(Number);
   return hours * 60 + minutes;
 }
 
-function toHHMM(minutes: number) {
+export function toHHMM(minutes: number) {
   return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 }
 

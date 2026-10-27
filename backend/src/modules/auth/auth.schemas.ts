@@ -12,5 +12,14 @@ export const updateMeSchema = z.object({
   bio: z.string().min(1).optional()
 });
 
+export const setupSchema = z.object({
+  name: z.string().min(1),
+  email: z.string().email(),
+  celular: z.string().min(1).optional(),
+  password: z.string().min(8),
+  tambemProfessor: z.boolean().optional()
+});
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type UpdateMeInput = z.infer<typeof updateMeSchema>;
+export type SetupInput = z.infer<typeof setupSchema>;

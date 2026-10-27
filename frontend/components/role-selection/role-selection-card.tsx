@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { FirstAccessLink } from "@/components/first-access/first-access-link";
 import { UserIcon } from "@/components/icons/user-icon";
 import { UsersIcon } from "@/components/icons/users-icon";
 import { IconBadge } from "@/components/ui/icon-badge";
@@ -30,6 +31,8 @@ export function RoleSelectionCard() {
           <RoleOption key={option.href} {...option} icon={OPTION_BADGE[option.accent]} />
         ))}
       </div>
+
+      <FirstAccessLink />
     </div>
   );
 }

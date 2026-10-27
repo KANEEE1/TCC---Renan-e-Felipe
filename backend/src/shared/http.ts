@@ -5,7 +5,8 @@ import { ZodError } from "zod";
 const PRISMA_ERROR_STATUS: Record<string, { status: number; message: string }> = {
   P2002: { status: 409, message: "Resource already exists" },
   P2003: { status: 400, message: "Referenced resource does not exist" },
-  P2025: { status: 404, message: "Resource not found" }
+  P2025: { status: 404, message: "Resource not found" },
+  P2034: { status: 409, message: "Concurrent update conflict, please retry" }
 };
 
 type AsyncRouteHandler = (req: Request, res: Response, next: NextFunction) => Promise<void>;
@@ -13,7 +14,8 @@ type AsyncRouteHandler = (req: Request, res: Response, next: NextFunction) => Pr
 export class HttpError extends Error {
   constructor(
     public readonly statusCode: number,
-    message: string
+    message: string,
+    public readonly details?: Record<string, unknown>
   ) {
     super(message);
   }
@@ -27,7 +29,7 @@ export function asyncHandler(handler: AsyncRouteHandler) {
 
 export function errorHandler(error: unknown, _req: Request, res: Response, _next: NextFunction) {
   if (error instanceof HttpError) {
-    res.status(error.statusCode).json({ message: error.message });
+    res.status(error.statusCode).json({ ...error.details, message: error.message });
     return;
   }
 

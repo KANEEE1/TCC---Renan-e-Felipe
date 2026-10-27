@@ -9,12 +9,16 @@ export async function resetDb() {
     prisma.presenca.deleteMany(),
     prisma.nota.deleteMany(),
     prisma.matricula.deleteMany(),
+    prisma.substituicao.deleteMany(),
+    prisma.ausenciaAula.deleteMany(),
     prisma.aula.deleteMany(),
     prisma.disponibilidade.deleteMany(),
     prisma.simulado.deleteMany(),
     prisma.disciplina.deleteMany(),
     prisma.turma.deleteMany(),
     prisma.aluno.deleteMany(),
+    prisma.participacaoReuniao.deleteMany(),
+    prisma.reuniao.deleteMany(),
     prisma.user.deleteMany()
   ]);
 }

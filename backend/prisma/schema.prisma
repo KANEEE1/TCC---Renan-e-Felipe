@@ -33,9 +33,32 @@ model Reuniao {
   horarioFim    DateTime    @db.Time(0)
   local         String?
   descricao     String?
-  participantes String[]
+  criadoPorId   String?
+  criadoPor     User?       @relation("CriadorReunioes", fields: [criadoPorId], references: [id], onDelete: SetNull)
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
+
+  participacoes ParticipacaoReuniao[]
+}
+
+enum StatusParticipacao {
+  PENDENTE
+  CONFIRMADO
+  RECUSADO
+}
+
+model ParticipacaoReuniao {
+  id        String             @id @default(cuid())
+  reuniaoId String
+  userId    String
+  status    StatusParticipacao @default(PENDENTE)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  reuniao Reuniao @relation(fields: [reuniaoId], references: [id], onDelete: Cascade)
+  user    User    @relation("ParticipacoesReuniao", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([reuniaoId, userId])
 }
 
 model User {
@@ -54,6 +77,13 @@ model User {
   aulas            Aula[]            @relation("ProfessorAulas")
   disponibilidades Disponibilidade[] @relation("ProfessorDisponibilidades")
   disciplinas      Disciplina[]      @relation("ProfessorDisciplinas")
+  reunioesCriadas  Reuniao[]         @relation("CriadorReunioes")
+
+  participacoesReuniao ParticipacaoReuniao[] @relation("ParticipacoesReuniao")
+  ausenciasRegistradas AusenciaAula[]        @relation("AusenciasRegistradas")
+
+  substituicoesRecebidas  Substituicao[] @relation("SubstituicoesRecebidas")
+  substituicoesDesignadas Substituicao[] @relation("SubstituicoesDesignadas")
 }
 
 model Aluno {
@@ -129,10 +159,11 @@ model Aula {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  disciplina Disciplina @relation(fields: [disciplinaId], references: [id])
+  disciplina Disciplina     @relation(fields: [disciplinaId], references: [id])
   presencas  Presenca[]
-  professor  User       @relation("ProfessorAulas", fields: [professorId], references: [id])
-  turma      Turma      @relation(fields: [turmaId], references: [id])
+  ausencias  AusenciaAula[]
+  professor  User           @relation("ProfessorAulas", fields: [professorId], references: [id])
+  turma      Turma          @relation(fields: [turmaId], references: [id])
 
   @@unique([turmaId, diaSemana, horarioInicio])
   @@unique([professorId, diaSemana, horarioInicio])
@@ -192,4 +223,45 @@ model Nota {
   simulado Simulado @relation(fields: [simuladoId], references: [id])
 
   @@unique([alunoId, simuladoId])
+}
+
+model AusenciaAula {
+  id              String   @id @default(cuid())
+  aulaId          String
+  data            DateTime @db.Date
+  motivo          String?
+  registradoPorId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  aula          Aula           @relation(fields: [aulaId], references: [id], onDelete: Cascade)
+  registradoPor User           @relation("AusenciasRegistradas", fields: [registradoPorId], references: [id], onDelete: Cascade)
+  substituicoes Substituicao[]
+
+  @@unique([aulaId, data])
+  @@index([data])
+}
+
+enum StatusSubstituicao {
+  PENDENTE
+  ACEITA
+  RECUSADA
+}
+
+model Substituicao {
+  id             String             @id @default(cuid())
+  ausenciaId     String
+  substitutoId   String
+  designadoPorId String?
+  status         StatusSubstituicao @default(PENDENTE)
+  respondidaEm   DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  ausencia     AusenciaAula @relation(fields: [ausenciaId], references: [id], onDelete: Restrict)
+  substituto   User         @relation("SubstituicoesRecebidas", fields: [substitutoId], references: [id], onDelete: Cascade)
+  designadoPor User?        @relation("SubstituicoesDesignadas", fields: [designadoPorId], references: [id], onDelete: SetNull)
+
+  @@unique([ausenciaId, substitutoId])
+  @@index([substitutoId, status])
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { BarChart2, BookOpen, ChevronDown, ChevronUp, Filter, Plus, Search, Star, Trophy, Users, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
@@ -206,6 +207,9 @@ export function SimuladoList() {
       </div>
 
       <div className="space-y-2 px-4 pb-2 pt-4">
+        <Link href="/simulados/desempenho" className="inline-flex items-center gap-1.5 text-sm text-orange-600 underline">
+          <BarChart2 size={14} /> Desempenho por turma
+        </Link>
         <div className="flex gap-2">
           <div className="flex flex-1 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
             <Search size={15} className="shrink-0 text-slate-400" />

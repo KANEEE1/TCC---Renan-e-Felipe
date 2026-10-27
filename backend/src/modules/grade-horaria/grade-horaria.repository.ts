@@ -8,9 +8,7 @@ const aulaInclude = {
   professor: {
     select: {
       id: true,
-      name: true,
-      email: true,
-      roles: true
+      name: true
     }
   }
 };
@@ -43,6 +41,27 @@ export class GradeHorariaRepository {
       orderBy: [{ diaSemana: "asc" }, { horarioInicio: "asc" }],
       include: { turma: true, disciplina: true }
     });
+  }
+
+  listForConflicts(professorIds: string[], turmaIds: string[]) {
+    return this.prisma.aula.findMany({
+      where: { OR: [{ professorId: { in: professorIds } }, { turmaId: { in: turmaIds } }] }
+    });
+  }
+
+  createMany(data: CreateAulaInput[]) {
+    return this.prisma.$transaction(
+      data.map((item) =>
+        this.prisma.aula.create({
+          data: {
+            ...item,
+            horarioInicio: parseTimeToDate(item.horarioInicio),
+            horarioFim: parseTimeToDate(item.horarioFim)
+          },
+          include: aulaInclude
+        })
+      )
+    );
   }
 
   create(data: CreateAulaInput) {

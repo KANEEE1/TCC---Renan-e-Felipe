@@ -14,9 +14,10 @@ import { RoleBadge } from "./role-badge";
 type LoginCardProps = {
   roleLabel: string;
   accent: Accent;
+  showChangePassword?: boolean;
 };
 
-export function LoginCard({ roleLabel, accent }: LoginCardProps) {
+export function LoginCard({ roleLabel, accent, showChangePassword = false }: LoginCardProps) {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
@@ -93,6 +94,15 @@ export function LoginCard({ roleLabel, accent }: LoginCardProps) {
           {loading ? "Entrando..." : "Entrar"}
         </button>
       </form>
+
+      {showChangePassword && (
+        <p className="mt-4 text-center text-sm text-slate-500">
+          Quer trocar a senha?{" "}
+          <Link href="/trocar-senha" className="font-semibold text-blue-600 transition hover:text-blue-700">
+            Trocar senha
+          </Link>
+        </p>
+      )}
 
       <Link
         href="/"

@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 import type { Role } from "@prisma/client";
 import { HttpError } from "../../shared/http.js";
 import { signAuthToken } from "../../shared/auth.js";
-import type { LoginInput, SetupInput, UpdateMeInput } from "./auth.schemas.js";
+import type { ChangePasswordInput, LoginInput, SetupInput, UpdateMeInput } from "./auth.schemas.js";
 import type { UsersRepository } from "../users/users.repository.js";
 
 const SALT_ROUNDS = 10;
@@ -11,13 +11,27 @@ export class AuthService {
   constructor(private readonly usersRepository: UsersRepository) {}
 
   async login(input: LoginInput) {
-    const user = await this.usersRepository.findAuthByEmail(input.email);
+    const user = await this.verifyCredentials(input.email, input.password);
+
+    return this.session(user);
+  }
+
+  // Troca de senha sem estar logado: exige e-mail e senha atual, com as mesmas regras do login.
+  async changePassword(input: ChangePasswordInput) {
+    const user = await this.verifyCredentials(input.email, input.senhaAtual);
+    const passwordHash = await bcrypt.hash(input.novaSenha, SALT_ROUNDS);
+
+    await this.usersRepository.update(user.id, { passwordHash });
+  }
+
+  private async verifyCredentials(email: string, password: string) {
+    const user = await this.usersRepository.findAuthByEmail(email);
 
     if (!user) {
       throw new HttpError(401, "Invalid credentials");
     }
 
-    const passwordMatches = await bcrypt.compare(input.password, user.passwordHash);
+    const passwordMatches = await bcrypt.compare(password, user.passwordHash);
 
     if (!passwordMatches) {
       throw new HttpError(401, "Invalid credentials");
@@ -28,7 +42,7 @@ export class AuthService {
       throw new HttpError(403, "Seu acesso foi desativado. Procure a coordenação.");
     }
 
-    return this.session(user);
+    return user;
   }
 
   async setupStatus() {

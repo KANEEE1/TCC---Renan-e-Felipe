@@ -254,7 +254,7 @@ export function TeacherAvailability({ teacherId }: { teacherId: string }) {
         <p>
           {canEdit
             ? "Arraste (ou toque) para marcar os horários em que você pode dar aula. Toque num horário marcado para desmarcar."
-            : "Somente o próprio professor pode alterar a disponibilidade."}
+            : "Disponibilidade informada pelo professor. Somente ele pode alterá-la."}
         </p>
         {canEdit && totalSlots > 0 && (
           <button

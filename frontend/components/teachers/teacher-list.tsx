@@ -36,7 +36,7 @@ interface Teacher {
 export function TeacherList() {
   const [searchTerm, setSearchTerm] = useState("");
   const [teachers, setTeachers] = useState<Teacher[]>([]);
-  // "Editar" (disciplinas e status) é da gestão; "Horários" só aparece no card do próprio professor.
+  // "Editar" (disciplinas e status) é da gestão. "Horários": o próprio professor edita; a gestão só visualiza.
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
   const [isManagement, setIsManagement] = useState(false);
 
@@ -47,7 +47,8 @@ export function TeacherList() {
     api.get<Teacher[]>("/teachers").then(setTeachers).catch(() => setTeachers([]));
   }, []);
 
-  const actionCount = (teacherId: string) => (isManagement ? 1 : 0) + 1 + (teacherId === sessionUserId ? 1 : 0);
+  const canSeeAvailability = (teacherId: string) => isManagement || teacherId === sessionUserId;
+  const actionCount = (teacherId: string) => (isManagement ? 1 : 0) + 1 + (canSeeAvailability(teacherId) ? 1 : 0);
 
   const filteredTeachers = teachers.filter(
     (teacher) =>
@@ -152,7 +153,7 @@ export function TeacherList() {
                 <BookOpen size={14} />
                 Agenda
               </Link>
-              {teacher.id === sessionUserId && (
+              {canSeeAvailability(teacher.id) && (
                 <Link
                   href={`/teachers/${teacher.id}/availability`}
                   className="flex items-center justify-center gap-1.5 py-3 text-xs text-slate-500 transition-colors hover:bg-purple-50 hover:text-purple-600"

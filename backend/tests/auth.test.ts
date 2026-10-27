@@ -23,6 +23,19 @@ describe("auth", () => {
     expect(res.body.user.email).toBe("gestao@test.com");
   });
 
+  it("blocks login of a deactivated user only after the password matches", async () => {
+    await request(app).post("/teachers").send({ name: "Prof", email: "prof@test.com", password: "senha1234" });
+    const teacher = await request(app).get("/teachers");
+    await request(app).put(`/teachers/${teacher.body[0].id}`).send({ ativo: false });
+
+    const wrong = await request(app).post("/auth/login").send({ email: "prof@test.com", password: "outra-senha" });
+    expect(wrong.status).toBe(401);
+
+    const res = await request(app).post("/auth/login").send({ email: "prof@test.com", password: "senha1234" });
+    expect(res.status).toBe(403);
+    expect(res.body.token).toBeUndefined();
+  });
+
   it("rejects login with the wrong password", async () => {
     await createUser({ email: "gestao@test.com" });
 

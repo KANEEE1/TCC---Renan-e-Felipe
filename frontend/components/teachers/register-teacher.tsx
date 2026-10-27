@@ -29,6 +29,7 @@ interface Teacher {
   email: string;
   celular: string | null;
   disciplinas: Subject[];
+  ativo: boolean;
   createdAt: string;
 }
 
@@ -49,6 +50,7 @@ export function RegisterTeacher() {
 
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     api.get<Subject[]>("/disciplinas").then(setSubjectOptions).catch(() => setSubjectOptions([]));
@@ -62,10 +64,14 @@ export function RegisterTeacher() {
   const toggleSubject = (subjectId: string) =>
     setSubjectIds((prev) => (prev.includes(subjectId) ? prev.filter((s) => s !== subjectId) : [...prev, subjectId]));
 
+  // "Remover acesso" desativa o professor: ele não entra mais, mas o histórico (aulas, presenças, notas) fica.
   const handleDelete = async (id: string) => {
+    setDeleteError(null);
     try {
       await api.put(`/teachers/${id}`, { ativo: false });
-      setTeachers((prev) => prev.filter((t) => t.id !== id));
+      refreshTeachers();
+    } catch (err) {
+      setDeleteError(err instanceof ApiError ? err.message : "Não foi possível remover o acesso. Tente novamente.");
     } finally {
       setDeleteConfirm(null);
     }
@@ -312,6 +318,7 @@ export function RegisterTeacher() {
 
         {tab === "list" && (
           <div className="space-y-3">
+            {deleteError && <p className="text-center text-sm text-red-600">{deleteError}</p>}
             {teachers.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-slate-300">
                 <div className="mb-3 text-5xl">👥</div>
@@ -326,7 +333,10 @@ export function RegisterTeacher() {
               </div>
             ) : (
               teachers.map((teacher, idx) => (
-                <div key={teacher.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div
+                  key={teacher.id}
+                  className={`overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ${teacher.ativo ? "" : "opacity-70"}`}
+                >
                   <div className="p-4">
                     <div className="mb-3 flex items-center gap-3">
                       <div
@@ -338,8 +348,12 @@ export function RegisterTeacher() {
                         <p className="truncate text-sm text-slate-800">{teacher.name}</p>
                         <p className="mt-0.5 text-xs text-slate-400">{teacher.email}</p>
                       </div>
-                      <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-[10px] text-emerald-700">
-                        Ativo
+                      <span
+                        className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] ${
+                          teacher.ativo ? "border-emerald-200 bg-emerald-100 text-emerald-700" : "border-slate-200 bg-slate-100 text-slate-500"
+                        }`}
+                      >
+                        {teacher.ativo ? "Ativo" : "Inativo"}
                       </span>
                     </div>
 
@@ -357,22 +371,32 @@ export function RegisterTeacher() {
                       Criado em {new Date(teacher.createdAt).toLocaleDateString("pt-BR")}
                     </p>
 
-                    {deleteConfirm === teacher.id ? (
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(teacher.id)}
-                          className="flex-1 rounded-xl bg-red-600 py-2 text-xs text-white transition-colors hover:bg-red-700"
-                        >
-                          Confirmar exclusão
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDeleteConfirm(null)}
-                          className="flex-1 rounded-xl bg-slate-100 py-2 text-xs text-slate-600 transition-colors hover:bg-slate-200"
-                        >
-                          Cancelar
-                        </button>
+                    {!teacher.ativo ? (
+                      <p className="rounded-xl bg-slate-50 py-2 text-center text-xs text-slate-400">
+                        Acesso removido. Para reativar, edite o professor.
+                      </p>
+                    ) : deleteConfirm === teacher.id ? (
+                      <div className="space-y-2">
+                        <p className="text-xs text-slate-600">
+                          Remover o acesso de {teacher.name}? Não poderá mais entrar no sistema. Aulas, presenças e notas já
+                          registradas são mantidas.
+                        </p>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(teacher.id)}
+                            className="flex-1 rounded-xl bg-red-600 py-2 text-xs text-white transition-colors hover:bg-red-700"
+                          >
+                            Remover acesso
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeleteConfirm(null)}
+                            className="flex-1 rounded-xl bg-slate-100 py-2 text-xs text-slate-600 transition-colors hover:bg-slate-200"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       <button

@@ -44,6 +44,15 @@ describe("teachers", () => {
     expect(res.body.ativo).toBe(false);
   });
 
+  it("lists deactivated teachers after the active ones", async () => {
+    const inativo = await request(app).post("/teachers").send({ name: "Ana", email: "ana@test.com", password: "senha1234" });
+    const ativo = await request(app).post("/teachers").send({ name: "Bruno", email: "bruno@test.com", password: "senha1234" });
+    await request(app).put(`/teachers/${inativo.body.id}`).send({ ativo: false });
+
+    const list = await request(app).get("/teachers");
+    expect(list.body.map((t: { id: string }) => t.id)).toEqual([ativo.body.id, inativo.body.id]);
+  });
+
   it("adds availability for a teacher and lists it", async () => {
     const teacher = await request(app).post("/teachers").send({ name: "Prof", email: "prof3@test.com", password: "senha1234" });
 

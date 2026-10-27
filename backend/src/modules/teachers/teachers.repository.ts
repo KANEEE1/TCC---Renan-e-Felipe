@@ -18,7 +18,7 @@ export class TeachersRepository {
   list() {
     return this.prisma.user.findMany({
       where: { roles: { has: "PROFESSOR" } },
-      orderBy: { name: "asc" },
+      orderBy: [{ ativo: "desc" }, { name: "asc" }],
       select: teacherSelect
     });
   }

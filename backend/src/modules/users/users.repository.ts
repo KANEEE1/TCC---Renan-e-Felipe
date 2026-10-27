@@ -55,7 +55,7 @@ export class UsersRepository {
   findAuthByEmail(email: string) {
     return this.db.user.findUnique({
       where: { email },
-      select: { id: true, email: true, roles: true, passwordHash: true }
+      select: { id: true, email: true, roles: true, ativo: true, passwordHash: true }
     });
   }
 

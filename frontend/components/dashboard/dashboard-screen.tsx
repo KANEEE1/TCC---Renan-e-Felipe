@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   BookOpen,
+  BookMarked,
   CalendarClock,
   CalendarDays,
   UserX,
@@ -215,6 +216,15 @@ export function DashboardScreen() {
               <Zap size={20} className="text-white" />
             </div>
             <span className="text-sm leading-tight text-white">Grade Inteligente</span>
+          </Link>
+          <Link
+            href="/disciplinas"
+            className="flex items-center gap-3 rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-600 p-4 text-left shadow-md transition-shadow hover:shadow-lg"
+          >
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/20">
+              <BookMarked size={20} className="text-white" />
+            </div>
+            <span className="text-sm leading-tight text-white">Disciplinas</span>
           </Link>
           <Link
             href="/simulados"

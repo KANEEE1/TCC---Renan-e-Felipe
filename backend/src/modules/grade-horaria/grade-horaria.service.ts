@@ -94,13 +94,26 @@ export class GradeHorariaService {
     const professorIds = [...new Set(input.pedidos.map((pedido) => pedido.professorId))];
     const turmaIds = [...new Set(input.pedidos.map((pedido) => pedido.turmaId))];
 
+    const pares = [...new Map(input.pedidos.map((p) => [`${p.turmaId}:${p.disciplinaId}`, { turmaId: p.turmaId, disciplinaId: p.disciplinaId }])).values()];
+    const cargas = await this.gradeHorariaRepository.listCargas(pares);
+    const duracoes = new Map(cargas.map((carga) => [`${carga.turmaId}:${carga.disciplinaId}`, carga.duracaoMinutos]));
+    const semCarga = pares.filter((par) => !duracoes.has(`${par.turmaId}:${par.disciplinaId}`));
+    if (semCarga.length > 0) {
+      throw new HttpError(400, "Disciplina sem carga cadastrada na matriz da turma", { semCarga });
+    }
+
     const [disponibilidades, aulas] = await Promise.all([
       Promise.all(professorIds.map((id) => this.disponibilidadeService.listByProfessor(id))),
       this.gradeHorariaRepository.listForConflicts(professorIds, turmaIds)
     ]);
 
     const { propostas, naoAlocados } = allocate(
-      input.pedidos,
+      input.pedidos.map((pedido) => ({
+        professorId: pedido.professorId,
+        turmaId: pedido.turmaId,
+        quantidade: pedido.quantidade,
+        duracaoMinutos: duracoes.get(`${pedido.turmaId}:${pedido.disciplinaId}`) as number
+      })),
       disponibilidades
         .flat()
         .filter((item) => item.periodoLetivo === input.periodoLetivo)

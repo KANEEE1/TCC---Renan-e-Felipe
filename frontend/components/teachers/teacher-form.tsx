@@ -139,6 +139,14 @@ export function TeacherForm({ isEdit = false, teacherId }: TeacherFormProps) {
 
           <div>
             <label className="mb-2 block text-gray-700">Disciplinas</label>
+            {subjectOptions.length === 0 && (
+              <p className="text-sm text-gray-500">
+                Nenhuma disciplina cadastrada.{" "}
+                <Link href="/disciplinas" className="text-blue-600 underline">
+                  Cadastrar disciplinas
+                </Link>
+              </p>
+            )}
             <div className="grid grid-cols-2 gap-2">
               {subjectOptions.map((subject) => (
                 <label

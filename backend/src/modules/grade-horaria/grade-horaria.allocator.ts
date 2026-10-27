@@ -1,5 +1,3 @@
-export const DURACAO_MIN = 120;
-
 export const DIAS_SEMANA = ["SEGUNDA", "TERCA", "QUARTA", "QUINTA", "SEXTA", "SABADO", "DOMINGO"] as const;
 
 export type MotivoNaoAlocado = "SEM_DISPONIBILIDADE" | "JANELA_INSUFICIENTE" | "CONFLITO";
@@ -8,6 +6,7 @@ export interface PedidoAlocacao {
   professorId: string;
   turmaId: string;
   quantidade: number;
+  duracaoMinutos: number;
 }
 
 export interface JanelaDisponibilidade {
@@ -74,11 +73,11 @@ export function allocate(
     const candidatos: { diaSemana: string; horarioInicio: string; horarioFim: string }[] = [];
     for (const janela of janelas) {
       const fim = toMinutes(janela.horarioFim);
-      for (let inicio = toMinutes(janela.horarioInicio); inicio + DURACAO_MIN <= fim; inicio += DURACAO_MIN) {
+      for (let inicio = toMinutes(janela.horarioInicio); inicio + pedido.duracaoMinutos <= fim; inicio += pedido.duracaoMinutos) {
         candidatos.push({
           diaSemana: janela.diaSemana,
           horarioInicio: toHHMM(inicio),
-          horarioFim: toHHMM(inicio + DURACAO_MIN)
+          horarioFim: toHHMM(inicio + pedido.duracaoMinutos)
         });
       }
     }

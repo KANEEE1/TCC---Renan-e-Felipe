@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, ArrowLeft, BookOpen, Check, Plus, Sparkles, Trash2, Users, Zap } from "lucide-react";
 import { useSchedule } from "@/components/schedule/schedule-context";
@@ -19,7 +20,7 @@ const WEEK_DAYS_FULL: Record<string, string> = {
 
 const MOTIVOS: Record<string, string> = {
   SEM_DISPONIBILIDADE: "Professor sem disponibilidade cadastrada no período",
-  JANELA_INSUFICIENTE: "Nenhuma janela de disponibilidade comporta uma aula de 2h",
+  JANELA_INSUFICIENTE: "Nenhuma janela de disponibilidade comporta a duração da aula",
   CONFLITO: "Horários disponíveis conflitam com outras aulas do professor ou da turma"
 };
 
@@ -40,10 +41,24 @@ const AVATAR_GRADIENTS = [
   "from-lime-400 to-green-500"
 ];
 
-interface Option {
+interface TeacherOption {
   id: string;
-  nome?: string;
-  name?: string;
+  name: string;
+  disciplinas: { id: string }[];
+}
+
+interface ClassOption {
+  id: string;
+  nome: string;
+  cargas: { aulasPorSemana: number; duracaoMinutos: number; disciplina: { id: string; nome: string } }[];
+}
+
+interface CargaRow {
+  disciplinaId: string;
+  disciplina: string;
+  duracaoMinutos: number;
+  quantidade: number;
+  teacherId: string;
 }
 
 interface Pedido {
@@ -55,6 +70,7 @@ interface Pedido {
   classId: string;
   turma: string;
   quantidade: number;
+  duracaoMinutos: number;
 }
 
 interface Proposta {
@@ -97,51 +113,60 @@ export function SmartScheduleBuilder() {
   const [conflitos, setConflitos] = useState<Conflito[]>([]);
   const [saved, setSaved] = useState(false);
 
-  const [form, setForm] = useState({
-    teacherId: "",
-    teacherName: "",
-    subjectId: "",
-    subject: "",
-    classId: "",
-    turma: "",
-    quantidade: 1
-  });
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [teacherOptions, setTeacherOptions] = useState<Option[]>([]);
-  const [subjectOptions, setSubjectOptions] = useState<Option[]>([]);
-  const [classOptions, setClassOptions] = useState<Option[]>([]);
+  const [classId, setClassId] = useState("");
+  const [rows, setRows] = useState<CargaRow[]>([]);
+  const [teacherOptions, setTeacherOptions] = useState<TeacherOption[]>([]);
+  const [classOptions, setClassOptions] = useState<ClassOption[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
 
   useEffect(() => {
-    api.get<Option[]>("/teachers").then(setTeacherOptions).catch(() => setTeacherOptions([]));
-    api.get<Option[]>("/disciplinas").then(setSubjectOptions).catch(() => setSubjectOptions([]));
-    api.get<Option[]>("/classes").then(setClassOptions).catch(() => setClassOptions([]));
+    api.get<TeacherOption[]>("/teachers").then(setTeacherOptions).catch(() => setTeacherOptions([]));
+    api.get<ClassOption[]>("/classes").then(setClassOptions).catch(() => setClassOptions([]));
   }, []);
 
-  const filteredSuggestions = teacherOptions.filter(
-    (t) => form.teacherName.length > 0 && (t.name ?? "").toLowerCase().includes(form.teacherName.toLowerCase())
-  );
+  const selectedClass = classOptions.find((c) => c.id === classId);
 
-  const canAdd = Boolean(form.teacherId && form.subjectId && form.classId && form.quantidade >= 1 && form.quantidade <= 20);
+  const selectClass = (id: string) => {
+    setClassId(id);
+    const cls = classOptions.find((c) => c.id === id);
+    setRows(
+      (cls?.cargas ?? []).map((carga) => ({
+        disciplinaId: carga.disciplina.id,
+        disciplina: carga.disciplina.nome,
+        duracaoMinutos: carga.duracaoMinutos,
+        quantidade: carga.aulasPorSemana,
+        teacherId: ""
+      }))
+    );
+  };
 
-  const addPedido = () => {
-    if (!canAdd) return;
+  const updateRow = (index: number, patch: Partial<CargaRow>) =>
+    setRows((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+
+  const validRows = rows.filter((row) => row.teacherId && row.quantidade >= 1 && row.quantidade <= 20);
+  const canAdd = Boolean(selectedClass) && validRows.length > 0;
+
+  const addPedidos = () => {
+    if (!canAdd || !selectedClass) return;
+    // Re-adicionar uma turma substitui os pedidos anteriores dela, em vez de duplicá-los.
     setPedidos((prev) => [
-      ...prev,
-      {
-        id: `e-${Date.now()}`,
-        teacherId: form.teacherId,
-        teacherName: form.teacherName.trim(),
-        subjectId: form.subjectId,
-        subject: form.subject,
-        classId: form.classId,
-        turma: form.turma,
-        quantidade: form.quantidade
-      }
+      ...prev.filter((p) => p.classId !== selectedClass.id),
+      ...validRows.map((row) => ({
+        id: `e-${Date.now()}-${row.disciplinaId}`,
+        teacherId: row.teacherId,
+        teacherName: teacherOptions.find((t) => t.id === row.teacherId)?.name ?? "",
+        subjectId: row.disciplinaId,
+        subject: row.disciplina,
+        classId: selectedClass.id,
+        turma: selectedClass.nome,
+        quantidade: row.quantidade,
+        duracaoMinutos: row.duracaoMinutos
+      }))
     ]);
-    setForm({ teacherId: "", teacherName: "", subjectId: "", subject: "", classId: "", turma: "", quantidade: 1 });
+    setClassId("");
+    setRows([]);
     setStep("list");
   };
 
@@ -225,7 +250,7 @@ export function SmartScheduleBuilder() {
             <h1 className="text-white">{step === "add" ? "Adicionar Pedido" : step === "result" ? "Resultado da Grade" : "Grade Inteligente"}</h1>
             <p className="mt-0.5 text-xs text-purple-200">
               {step === "add"
-                ? "Defina professor, matéria, turma e quantidade de aulas"
+                ? "Escolha a turma e o professor de cada disciplina"
                 : step === "result"
                   ? `${propostas.length} aulas sugeridas · ${naoAlocados.length} pedidos não atendidos`
                   : "Monte a grade sem conflitos de horários"}
@@ -246,7 +271,7 @@ export function SmartScheduleBuilder() {
                   <Users size={28} className="text-violet-400" />
                 </div>
                 <p className="text-sm text-slate-600">Nenhum pedido adicionado</p>
-                <p className="mt-1 max-w-56 text-xs text-slate-400">Informe professor, matéria, turma e quantidade de aulas. Os horários são sugeridos a partir da disponibilidade cadastrada.</p>
+                <p className="mt-1 max-w-56 text-xs text-slate-400">Escolha a turma e o professor de cada disciplina da matriz. Os horários são sugeridos a partir da disponibilidade cadastrada.</p>
               </div>
             )}
 
@@ -270,7 +295,7 @@ export function SmartScheduleBuilder() {
                   </div>
                   <div className="shrink-0 text-right">
                     <p className="text-sm font-bold text-violet-600">{pedido.quantidade}</p>
-                    <p className="text-[10px] text-slate-400">aulas</p>
+                    <p className="text-[10px] text-slate-400">aulas · {pedido.duracaoMinutos}min</p>
                   </div>
                   <button type="button" onClick={() => removePedido(pedido.id)} className="ml-1 rounded-lg p-1.5 transition-colors hover:bg-red-50">
                     <Trash2 size={15} className="text-slate-400 hover:text-red-500" />
@@ -316,100 +341,78 @@ export function SmartScheduleBuilder() {
           <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4 pb-36">
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <label className="mb-2 flex items-center gap-1 text-xs text-slate-500">
-                <Users size={11} /> Nome do professor
+                <Users size={11} /> Turma
               </label>
-              <div className="relative">
-                <input
-                  value={form.teacherName}
-                  onChange={(e) => {
-                    setForm((f) => ({ ...f, teacherName: e.target.value, teacherId: "" }));
-                    setShowSuggestions(true);
-                  }}
-                  onFocus={() => setShowSuggestions(true)}
-                  onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-                  placeholder="Ex: Ana Silva"
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-400"
-                />
-                {showSuggestions && filteredSuggestions.length > 0 && (
-                  <div className="absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
-                    {filteredSuggestions.map((t) => (
-                      <button
-                        key={t.id}
-                        type="button"
-                        onMouseDown={() => {
-                          setForm((f) => ({ ...f, teacherId: t.id, teacherName: t.name ?? "" }));
-                          setShowSuggestions(false);
-                        }}
-                        className="w-full px-4 py-2.5 text-left text-sm text-slate-700 transition-colors hover:bg-violet-50"
-                      >
-                        {t.name}
-                      </button>
-                    ))}
+              <select
+                value={classId}
+                onChange={(e) => selectClass(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-400"
+              >
+                <option value="">Selecionar...</option>
+                {classOptions.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nome}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {selectedClass && rows.length === 0 && (
+              <div className="rounded-2xl border border-orange-100 bg-orange-50 p-4 text-sm text-orange-700">
+                Esta turma não tem disciplinas cadastradas.{" "}
+                <Link href={`/classes/edit/${selectedClass.id}`} className="underline">
+                  Editar a turma
+                </Link>
+              </div>
+            )}
+
+            {rows.map((row, index) => {
+              const eligible = teacherOptions.filter((t) => t.disciplinas.some((d) => d.id === row.disciplinaId));
+              return (
+                <div key={row.disciplinaId} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="mb-3 flex items-center justify-between">
+                    <p className="flex items-center gap-1.5 text-sm text-slate-800">
+                      <BookOpen size={13} className="text-violet-500" /> {row.disciplina}
+                    </p>
+                    <span className="text-xs text-slate-400">{row.duracaoMinutos} min por aula</span>
                   </div>
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <label className="mb-2 flex items-center gap-1 text-xs text-slate-500">
-                  <BookOpen size={11} /> Matéria
-                </label>
-                <select
-                  value={form.subjectId}
-                  onChange={(e) => {
-                    const opt = subjectOptions.find((s) => s.id === e.target.value);
-                    setForm((f) => ({ ...f, subjectId: e.target.value, subject: opt?.nome ?? "" }));
-                  }}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-400"
-                >
-                  <option value="">Selecionar...</option>
-                  {subjectOptions.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.nome}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <label className="mb-2 flex items-center gap-1 text-xs text-slate-500">
-                  <Users size={11} /> Turma
-                </label>
-                <select
-                  value={form.classId}
-                  onChange={(e) => {
-                    const opt = classOptions.find((c) => c.id === e.target.value);
-                    setForm((f) => ({ ...f, classId: e.target.value, turma: opt?.nome ?? "" }));
-                  }}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-400"
-                >
-                  <option value="">Selecionar...</option>
-                  {classOptions.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.nome}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <label className="mb-2 flex items-center gap-1 text-xs text-slate-500">Quantidade de aulas (2h cada)</label>
-              <input
-                type="number"
-                min={1}
-                max={20}
-                value={form.quantidade}
-                onChange={(e) => setForm((f) => ({ ...f, quantidade: Math.floor(Number(e.target.value)) }))}
-                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-400"
-              />
-            </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="col-span-2">
+                      <label className="mb-1 block text-xs text-slate-500">Professor</label>
+                      <select
+                        value={row.teacherId}
+                        onChange={(e) => updateRow(index, { teacherId: e.target.value })}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-400"
+                      >
+                        <option value="">{eligible.length === 0 ? "Nenhum professor da disciplina" : "Sem professor"}</option>
+                        {eligible.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs text-slate-500">Aulas</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={20}
+                        value={row.quantidade}
+                        onChange={(e) => updateRow(index, { quantidade: Math.floor(Number(e.target.value)) })}
+                        className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-400"
+                      />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           <div className="fixed bottom-16 left-0 right-0 z-40 border-t border-slate-200 bg-white/95 p-4 backdrop-blur-md">
             <button
               type="button"
-              onClick={addPedido}
+              onClick={addPedidos}
               disabled={!canAdd}
               className={`flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 transition-all ${
                 canAdd
@@ -418,7 +421,7 @@ export function SmartScheduleBuilder() {
               }`}
             >
               <Plus size={18} />
-              Adicionar pedido{canAdd ? ` · ${form.quantidade} aula${form.quantidade !== 1 ? "s" : ""}` : ""}
+              Adicionar {validRows.length} pedido{validRows.length !== 1 ? "s" : ""}
             </button>
           </div>
         </>

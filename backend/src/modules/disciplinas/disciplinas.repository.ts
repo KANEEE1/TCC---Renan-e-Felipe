@@ -1,5 +1,4 @@
 import type { PrismaClient } from "@prisma/client";
-import type { CreateDisciplinaInput } from "./disciplinas.schemas.js";
 
 export class DisciplinasRepository {
   constructor(private readonly prisma: PrismaClient) {}
@@ -8,7 +7,31 @@ export class DisciplinasRepository {
     return this.prisma.disciplina.findMany({ orderBy: { nome: "asc" } });
   }
 
-  create(data: CreateDisciplinaInput) {
+  findById(id: string) {
+    return this.prisma.disciplina.findUnique({ where: { id } });
+  }
+
+  listByNomesNormalizados(nomesNormalizados: string[]) {
+    return this.prisma.disciplina.findMany({ where: { nomeNormalizado: { in: nomesNormalizados } } });
+  }
+
+  countProfessores(id: string) {
+    return this.prisma.user.count({ where: { disciplinas: { some: { id } } } });
+  }
+
+  create(data: { nome: string; nomeNormalizado: string }) {
     return this.prisma.disciplina.create({ data });
+  }
+
+  createMany(data: { nome: string; nomeNormalizado: string }[]) {
+    return this.prisma.disciplina.createMany({ data, skipDuplicates: true });
+  }
+
+  update(id: string, data: { nome: string; nomeNormalizado: string }) {
+    return this.prisma.disciplina.update({ where: { id }, data });
+  }
+
+  remove(id: string) {
+    return this.prisma.disciplina.delete({ where: { id } });
   }
 }

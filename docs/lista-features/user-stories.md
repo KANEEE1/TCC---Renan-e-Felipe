@@ -6,6 +6,7 @@
 - Como membro da gestão gostaria de conseguir cadastrar alunos e professores na plataforma.  
 - Como membro da gestão gostaria de conseguir modificar informações dos alunos e professores (turmas, matérias dadas, etc)  
 - Como professor/gestor gostaria de conseguir modificar minhas próprias informações.
+- Como membro da gestão, gostaria de cadastrar uma turma definindo suas disciplinas, quantas aulas semanais cada disciplina terá e a duração de cada aula, para que esses dados sejam usados na geração da grade horária. Uma disciplina nova informada na turma deve ser registrada automaticamente no catálogo de disciplinas.
 
 **P1**
 
@@ -28,7 +29,6 @@
 
 - Eu como membro da gestão gostaria de visualizar relatórios de frequência para identificar alunos com baixa participação.  
 - Eu como membro da gestão gostaria de visualizar relatórios de desempenho das turmas para identificar dificuldades de aprendizagem.  
-- Eu como professor/gestor gostaria de mandar um email automático com os eventos que eu criar ou cancelar sazonalmente.  
 - Eu como professor/gestor gostaria de poder marcar se vou ou não comparecer a uma reunião.  
 - Eu como professor gostaria de marcar possíveis aulas que não irei conseguir estar presente.
 
@@ -38,4 +38,7 @@
 - Como membro da gestão, gostaria que o sistema sugerisse automaticamente possíveis professores substitutos com base na disponibilidade e disciplina ministrada.  
 - Como professor substituto, gostaria de ser notificado quando for designado para substituir uma aula.
 
+**P5**
 
+- Eu como professor/gestor gostaria de mandar um email automático com os eventos que eu criar ou cancelar sazonalmente.  
+- Como membro da gestão, gostaria de copiar as disciplinas e cargas horárias de uma turma existente ao criar uma nova turma.

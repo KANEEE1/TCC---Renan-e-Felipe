@@ -1,5 +1,6 @@
 import { Router } from "express";
-import { asyncHandler } from "../../shared/http.js";
+import { getActor, requireAuth } from "../../shared/auth.js";
+import { asyncHandler, HttpError } from "../../shared/http.js";
 import { createDisponibilidadeSchema, updateDisponibilidadeSchema } from "./disponibilidade.schemas.js";
 import type { DisponibilidadeService } from "./disponibilidade.service.js";
 
@@ -11,18 +12,23 @@ export class DisponibilidadeController {
       res.json(await this.disponibilidadeService.list());
     }));
 
-    this.router.post("/", asyncHandler(async (req, res) => {
+    this.router.post("/", requireAuth, asyncHandler(async (req, res) => {
       const input = createDisponibilidadeSchema.parse(req.body);
+
+      if (input.professorId !== getActor(req).id) {
+        throw new HttpError(403, "Somente o próprio professor pode alterar a disponibilidade");
+      }
+
       res.status(201).json(await this.disponibilidadeService.create(input));
     }));
 
-    this.router.put("/:id", asyncHandler(async (req, res) => {
+    this.router.put("/:id", requireAuth, asyncHandler(async (req, res) => {
       const input = updateDisponibilidadeSchema.parse(req.body);
-      res.json(await this.disponibilidadeService.update(req.params.id as string, input));
+      res.json(await this.disponibilidadeService.update(req.params.id as string, input, getActor(req).id));
     }));
 
-    this.router.delete("/:id", asyncHandler(async (req, res) => {
-      await this.disponibilidadeService.remove(req.params.id as string);
+    this.router.delete("/:id", requireAuth, asyncHandler(async (req, res) => {
+      await this.disponibilidadeService.remove(req.params.id as string, getActor(req).id);
       res.status(204).send();
     }));
   }

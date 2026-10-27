@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { BookOpen, Calendar, Edit, Mail, Phone, Search, UserPlus } from "lucide-react";
 import { api } from "@/lib/api";
+import { getSessionUser } from "@/lib/auth";
 
 const isCoordinator = true;
 
@@ -35,8 +36,11 @@ interface Teacher {
 export function TeacherList() {
   const [searchTerm, setSearchTerm] = useState("");
   const [teachers, setTeachers] = useState<Teacher[]>([]);
+  // A aba "Horários" só aparece no card do próprio professor: a gestão não edita disponibilidade.
+  const [sessionUserId, setSessionUserId] = useState<string | null>(null);
 
   useEffect(() => {
+    setSessionUserId(getSessionUser()?.id ?? null);
     api.get<Teacher[]>("/teachers").then(setTeachers).catch(() => setTeachers([]));
   }, []);
 
@@ -126,7 +130,7 @@ export function TeacherList() {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 border-t border-slate-100">
+            <div className={`grid border-t border-slate-100 ${teacher.id === sessionUserId ? "grid-cols-3" : "grid-cols-2"}`}>
               <Link
                 href={`/teachers/edit/${teacher.id}`}
                 className="flex items-center justify-center gap-1.5 border-r border-slate-100 py-3 text-xs text-slate-500 transition-colors hover:bg-slate-50 hover:text-blue-600"
@@ -136,11 +140,12 @@ export function TeacherList() {
               </Link>
               <Link
                 href={`/teachers/schedule?teacher=${teacher.id}`}
-                className="flex items-center justify-center gap-1.5 border-r border-slate-100 py-3 text-xs text-slate-500 transition-colors hover:bg-emerald-50 hover:text-emerald-600"
+                className={`flex items-center justify-center gap-1.5 py-3 ${teacher.id === sessionUserId ? "border-r border-slate-100" : ""} text-xs text-slate-500 transition-colors hover:bg-emerald-50 hover:text-emerald-600`}
               >
                 <BookOpen size={14} />
                 Agenda
               </Link>
+              {teacher.id === sessionUserId && (
               <Link
                 href={`/teachers/${teacher.id}/availability`}
                 className="flex items-center justify-center gap-1.5 py-3 text-xs text-slate-500 transition-colors hover:bg-purple-50 hover:text-purple-600"
@@ -148,6 +153,7 @@ export function TeacherList() {
                 <Calendar size={14} />
                 Horários
               </Link>
+              )}
             </div>
           </div>
         ))}

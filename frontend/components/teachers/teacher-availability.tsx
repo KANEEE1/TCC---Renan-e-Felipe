@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, Check, Save } from "lucide-react";
 import { currentPeriodoLetivo } from "@/lib/periodo-letivo";
 import { api, ApiError } from "@/lib/api";
+import { getSessionUser } from "@/lib/auth";
 
 const TIME_SLOTS = [
   "07:00 - 08:00",
@@ -59,8 +60,11 @@ export function TeacherAvailability({ teacherId }: { teacherId: string }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  // Só o próprio professor edita; os demais (inclusive a gestão) apenas consultam.
+  const [canEdit, setCanEdit] = useState(false);
 
   useEffect(() => {
+    setCanEdit(getSessionUser()?.id === teacherId);
     api.get<{ name: string }>(`/teachers/${teacherId}`).then((t) => setTeacherName(t.name));
     api.get<AvailabilityEntry[]>(`/teachers/${teacherId}/availability`).then((entries) => {
       const next: Record<string, boolean> = {};
@@ -78,6 +82,7 @@ export function TeacherAvailability({ teacherId }: { teacherId: string }) {
   }, [teacherId]);
 
   const toggleSlot = (day: string, time: string) => {
+    if (!canEdit) return;
     const key = slotKey(day, time);
     setSuccess(false);
     setAvailability((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -132,7 +137,11 @@ export function TeacherAvailability({ teacherId }: { teacherId: string }) {
 
       <div className="flex-1 overflow-x-auto overflow-y-auto p-4 pb-32">
         <div className="rounded-lg bg-white p-4 shadow">
-          <p className="mb-4 text-sm text-gray-600">Selecione os horários disponíveis para o professor</p>
+          <p className="mb-4 text-sm text-gray-600">
+            {canEdit
+              ? "Selecione os horários em que você está disponível"
+              : "Somente o próprio professor pode alterar a disponibilidade."}
+          </p>
 
           <div className="min-w-max">
             <div className="mb-2 grid grid-cols-6 gap-2">
@@ -155,8 +164,9 @@ export function TeacherAvailability({ teacherId }: { teacherId: string }) {
                       key={key}
                       type="button"
                       onClick={() => toggleSlot(day, time)}
+                      disabled={!canEdit}
                       className={`rounded-lg p-3 transition-all ${
-                        isAvailable ? "bg-green-500 text-white" : "bg-gray-100 hover:bg-gray-200"
+                        isAvailable ? "bg-green-500 text-white" : `bg-gray-100 ${canEdit ? "hover:bg-gray-200" : ""}`
                       }`}
                     >
                       {isAvailable && <Check size={20} className="mx-auto" />}
@@ -186,6 +196,7 @@ export function TeacherAvailability({ teacherId }: { teacherId: string }) {
         {success && <p className="mt-3 text-sm text-green-700">Disponibilidade salva.</p>}
       </div>
 
+      {canEdit && (
       <div className="fixed bottom-16 left-0 right-0 z-40 border-t bg-white p-4">
         <button
           type="button"
@@ -197,6 +208,7 @@ export function TeacherAvailability({ teacherId }: { teacherId: string }) {
           {saving ? "Salvando..." : "Salvar Disponibilidade"}
         </button>
       </div>
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
-import { app, createUser, resetDb } from "./helpers.js";
+import { app, createUser, resetDb, asTeacher, loginAs } from "./helpers.js";
 
 describe("teachers", () => {
   beforeEach(async () => {
@@ -57,7 +57,7 @@ describe("teachers", () => {
     const teacher = await request(app).post("/teachers").send({ name: "Prof", email: "prof3@test.com", password: "senha1234" });
 
     const created = await request(app)
-      .post(`/teachers/${teacher.body.id}/availability`)
+      .post(`/teachers/${teacher.body.id}/availability`).set(asTeacher(teacher.body.id))
       .send({ diaSemana: "SEGUNDA", horarioInicio: "08:00", horarioFim: "10:00", periodoLetivo: "2026-1" });
     expect(created.status).toBe(201);
 
@@ -70,7 +70,7 @@ describe("teachers", () => {
     const teacher = await request(app).post("/teachers").send({ name: "Prof", email: "prof4@test.com", password: "senha1234" });
 
     const res = await request(app)
-      .post(`/teachers/${teacher.body.id}/availability`)
+      .post(`/teachers/${teacher.body.id}/availability`).set(asTeacher(teacher.body.id))
       .send({ diaSemana: "SEGUNDA", horarioInicio: "10:00", horarioFim: "08:00", periodoLetivo: "2026-1" });
 
     expect(res.status).toBe(400);
@@ -79,11 +79,11 @@ describe("teachers", () => {
   it("updates an availability slot", async () => {
     const teacher = await request(app).post("/teachers").send({ name: "Prof", email: "prof5@test.com", password: "senha1234" });
     const slot = await request(app)
-      .post(`/teachers/${teacher.body.id}/availability`)
+      .post(`/teachers/${teacher.body.id}/availability`).set(asTeacher(teacher.body.id))
       .send({ diaSemana: "SEGUNDA", horarioInicio: "08:00", horarioFim: "10:00", periodoLetivo: "2026-1" });
 
     const res = await request(app)
-      .put(`/teachers/${teacher.body.id}/availability/${slot.body.id}`)
+      .put(`/teachers/${teacher.body.id}/availability/${slot.body.id}`).set(asTeacher(teacher.body.id))
       .send({ diaSemana: "TERCA", horarioFim: "11:00" });
 
     expect(res.status).toBe(200);
@@ -94,11 +94,11 @@ describe("teachers", () => {
   it("rejects an update that makes the end time before the existing start time", async () => {
     const teacher = await request(app).post("/teachers").send({ name: "Prof", email: "prof6@test.com", password: "senha1234" });
     const slot = await request(app)
-      .post(`/teachers/${teacher.body.id}/availability`)
+      .post(`/teachers/${teacher.body.id}/availability`).set(asTeacher(teacher.body.id))
       .send({ diaSemana: "SEGUNDA", horarioInicio: "08:00", horarioFim: "10:00", periodoLetivo: "2026-1" });
 
     const res = await request(app)
-      .put(`/teachers/${teacher.body.id}/availability/${slot.body.id}`)
+      .put(`/teachers/${teacher.body.id}/availability/${slot.body.id}`).set(asTeacher(teacher.body.id))
       .send({ horarioFim: "07:00" });
 
     expect(res.status).toBe(400);
@@ -107,10 +107,10 @@ describe("teachers", () => {
   it("removes an availability slot", async () => {
     const teacher = await request(app).post("/teachers").send({ name: "Prof", email: "prof7@test.com", password: "senha1234" });
     const slot = await request(app)
-      .post(`/teachers/${teacher.body.id}/availability`)
+      .post(`/teachers/${teacher.body.id}/availability`).set(asTeacher(teacher.body.id))
       .send({ diaSemana: "SEGUNDA", horarioInicio: "08:00", horarioFim: "10:00", periodoLetivo: "2026-1" });
 
-    const res = await request(app).delete(`/teachers/${teacher.body.id}/availability/${slot.body.id}`);
+    const res = await request(app).delete(`/teachers/${teacher.body.id}/availability/${slot.body.id}`).set(asTeacher(teacher.body.id));
     expect(res.status).toBe(204);
 
     const list = await request(app).get(`/teachers/${teacher.body.id}/availability`);
@@ -121,28 +121,46 @@ describe("teachers", () => {
     const owner = await request(app).post("/teachers").send({ name: "Dono", email: "dono@test.com", password: "senha1234" });
     const other = await request(app).post("/teachers").send({ name: "Outro", email: "outro@test.com", password: "senha1234" });
     const slot = await request(app)
-      .post(`/teachers/${owner.body.id}/availability`)
+      .post(`/teachers/${owner.body.id}/availability`).set(asTeacher(owner.body.id))
       .send({ diaSemana: "SEGUNDA", horarioInicio: "08:00", horarioFim: "10:00", periodoLetivo: "2026-1" });
 
-    const res = await request(app).delete(`/teachers/${other.body.id}/availability/${slot.body.id}`);
+    const res = await request(app).delete(`/teachers/${other.body.id}/availability/${slot.body.id}`).set(asTeacher(other.body.id));
     expect(res.status).toBe(404);
 
     const list = await request(app).get(`/teachers/${owner.body.id}/availability`);
     expect(list.body).toHaveLength(1);
   });
 
+  it("only the teacher can change their own availability", async () => {
+    const teacher = await request(app).post("/teachers").send({ name: "Prof", email: "dono@test.com", password: "senha1234" });
+    await createUser({ email: "gestao@test.com", roles: ["GESTAO"] });
+    const gestao = await loginAs("gestao@test.com");
+    const body = { diaSemana: "SEGUNDA", horarioInicio: "08:00", horarioFim: "10:00", periodoLetivo: "2026-1" };
+    const url = `/teachers/${teacher.body.id}/availability`;
+
+    expect((await request(app).post(url).send(body)).status).toBe(401);
+    expect((await request(app).post(url).set({ Authorization: `Bearer ${gestao}` }).send(body)).status).toBe(403);
+    expect((await request(app).post("/disponibilidade").set({ Authorization: `Bearer ${gestao}` }).send({ ...body, professorId: teacher.body.id })).status).toBe(403);
+
+    const slot = await request(app).post(url).set(asTeacher(teacher.body.id)).send(body);
+    expect(slot.status).toBe(201);
+    expect((await request(app).delete(`${url}/${slot.body.id}`).set({ Authorization: `Bearer ${gestao}` })).status).toBe(403);
+    expect((await request(app).delete(`/disponibilidade/${slot.body.id}`).set({ Authorization: `Bearer ${gestao}` })).status).toBe(404);
+    expect((await request(app).get(url).set({ Authorization: `Bearer ${gestao}` })).body).toHaveLength(1);
+  });
+
   it("returns 409 for a duplicate availability slot", async () => {
     const teacher = await request(app).post("/teachers").send({ name: "Prof", email: "prof8@test.com", password: "senha1234" });
     const body = { diaSemana: "SEGUNDA", horarioInicio: "08:00", horarioFim: "10:00", periodoLetivo: "2026-1" };
 
-    await request(app).post(`/teachers/${teacher.body.id}/availability`).send(body);
-    const dup = await request(app).post(`/teachers/${teacher.body.id}/availability`).send(body);
+    await request(app).post(`/teachers/${teacher.body.id}/availability`).set(asTeacher(teacher.body.id)).send(body);
+    const dup = await request(app).post(`/teachers/${teacher.body.id}/availability`).set(asTeacher(teacher.body.id)).send(body);
 
     expect(dup.status).toBe(409);
   });
 
   it("returns 404 when deleting an unknown availability slot", async () => {
-    const res = await request(app).delete("/disponibilidade/nonexistent-id");
+    const res = await request(app).delete("/disponibilidade/nonexistent-id").set(asTeacher("qualquer-professor"));
     expect(res.status).toBe(404);
   });
 

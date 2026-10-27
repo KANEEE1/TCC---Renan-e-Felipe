@@ -1,6 +1,6 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
-import { app, resetDb } from "./helpers.js";
+import { app, resetDb, asTeacher } from "./helpers.js";
 
 async function setupLessonDeps() {
   const disciplina = await request(app).post("/disciplinas").send({ nome: "Física" });
@@ -105,7 +105,7 @@ describe("schedule", () => {
 
   async function addAvailability(professorId: string, diaSemana: string, horarioInicio: string, horarioFim: string, periodoLetivo = "2026-1") {
     const res = await request(app)
-      .post(`/teachers/${professorId}/availability`)
+      .post(`/teachers/${professorId}/availability`).set(asTeacher(professorId))
       .send({ diaSemana, horarioInicio, horarioFim, periodoLetivo });
     expect(res.status).toBe(201);
   }

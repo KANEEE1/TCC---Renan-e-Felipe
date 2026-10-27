@@ -20,8 +20,10 @@ const DAYS = [
 // Date.getDay(): 0 = domingo.
 const TODAY_INDEX = (new Date().getDay() + 6) % 7;
 
-const START_HOUR = 6;
-const END_HOUR = 23;
+const START_HOUR = 0;
+const END_HOUR = 24;
+// Ao abrir, a grade rola até este horário (como o Google Agenda), sem esconder a madrugada.
+const SCROLL_TO_HOUR = 7;
 const SLOT_MINUTES = 30;
 const SLOTS = ((END_HOUR - START_HOUR) * 60) / SLOT_MINUTES;
 const ROW_HEIGHT = 22;
@@ -56,6 +58,11 @@ function toHHMM(iso: string) {
 function slotToTime(slot: number) {
   const minutes = START_HOUR * 60 + slot * SLOT_MINUTES;
   return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+}
+
+// O banco guarda horário do dia (sem "24:00"): o fim da última meia-hora é gravado como 23:59.
+function slotToApiTime(slot: number) {
+  return slot === SLOTS ? "23:59" : slotToTime(slot);
 }
 
 function timeToSlot(time: string) {
@@ -99,6 +106,8 @@ export function TeacherAvailability({ teacherId }: { teacherId: string }) {
   const drag = useRef<{ day: number; from: number; mode: boolean; base: boolean[] } | null>(null);
   // Registrado no pointerdown: o evento de clique nem sempre informa se veio de toque (Safari antigo).
   const lastPointerType = useRef<string>("mouse");
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrolledOnce = useRef(false);
 
   const load = useCallback(() => {
     api
@@ -126,6 +135,12 @@ export function TeacherAvailability({ teacherId }: { teacherId: string }) {
     api.get<{ name: string }>(`/teachers/${teacherId}`).then((t) => setTeacherName(t.name)).catch(() => {});
     load();
   }, [teacherId, load]);
+
+  useEffect(() => {
+    if (!loaded || scrolledOnce.current || !scrollRef.current) return;
+    scrollRef.current.scrollTop = SCROLL_TO_HOUR * (60 / SLOT_MINUTES) * ROW_HEIGHT;
+    scrolledOnce.current = true;
+  }, [loaded]);
 
   useEffect(() => {
     const stop = () => {
@@ -184,7 +199,9 @@ export function TeacherAvailability({ teacherId }: { teacherId: string }) {
     setError(null);
     setSuccess(false);
 
-    const desired = DAYS.flatMap((day, index) => intervalsOf(grid[index]).map((interval) => ({ dia: day.key, ...interval })));
+    const desired = DAYS.flatMap((day, index) =>
+      intervalsOf(grid[index]).map((interval) => ({ dia: day.key, inicio: interval.inicio, fim: slotToApiTime(interval.to) }))
+    );
     const sameInterval = (entry: AvailabilityEntry, item: (typeof desired)[number]) =>
       entry.diaSemana === item.dia && toHHMM(entry.horarioInicio) === item.inicio && toHHMM(entry.horarioFim) === item.fim;
 
@@ -216,7 +233,7 @@ export function TeacherAvailability({ teacherId }: { teacherId: string }) {
   const totalSlots = grid.reduce((sum, column) => sum + column.filter(Boolean).length, 0);
 
   return (
-    <div className="flex flex-1 flex-col bg-white">
+    <div className="flex h-full flex-col bg-white">
       <div className="flex items-center gap-3 border-b border-slate-200 px-4 py-3">
         <Link href="/teachers" aria-label="Voltar" className="rounded-full p-1.5 text-slate-600 hover:bg-slate-100">
           <ArrowLeft size={22} />
@@ -250,7 +267,7 @@ export function TeacherAvailability({ teacherId }: { teacherId: string }) {
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto pb-36" onPointerMove={handlePointerMove}>
+      <div ref={scrollRef} className="flex-1 overflow-y-auto pb-36" onPointerMove={handlePointerMove}>
         <div className="sticky top-0 z-20 grid grid-cols-[44px_repeat(7,minmax(0,1fr))] border-b border-slate-200 bg-white">
           <div />
           {DAYS.map((day, index) => (

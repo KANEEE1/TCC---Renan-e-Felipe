@@ -124,7 +124,6 @@ export class GradeHorariaService {
       })),
       disponibilidades
         .flat()
-        .filter((item) => item.periodoLetivo === input.periodoLetivo)
         .map((item) => ({
           professorId: item.professorId,
           diaSemana: item.diaSemana,
@@ -162,8 +161,12 @@ export class GradeHorariaService {
   }
 
   async generate(input: GenerateScheduleInput) {
-    if (!(await this.gradeHorariaRepository.findTurma(input.turmaId))) {
+    const turma = await this.gradeHorariaRepository.findTurma(input.turmaId);
+    if (!turma) {
       throw new HttpError(404, "Class not found");
+    }
+    if (!turma.gradeInicio || !turma.gradeFim) {
+      throw new HttpError(400, "Defina o período da grade");
     }
 
     const [cargas, janelas] = await Promise.all([
@@ -183,7 +186,7 @@ export class GradeHorariaService {
     );
     const professorIds = professores.map((professor) => professor.id);
     const [disponibilidades, aulas, aulasAtuais] = await Promise.all([
-      this.gradeHorariaRepository.listDisponibilidadesDoPeriodo(professorIds, input.periodoLetivo),
+      this.gradeHorariaRepository.listDisponibilidadesDosProfessores(professorIds),
       this.gradeHorariaRepository.listAulasDosProfessoresForaDaTurma(professorIds, input.turmaId),
       this.gradeHorariaRepository.countAulasDaTurma(input.turmaId)
     ]);

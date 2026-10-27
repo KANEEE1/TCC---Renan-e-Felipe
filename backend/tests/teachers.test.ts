@@ -71,7 +71,7 @@ describe("teachers", () => {
 
     const created = await request(app)
       .post(`/teachers/${teacher.body.id}/availability`).set(asTeacher(teacher.body.id))
-      .send({ diaSemana: "SEGUNDA", horarioInicio: "08:00", horarioFim: "10:00", periodoLetivo: "2026-1" });
+      .send({ diaSemana: "SEGUNDA", horarioInicio: "08:00", horarioFim: "10:00" });
     expect(created.status).toBe(201);
 
     const list = await request(app).get(`/teachers/${teacher.body.id}/availability`);
@@ -84,7 +84,7 @@ describe("teachers", () => {
 
     const res = await request(app)
       .post(`/teachers/${teacher.body.id}/availability`).set(asTeacher(teacher.body.id))
-      .send({ diaSemana: "SEGUNDA", horarioInicio: "10:00", horarioFim: "08:00", periodoLetivo: "2026-1" });
+      .send({ diaSemana: "SEGUNDA", horarioInicio: "10:00", horarioFim: "08:00" });
 
     expect(res.status).toBe(400);
   });
@@ -93,7 +93,7 @@ describe("teachers", () => {
     const teacher = await request(app).post("/teachers").send({ name: "Prof", email: "prof5@test.com", password: "senha1234" });
     const slot = await request(app)
       .post(`/teachers/${teacher.body.id}/availability`).set(asTeacher(teacher.body.id))
-      .send({ diaSemana: "SEGUNDA", horarioInicio: "08:00", horarioFim: "10:00", periodoLetivo: "2026-1" });
+      .send({ diaSemana: "SEGUNDA", horarioInicio: "08:00", horarioFim: "10:00" });
 
     const res = await request(app)
       .put(`/teachers/${teacher.body.id}/availability/${slot.body.id}`).set(asTeacher(teacher.body.id))
@@ -108,7 +108,7 @@ describe("teachers", () => {
     const teacher = await request(app).post("/teachers").send({ name: "Prof", email: "prof6@test.com", password: "senha1234" });
     const slot = await request(app)
       .post(`/teachers/${teacher.body.id}/availability`).set(asTeacher(teacher.body.id))
-      .send({ diaSemana: "SEGUNDA", horarioInicio: "08:00", horarioFim: "10:00", periodoLetivo: "2026-1" });
+      .send({ diaSemana: "SEGUNDA", horarioInicio: "08:00", horarioFim: "10:00" });
 
     const res = await request(app)
       .put(`/teachers/${teacher.body.id}/availability/${slot.body.id}`).set(asTeacher(teacher.body.id))
@@ -121,7 +121,7 @@ describe("teachers", () => {
     const teacher = await request(app).post("/teachers").send({ name: "Prof", email: "prof7@test.com", password: "senha1234" });
     const slot = await request(app)
       .post(`/teachers/${teacher.body.id}/availability`).set(asTeacher(teacher.body.id))
-      .send({ diaSemana: "SEGUNDA", horarioInicio: "08:00", horarioFim: "10:00", periodoLetivo: "2026-1" });
+      .send({ diaSemana: "SEGUNDA", horarioInicio: "08:00", horarioFim: "10:00" });
 
     const res = await request(app).delete(`/teachers/${teacher.body.id}/availability/${slot.body.id}`).set(asTeacher(teacher.body.id));
     expect(res.status).toBe(204);
@@ -135,7 +135,7 @@ describe("teachers", () => {
     const other = await request(app).post("/teachers").send({ name: "Outro", email: "outro@test.com", password: "senha1234" });
     const slot = await request(app)
       .post(`/teachers/${owner.body.id}/availability`).set(asTeacher(owner.body.id))
-      .send({ diaSemana: "SEGUNDA", horarioInicio: "08:00", horarioFim: "10:00", periodoLetivo: "2026-1" });
+      .send({ diaSemana: "SEGUNDA", horarioInicio: "08:00", horarioFim: "10:00" });
 
     const res = await request(app).delete(`/teachers/${other.body.id}/availability/${slot.body.id}`).set(asTeacher(other.body.id));
     expect(res.status).toBe(404);
@@ -148,7 +148,7 @@ describe("teachers", () => {
     const teacher = await request(app).post("/teachers").send({ name: "Prof", email: "dono@test.com", password: "senha1234" });
     await createUser({ email: "gestao@test.com", roles: ["GESTAO"] });
     const gestao = await loginAs("gestao@test.com");
-    const body = { diaSemana: "SEGUNDA", horarioInicio: "08:00", horarioFim: "10:00", periodoLetivo: "2026-1" };
+    const body = { diaSemana: "SEGUNDA", horarioInicio: "08:00", horarioFim: "10:00" };
     const url = `/teachers/${teacher.body.id}/availability`;
 
     expect((await request(app).post(url).send(body)).status).toBe(401);
@@ -164,7 +164,7 @@ describe("teachers", () => {
 
   it("returns 409 for a duplicate availability slot", async () => {
     const teacher = await request(app).post("/teachers").send({ name: "Prof", email: "prof8@test.com", password: "senha1234" });
-    const body = { diaSemana: "SEGUNDA", horarioInicio: "08:00", horarioFim: "10:00", periodoLetivo: "2026-1" };
+    const body = { diaSemana: "SEGUNDA", horarioInicio: "08:00", horarioFim: "10:00" };
 
     await request(app).post(`/teachers/${teacher.body.id}/availability`).set(asTeacher(teacher.body.id)).send(body);
     const dup = await request(app).post(`/teachers/${teacher.body.id}/availability`).set(asTeacher(teacher.body.id)).send(body);

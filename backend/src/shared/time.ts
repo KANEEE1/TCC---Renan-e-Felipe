@@ -30,7 +30,3 @@ export function todayInSaoPaulo(now: Date = new Date()) {
 export function diaSemanaOfDateOnly(value: string) {
   return SCHEDULE_WEEKDAYS[(parseDateOnly(value).getUTCDay() + 6) % 7];
 }
-
-export function periodoLetivoOf(date: Date) {
-  return `${date.getUTCFullYear()}-${date.getUTCMonth() < 6 ? 1 : 2}`;
-}

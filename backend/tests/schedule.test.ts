@@ -103,26 +103,22 @@ describe("schedule", () => {
     expect(list.body).toHaveLength(0);
   });
 
-  async function addAvailability(professorId: string, diaSemana: string, horarioInicio: string, horarioFim: string, periodoLetivo = "2026-1") {
+  async function addAvailability(professorId: string, diaSemana: string, horarioInicio: string, horarioFim: string) {
     const res = await request(app)
       .post(`/teachers/${professorId}/availability`).set(asTeacher(professorId))
-      .send({ diaSemana, horarioInicio, horarioFim, periodoLetivo });
+      .send({ diaSemana, horarioInicio, horarioFim });
     expect(res.status).toBe(201);
   }
 
-  it("suggest does not persist anything and respects periodoLetivo", async () => {
+  it("suggest does not persist anything", async () => {
     const { turmaId, disciplinaId, professorId } = await setupLessonDeps();
-    await addAvailability(professorId, "SEGUNDA", "08:00", "12:00", "2026-1");
+    await addAvailability(professorId, "SEGUNDA", "08:00", "12:00");
     const pedidos = [{ professorId, disciplinaId, turmaId, quantidade: 2 }];
 
-    const res = await request(app).post("/schedule/suggest").send({ periodoLetivo: "2026-1", pedidos });
+    const res = await request(app).post("/schedule/suggest").send({ pedidos });
     expect(res.status).toBe(200);
     expect(res.body.propostas).toHaveLength(2);
     expect(res.body.naoAlocados).toHaveLength(0);
-
-    const other = await request(app).post("/schedule/suggest").send({ periodoLetivo: "2026-2", pedidos });
-    expect(other.body.propostas).toHaveLength(0);
-    expect(other.body.naoAlocados[0].motivo).toBe("SEM_DISPONIBILIDADE");
 
     const weekly = await request(app).get("/schedule/weekly");
     expect(weekly.body).toHaveLength(0);
@@ -135,7 +131,7 @@ describe("schedule", () => {
 
     const res = await request(app)
       .post("/schedule/suggest")
-      .send({ periodoLetivo: "2026-1", pedidos: [{ professorId, disciplinaId, turmaId, quantidade: 2 }] });
+      .send({ pedidos: [{ professorId, disciplinaId, turmaId, quantidade: 2 }] });
     expect(res.status).toBe(200);
     expect(res.body.propostas.map((p: { horarioInicio: string; horarioFim: string }) => [p.horarioInicio, p.horarioFim])).toEqual([
       ["08:00", "09:00"],
@@ -145,7 +141,7 @@ describe("schedule", () => {
     await request(app).put(`/classes/${turmaId}`).send({ disciplinas: [] });
     const semCarga = await request(app)
       .post("/schedule/suggest")
-      .send({ periodoLetivo: "2026-1", pedidos: [{ professorId, disciplinaId, turmaId, quantidade: 2 }] });
+      .send({ pedidos: [{ professorId, disciplinaId, turmaId, quantidade: 2 }] });
     expect(semCarga.status).toBe(400);
     expect(semCarga.body.semCarga).toEqual([{ turmaId, disciplinaId }]);
   });
@@ -157,7 +153,7 @@ describe("schedule", () => {
 
     const res = await request(app)
       .post("/schedule/suggest")
-      .send({ periodoLetivo: "2026-1", pedidos: [{ professorId, disciplinaId, turmaId, quantidade: 1 }] });
+      .send({ pedidos: [{ professorId, disciplinaId, turmaId, quantidade: 1 }] });
     expect(res.status).toBe(200);
     expect(res.body.propostas[0]).toMatchObject({ horarioInicio: "08:00", horarioFim: "09:30" });
   });
@@ -169,7 +165,7 @@ describe("schedule", () => {
 
     const res = await request(app)
       .post("/schedule/suggest")
-      .send({ periodoLetivo: "2026-1", pedidos: [{ professorId, disciplinaId, turmaId, quantidade: 1 }] });
+      .send({ pedidos: [{ professorId, disciplinaId, turmaId, quantidade: 1 }] });
     expect(res.status).toBe(200);
     expect(res.body.propostas).toHaveLength(0);
     expect(res.body.naoAlocados[0].motivo).toBe("JANELA_INSUFICIENTE");
@@ -229,7 +225,7 @@ describe("schedule", () => {
     const { turmaId, disciplinaId, professorId } = await setupLessonDeps();
     const res = await request(app)
       .post("/schedule/suggest")
-      .send({ periodoLetivo: "2026-1", pedidos: [{ professorId, disciplinaId, turmaId, quantidade: 0 }] });
+      .send({ pedidos: [{ professorId, disciplinaId, turmaId, quantidade: 0 }] });
     expect(res.status).toBe(400);
   });
 

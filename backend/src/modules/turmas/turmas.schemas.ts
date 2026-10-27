@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseDateOnly } from "../../shared/time.js";
 import { diaSemanaSchema } from "../disponibilidade/disponibilidade.schemas.js";
 
 const cargaSchema = z
@@ -12,6 +13,14 @@ const cargaSchema = z
     message: "Informe exatamente um entre disciplinaId e nome"
   });
 
+const dataSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine((value) => {
+    const date = parseDateOnly(value);
+    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+  }, "Data inválida");
+
 export const createTurmaSchema = z.object({
   nome: z.string().min(1),
   anoLetivo: z.number().int().min(2000),
@@ -19,6 +28,8 @@ export const createTurmaSchema = z.object({
   sala: z.string().min(1).optional(),
   coordenador: z.string().min(1).optional(),
   capacidade: z.number().int().min(1).optional(),
+  gradeInicio: dataSchema.optional(),
+  gradeFim: dataSchema.optional(),
   disciplinas: z.array(cargaSchema).optional()
 });
 

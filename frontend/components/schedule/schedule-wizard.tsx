@@ -9,6 +9,7 @@ import {
   Check,
   CheckCircle2,
   ChevronRight,
+  CalendarRange,
   Clock,
   Loader2,
   RefreshCw,
@@ -17,7 +18,7 @@ import {
   Users
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
-import { currentPeriodoLetivo } from "@/lib/periodo-letivo";
+import { PeriodPicker, formatPeriodo } from "@/components/schedule/period-picker";
 import { CurriculumEditor, formatHours, makeRow, toDisciplinasPayload, type CargaRow } from "@/components/classes/curriculum-editor";
 import {
   DAYS,
@@ -37,6 +38,7 @@ const PALETTE = ["#2563eb", "#059669", "#7c3aed", "#d97706", "#e11d48", "#0891b2
 
 const STEPS = [
   { label: "Turma", icon: Users },
+  { label: "Período", icon: CalendarRange },
   { label: "Disciplinas", icon: BookOpen },
   { label: "Horários", icon: Clock },
   { label: "Professores", icon: UserCheck },
@@ -53,6 +55,8 @@ interface ClassSummary {
   id: string;
   nome: string;
   turno?: string | null;
+  gradeInicio?: string | null;
+  gradeFim?: string | null;
   cargas?: { aulasPorSemana: number; duracaoMinutos: number }[];
 }
 
@@ -68,6 +72,8 @@ interface ClassDetail {
   turno: string | null;
   sala: string | null;
   coordenador: string | null;
+  gradeInicio: string | null;
+  gradeFim: string | null;
   cargas: Carga[];
 }
 
@@ -152,6 +158,8 @@ export function ScheduleWizard() {
   const [detail, setDetail] = useState<ClassDetail | null>(null);
   const [loadingClass, setLoadingClass] = useState(false);
   const [shift, setShift] = useState("");
+  const [gradeInicio, setGradeInicio] = useState<string | null>(null);
+  const [gradeFim, setGradeFim] = useState<string | null>(null);
   const [rows, setRows] = useState<CargaRow[]>([]);
 
   const [grid, setGrid] = useState<Grid>(emptyGrid);
@@ -173,7 +181,7 @@ export function ScheduleWizard() {
 
   // Janelas da turma: carregadas uma vez por turma, ao entrar no passo 3.
   useEffect(() => {
-    if (step !== 3 || !classId || janelasFor === classId) return;
+    if (step !== 4 || !classId || janelasFor === classId) return;
     let cancelled = false;
     api
       .get<Janela[]>(`/classes/${classId}/janelas`)
@@ -199,12 +207,14 @@ export function ScheduleWizard() {
   const applyDetail = (cls: ClassDetail) => {
     setDetail(cls);
     setShift(cls.turno ?? "");
+    setGradeInicio(cls.gradeInicio ?? null);
+    setGradeFim(cls.gradeFim ?? null);
     setRows(rowsOf(cls.cargas ?? []));
   };
 
   const goTo = (next: number) => {
     setError(null);
-    if (next < 5) setResult(null);
+    if (next < 6) setResult(null);
     setStep(next);
   };
 
@@ -232,6 +242,22 @@ export function ScheduleWizard() {
     }
   };
 
+  const savePeriod = async () => {
+    if (!classId || !gradeInicio || !gradeFim) return;
+    setBusy(true);
+    setError(null);
+    try {
+      // Update parcial: só o período, sem `disciplinas`, para não substituir a matriz.
+      await api.put(`/classes/${classId}`, { gradeInicio, gradeFim });
+      setDetail((prev) => (prev ? { ...prev, gradeInicio, gradeFim } : prev));
+      setStep(3);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Não foi possível salvar o período.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const saveCurriculum = async () => {
     if (!detail || !classId) return;
     setBusy(true);
@@ -251,7 +277,7 @@ export function ScheduleWizard() {
       ]);
       setCatalog(disciplinas);
       applyDetail(cls);
-      setStep(3);
+      setStep(4);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Não foi possível salvar as disciplinas.");
     } finally {
@@ -272,7 +298,7 @@ export function ScheduleWizard() {
         }))
       );
       await api.put(`/classes/${classId}/janelas`, { janelas });
-      setStep(4);
+      setStep(5);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Não foi possível salvar os horários.");
     } finally {
@@ -307,7 +333,6 @@ export function ScheduleWizard() {
       const professoresExcluidos = eligibleTeachers.filter((t) => excluded.has(t.id)).map((t) => t.id);
       const data = await api.post<GenerateResult>("/schedule/generate", {
         turmaId: classId,
-        periodoLetivo: currentPeriodoLetivo(),
         ...(professoresExcluidos.length > 0 ? { professoresExcluidos } : {})
       });
       setResult(data);
@@ -373,12 +398,14 @@ export function ScheduleWizard() {
     step === 1
       ? { label: "Continuar", onClick: () => classId && setStep(2), disabled: !classId || !detail }
       : step === 2
-        ? { label: "Salvar e continuar", onClick: saveCurriculum, disabled: busy || rows.length === 0 }
+        ? { label: "Salvar e continuar", onClick: savePeriod, disabled: busy || !gradeInicio || !gradeFim }
         : step === 3
-          ? { label: "Salvar e continuar", onClick: saveJanelas, disabled: busy || !hasWindows || janelasFor !== classId }
+          ? { label: "Salvar e continuar", onClick: saveCurriculum, disabled: busy || rows.length === 0 }
           : step === 4
-            ? { label: "Continuar", onClick: () => goTo(5), disabled: eligibleTeachers.length === 0 }
-            : null;
+            ? { label: "Salvar e continuar", onClick: saveJanelas, disabled: busy || !hasWindows || janelasFor !== classId }
+            : step === 5
+              ? { label: "Continuar", onClick: () => goTo(6), disabled: eligibleTeachers.length === 0 }
+              : null;
 
   const openConfirm = () => {
     if (result && result.aulasAtuais > 0) setConfirming(true);
@@ -407,6 +434,7 @@ export function ScheduleWizard() {
               <h2 className="text-lg font-semibold text-gray-800">Grade criada!</h2>
               <p className="mt-1 text-sm text-gray-600">
                 {created} aula{created !== 1 ? "s foram criadas" : " foi criada"} para {detail?.nome}.
+                {detail?.gradeInicio && detail.gradeFim && <> Período: {formatPeriodo(detail.gradeInicio, detail.gradeFim)}.</>}
               </p>
             </div>
             <div className="flex flex-col gap-2">
@@ -458,6 +486,9 @@ export function ScheduleWizard() {
                             {(cls.cargas?.length ?? 0) !== 1 ? "s" : ""}
                             {minutes > 0 ? ` · ${formatHours(minutes)}/semana` : ""}
                           </p>
+                          {cls.gradeInicio && cls.gradeFim && (
+                            <p className="text-xs text-teal-700">Período: {formatPeriodo(cls.gradeInicio, cls.gradeFim)}</p>
+                          )}
                         </div>
                         <ChevronRight size={18} className="text-gray-400" />
                       </button>
@@ -469,6 +500,22 @@ export function ScheduleWizard() {
             )}
 
             {step === 2 && detail && (
+              <>
+                <Intro title="Período da grade" text="Escolha o intervalo em que esta grade vale." />
+                <section className={cardClass}>
+                  <PeriodPicker
+                    inicio={gradeInicio}
+                    fim={gradeFim}
+                    onChange={(a, b) => {
+                      setGradeInicio(a);
+                      setGradeFim(b);
+                    }}
+                  />
+                </section>
+              </>
+            )}
+
+            {step === 3 && detail && (
               <>
                 <Intro title="Disciplinas e turno" text="Defina o turno e a carga semanal de cada disciplina da turma." />
                 <section className={`${cardClass} space-y-3`}>
@@ -499,7 +546,7 @@ export function ScheduleWizard() {
               </>
             )}
 
-            {step === 3 && (
+            {step === 4 && (
               <>
                 <Intro title="Horários da turma" text="Marque quando a turma pode ter aula." />
                 <section className={`${cardClass} space-y-2`}>
@@ -532,7 +579,7 @@ export function ScheduleWizard() {
               </>
             )}
 
-            {step === 4 && (
+            {step === 5 && (
               <>
                 <Intro title="Professores" text="Escolha quem pode entrar na grade. Por padrão, todos estão incluídos." />
                 {teachers === null && <Spinner text="Carregando professores..." />}
@@ -600,7 +647,7 @@ export function ScheduleWizard() {
               </>
             )}
 
-            {step === 5 && (
+            {step === 6 && (
               <>
                 {!result ? (
                   <section className={`${cardClass} space-y-4 py-8 text-center`}>
@@ -608,7 +655,8 @@ export function ScheduleWizard() {
                     <div>
                       <h2 className="text-lg font-semibold text-gray-800">Tudo pronto</h2>
                       <p className="mt-1 text-sm text-gray-600">
-                        Vamos montar a grade de {detail?.nome} com a matriz, os horários da turma e os professores escolhidos.
+                        Vamos montar a grade de {detail?.nome}
+                        {gradeInicio && gradeFim ? ` (${formatPeriodo(gradeInicio, gradeFim)})` : ""} com a matriz, os horários da turma e os professores escolhidos.
                       </p>
                     </div>
                     <button
@@ -627,7 +675,7 @@ export function ScheduleWizard() {
                       title="Revise a grade"
                       text={`${result.propostas.length} aula${result.propostas.length !== 1 ? "s" : ""} proposta${
                         result.propostas.length !== 1 ? "s" : ""
-                      }.`}
+                      }${gradeInicio && gradeFim ? ` Período: ${formatPeriodo(gradeInicio, gradeFim)}.` : ""}`}
                     />
                     <section className={`${cardClass} space-y-3`}>
                       <WeekGrid
@@ -683,7 +731,7 @@ export function ScheduleWizard() {
           >
             Voltar
           </button>
-          {step === 5 ? (
+          {step === 6 ? (
             result && (
               <>
                 <button

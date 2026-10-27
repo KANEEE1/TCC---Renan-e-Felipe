@@ -26,7 +26,7 @@ export class GradeHorariaRepository {
   }
 
   findTurma(id: string) {
-    return this.db.turma.findUnique({ where: { id }, select: { id: true } });
+    return this.db.turma.findUnique({ where: { id }, select: { id: true, gradeInicio: true, gradeFim: true } });
   }
 
   listCargasDaTurma(turmaId: string) {
@@ -52,8 +52,8 @@ export class GradeHorariaRepository {
     });
   }
 
-  listDisponibilidadesDoPeriodo(professorIds: string[], periodoLetivo: string) {
-    return this.db.disponibilidade.findMany({ where: { professorId: { in: professorIds }, periodoLetivo } });
+  listDisponibilidadesDosProfessores(professorIds: string[]) {
+    return this.db.disponibilidade.findMany({ where: { professorId: { in: professorIds } } });
   }
 
   listAulasDosProfessoresForaDaTurma(professorIds: string[], turmaId: string) {

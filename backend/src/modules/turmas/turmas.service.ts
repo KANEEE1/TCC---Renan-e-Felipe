@@ -1,5 +1,5 @@
 import { HttpError } from "../../shared/http.js";
-import { formatTimeHHMM } from "../../shared/time.js";
+import { formatTimeHHMM, parseDateOnly } from "../../shared/time.js";
 import { normalizarNome } from "../../shared/normalizar-nome.js";
 import type { CargaInput, CreateTurmaInput, PutJanelasInput, UpdateTurmaInput } from "./turmas.schemas.js";
 import type { JanelaHorario, LinhaMatriz, TurmasRepository } from "./turmas.repository.js";
@@ -7,8 +7,8 @@ import type { JanelaHorario, LinhaMatriz, TurmasRepository } from "./turmas.repo
 export class TurmasService {
   constructor(private readonly turmasRepository: TurmasRepository) {}
 
-  list() {
-    return this.turmasRepository.list();
+  async list() {
+    return (await this.turmasRepository.list()).map(formatPeriodo);
   }
 
   async getById(id: string) {
@@ -18,11 +18,13 @@ export class TurmasService {
       throw new HttpError(404, "Class not found");
     }
 
-    return turma;
+    return formatPeriodo(turma);
   }
 
   async create(input: CreateTurmaInput) {
-    const { disciplinas, ...data } = input;
+    const { disciplinas, ...rest } = input;
+    assertPeriodo(rest.gradeInicio, rest.gradeFim);
+    const data = toData(rest);
 
     const turmaId = await this.turmasRepository.transaction(async (repository) => {
       const turma = await repository.create(data);
@@ -36,8 +38,10 @@ export class TurmasService {
   }
 
   async update(id: string, input: UpdateTurmaInput) {
-    await this.getById(id);
-    const { disciplinas, ...data } = input;
+    const atual = await this.getById(id);
+    const { disciplinas, ...rest } = input;
+    assertPeriodo(rest.gradeInicio ?? atual.gradeInicio ?? undefined, rest.gradeFim ?? atual.gradeFim ?? undefined);
+    const data = toData(rest);
 
     await this.turmasRepository.transaction(async (repository) => {
       await repository.update(id, data);
@@ -123,4 +127,29 @@ function ordenarJanelas<T extends JanelaHorario>(janelas: T[]) {
     (a, b) =>
       ORDEM_DIAS.indexOf(a.diaSemana) - ORDEM_DIAS.indexOf(b.diaSemana) || a.horarioInicio.localeCompare(b.horarioInicio)
   );
+}
+
+function assertPeriodo(inicio?: string, fim?: string) {
+  if ((inicio === undefined) !== (fim === undefined)) {
+    throw new HttpError(400, "Informe gradeInicio e gradeFim juntos");
+  }
+  if (inicio !== undefined && fim !== undefined && fim < inicio) {
+    throw new HttpError(400, "gradeFim deve ser igual ou posterior a gradeInicio");
+  }
+}
+
+function toData<T extends { gradeInicio?: string; gradeFim?: string }>({ gradeInicio, gradeFim, ...rest }: T) {
+  return {
+    ...rest,
+    ...(gradeInicio !== undefined && { gradeInicio: parseDateOnly(gradeInicio) }),
+    ...(gradeFim !== undefined && { gradeFim: parseDateOnly(gradeFim) })
+  };
+}
+
+function formatPeriodo<T extends { gradeInicio: Date | null; gradeFim: Date | null }>(turma: T) {
+  return {
+    ...turma,
+    gradeInicio: turma.gradeInicio?.toISOString().slice(0, 10) ?? null,
+    gradeFim: turma.gradeFim?.toISOString().slice(0, 10) ?? null
+  };
 }

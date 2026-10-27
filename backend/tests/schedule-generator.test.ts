@@ -4,13 +4,11 @@ import { prisma } from "../src/shared/prisma.js";
 import { parseTimeToDate } from "../src/shared/time.js";
 import { app, asGestao, asTeacher, createUser, resetDb } from "./helpers.js";
 
-const PERIODO = "2026-2";
-
 async function setup() {
   const mat = await prisma.disciplina.create({ data: { nome: "Matemática", nomeNormalizado: "matematica" } });
   const fis = await prisma.disciplina.create({ data: { nome: "Física", nomeNormalizado: "fisica" } });
-  const turma = await prisma.turma.create({ data: { nome: "T1", anoLetivo: 2026 } });
-  const outra = await prisma.turma.create({ data: { nome: "T2", anoLetivo: 2026 } });
+  const turma = await prisma.turma.create({ data: { nome: "T1", anoLetivo: 2026, gradeInicio: new Date("2026-08-03"), gradeFim: new Date("2026-12-18") } });
+  const outra = await prisma.turma.create({ data: { nome: "T2", anoLetivo: 2026, gradeInicio: new Date("2026-08-03"), gradeFim: new Date("2026-12-18") } });
   await prisma.cargaDisciplinaTurma.createMany({
     data: [
       { turmaId: turma.id, disciplinaId: mat.id, aulasPorSemana: 2, duracaoMinutos: 60 },
@@ -26,8 +24,7 @@ async function setup() {
           professorId: user.id,
           diaSemana: dia,
           horarioInicio: parseTimeToDate("08:00"),
-          horarioFim: parseTimeToDate("12:00"),
-          periodoLetivo: PERIODO
+          horarioFim: parseTimeToDate("12:00")
         }
       });
     }
@@ -94,23 +91,32 @@ describe("POST /schedule/generate", () => {
 
   it("requires gestao, matrix and windows", async () => {
     const { turmaId, outraId, p1 } = await setup();
-    expect((await request(app).post("/schedule/generate").send({ turmaId, periodoLetivo: PERIODO })).status).toBe(401);
+    expect((await request(app).post("/schedule/generate").send({ turmaId })).status).toBe(401);
     expect(
-      (await request(app).post("/schedule/generate").set(asTeacher(p1)).send({ turmaId, periodoLetivo: PERIODO })).status
+      (await request(app).post("/schedule/generate").set(asTeacher(p1)).send({ turmaId })).status
     ).toBe(403);
-    expect((await generate({ turmaId: "clxxxxxxxxxxxxxxxxxxxxxxx", periodoLetivo: PERIODO })).status).toBe(404);
-    expect((await generate({ turmaId, periodoLetivo: PERIODO })).status).toBe(400);
+    expect((await generate({ turmaId: "clxxxxxxxxxxxxxxxxxxxxxxx" })).status).toBe(404);
+    expect((await generate({ turmaId })).status).toBe(400);
     await prisma.janelaTurma.create({
       data: { turmaId: outraId, diaSemana: "SEGUNDA", horarioInicio: parseTimeToDate("08:00"), horarioFim: parseTimeToDate("12:00") }
     });
-    expect((await generate({ turmaId: outraId, periodoLetivo: PERIODO })).status).toBe(400);
+    expect((await generate({ turmaId: outraId })).status).toBe(400);
+  });
+
+  it("returns 400 when the class has no grade period", async () => {
+    const { turmaId } = await setup();
+    await request(app).put(`/classes/${turmaId}/janelas`).set(asGestao()).send({ janelas });
+    await prisma.turma.update({ where: { id: turmaId }, data: { gradeInicio: null, gradeFim: null } });
+    const res = await generate({ turmaId });
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe("Defina o período da grade");
   });
 
   it("proposes lessons without saving and honors excluded professors", async () => {
     const { turmaId, mat, p1, p2, p3 } = await setup();
     await request(app).put(`/classes/${turmaId}/janelas`).set(asGestao()).send({ janelas });
 
-    const res = await generate({ turmaId, periodoLetivo: PERIODO });
+    const res = await generate({ turmaId });
     expect(res.status).toBe(200);
     expect(res.body.naoAlocados).toEqual([]);
     expect(res.body.aulasAtuais).toBe(0);
@@ -121,7 +127,7 @@ describe("POST /schedule/generate", () => {
     expect(res.body.propostas.find((p: { professorId: string }) => p.professorId === p3).professorNome).toBe("Prof Tres");
     expect(await prisma.aula.count()).toBe(0);
 
-    const excl = await generate({ turmaId, periodoLetivo: PERIODO, professoresExcluidos: [p1, p2] });
+    const excl = await generate({ turmaId, professoresExcluidos: [p1, p2] });
     expect(excl.body.naoAlocados).toEqual([
       { disciplinaId: mat, disciplinaNome: "Matemática", faltantes: 2, motivo: "SEM_PROFESSOR" }
     ]);
@@ -225,7 +231,7 @@ describe("geração de grade: cenários integrados", () => {
   const generate = (body: object) => request(app).post("/schedule/generate").set(asGestao()).send(body);
   const disp = (professorId: string, dia: string, ini: string, fim: string) =>
     prisma.disponibilidade.create({
-      data: { professorId, diaSemana: dia, horarioInicio: parseTimeToDate(ini), horarioFim: parseTimeToDate(fim), periodoLetivo: PERIODO }
+      data: { professorId, diaSemana: dia, horarioInicio: parseTimeToDate(ini), horarioFim: parseTimeToDate(fim) }
     });
   const mkProf = async (email: string, disciplinaId: string) => {
     const u = await createUser({ email, name: email, roles: ["PROFESSOR"] });
@@ -235,7 +241,7 @@ describe("geração de grade: cenários integrados", () => {
 
   it("full flow: classes -> janelas -> teachers -> generate -> replace -> by-class", async () => {
     const mat = await prisma.disciplina.create({ data: { nome: "Matemática", nomeNormalizado: "matematica" } });
-    const turma = await prisma.turma.create({ data: { nome: "T1", anoLetivo: 2026 } });
+    const turma = await prisma.turma.create({ data: { nome: "T1", anoLetivo: 2026, gradeInicio: new Date("2026-08-03"), gradeFim: new Date("2026-12-18") } });
     const put = await request(app)
       .put(`/classes/${turma.id}`)
       .set(asGestao())
@@ -249,10 +255,10 @@ describe("geração de grade: cenários integrados", () => {
     const av = await request(app)
       .post(`/teachers/${prof.id}/availability`)
       .set(asTeacher(prof.id))
-      .send({ periodoLetivo: PERIODO, diaSemana: "SEGUNDA", horarioInicio: "08:00", horarioFim: "12:00" });
+      .send({ diaSemana: "SEGUNDA", horarioInicio: "08:00", horarioFim: "12:00" });
     expect(av.status).toBe(201);
 
-    const gen = await generate({ turmaId: turma.id, periodoLetivo: PERIODO });
+    const gen = await generate({ turmaId: turma.id });
     expect(gen.status).toBe(200);
     expect(gen.body.naoAlocados).toEqual([]);
     expect(gen.body.propostas).toHaveLength(2);
@@ -282,7 +288,7 @@ describe("geração de grade: cenários integrados", () => {
     await prisma.aula.create({
       data: { turmaId: outraId, disciplinaId: mat, professorId: p1, diaSemana: "SEGUNDA", horarioInicio: parseTimeToDate("08:00"), horarioFim: parseTimeToDate("09:00") }
     });
-    const res = await generate({ turmaId, periodoLetivo: PERIODO });
+    const res = await generate({ turmaId });
     expect(res.body.propostas).toHaveLength(1);
     expect(res.body.propostas[0].professorId).toBe(p1);
     expect(res.body.propostas[0].horarioInicio).not.toBe("08:00");
@@ -292,18 +298,18 @@ describe("geração de grade: cenários integrados", () => {
     const { turmaId, mat, p1, p2 } = await setup();
     await request(app).put(`/classes/${turmaId}/janelas`).set(asGestao()).send({ janelas });
     await prisma.user.update({ where: { id: p1 }, data: { ativo: false } });
-    const res = await generate({ turmaId, periodoLetivo: PERIODO });
+    const res = await generate({ turmaId });
     const m = res.body.propostas.filter((p: { disciplinaId: string }) => p.disciplinaId === mat);
     expect(m.length).toBe(2);
     expect(m.every((p: { professorId: string }) => p.professorId === p2)).toBe(true);
 
-    const both = await generate({ turmaId, periodoLetivo: PERIODO, professoresExcluidos: [p2] });
+    const both = await generate({ turmaId, professoresExcluidos: [p2] });
     expect(both.body.naoAlocados[0]).toMatchObject({ disciplinaId: mat, motivo: "SEM_PROFESSOR", faltantes: 2 });
   });
 
   it("splits a discipline between professors when one only fits one lesson", async () => {
     const mat = await prisma.disciplina.create({ data: { nome: "Matemática", nomeNormalizado: "matematica" } });
-    const turma = await prisma.turma.create({ data: { nome: "T1", anoLetivo: 2026 } });
+    const turma = await prisma.turma.create({ data: { nome: "T1", anoLetivo: 2026, gradeInicio: new Date("2026-08-03"), gradeFim: new Date("2026-12-18") } });
     await prisma.cargaDisciplinaTurma.create({ data: { turmaId: turma.id, disciplinaId: mat.id, aulasPorSemana: 3, duracaoMinutos: 60 } });
     await request(app).put(`/classes/${turma.id}/janelas`).set(asGestao()).send({ janelas });
     const a = await mkProf("a@t.com", mat.id);
@@ -312,7 +318,7 @@ describe("geração de grade: cenários integrados", () => {
     await disp(b, "SEGUNDA", "09:00", "10:00");
     await disp(b, "TERCA", "08:00", "09:00");
 
-    const res = await generate({ turmaId: turma.id, periodoLetivo: PERIODO });
+    const res = await generate({ turmaId: turma.id });
     expect(res.body.naoAlocados).toEqual([]);
     expect(res.body.propostas).toHaveLength(3);
     const ids = res.body.propostas.map((p: { professorId: string }) => p.professorId);
@@ -322,7 +328,7 @@ describe("geração de grade: cenários integrados", () => {
 
   it("window ending at 23:59 allows a lesson up to 23:59", async () => {
     const mat = await prisma.disciplina.create({ data: { nome: "Matemática", nomeNormalizado: "matematica" } });
-    const turma = await prisma.turma.create({ data: { nome: "T1", anoLetivo: 2026 } });
+    const turma = await prisma.turma.create({ data: { nome: "T1", anoLetivo: 2026, gradeInicio: new Date("2026-08-03"), gradeFim: new Date("2026-12-18") } });
     await prisma.cargaDisciplinaTurma.create({ data: { turmaId: turma.id, disciplinaId: mat.id, aulasPorSemana: 1, duracaoMinutos: 59 } });
     const put = await request(app)
       .put(`/classes/${turma.id}/janelas`)
@@ -332,7 +338,7 @@ describe("geração de grade: cenários integrados", () => {
     const p = await mkProf("n@t.com", mat.id);
     await disp(p, "SEGUNDA", "23:00", "23:59");
 
-    const res = await generate({ turmaId: turma.id, periodoLetivo: PERIODO });
+    const res = await generate({ turmaId: turma.id });
     expect(res.status).toBe(200);
     expect(res.body.naoAlocados).toEqual([]);
     expect(res.body.propostas).toHaveLength(1);

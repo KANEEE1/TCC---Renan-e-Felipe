@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { formatPeriodo } from "@/components/schedule/period-picker";
 import Link from "next/link";
 import { ArrowLeft, Calendar } from "lucide-react";
 import { api } from "@/lib/api";
@@ -22,6 +23,8 @@ interface ClassOption {
 
 interface ClassDetail {
   nome: string;
+  gradeInicio?: string | null;
+  gradeFim?: string | null;
   matriculas: unknown[];
 }
 
@@ -101,6 +104,9 @@ export function ScheduleByClass() {
             <div>
               <h2 className="text-blue-900">{classDetail?.nome ?? "..."}</h2>
               <p className="text-sm text-blue-700">{classDetail?.matriculas.length ?? 0} alunos</p>
+              {classDetail?.gradeInicio && classDetail.gradeFim && (
+                <p className="text-sm text-blue-700">Período: {formatPeriodo(classDetail.gradeInicio, classDetail.gradeFim)}</p>
+              )}
             </div>
             <Calendar className="text-blue-600" size={32} />
           </div>

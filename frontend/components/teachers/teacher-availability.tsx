@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Save, Trash2 } from "lucide-react";
-import { currentPeriodoLetivo } from "@/lib/periodo-letivo";
 import { api, ApiError } from "@/lib/api";
 import { getSessionUser } from "@/lib/auth";
 import {
@@ -18,14 +17,11 @@ import {
   type Grid
 } from "@/components/schedule/week-grid";
 
-const PERIODO_LETIVO = currentPeriodoLetivo();
-
 interface AvailabilityEntry {
   id: string;
   diaSemana: string;
   horarioInicio: string;
   horarioFim: string;
-  periodoLetivo: string;
 }
 
 function toHHMM(iso: string) {
@@ -48,16 +44,15 @@ export function TeacherAvailability({ teacherId }: { teacherId: string }) {
     api
       .get<AvailabilityEntry[]>(`/teachers/${teacherId}/availability`)
       .then((all) => {
-        const current = all.filter((entry) => entry.periodoLetivo === PERIODO_LETIVO);
         const next = emptyGrid();
-        for (const entry of current) {
+        for (const entry of all) {
           const day = DAYS.findIndex((d) => d.key === entry.diaSemana);
           if (day === -1) continue;
           const from = Math.max(0, timeToSlot(toHHMM(entry.horarioInicio)));
           const to = Math.min(SLOTS, timeToSlot(toHHMM(entry.horarioFim)));
           for (let i = from; i < to; i++) next[day][i] = true;
         }
-        setEntries(current);
+        setEntries(all);
         setGrid(next);
         setDirty(false);
         setLoaded(true);
@@ -105,8 +100,7 @@ export function TeacherAvailability({ teacherId }: { teacherId: string }) {
         await api.post(`/teachers/${teacherId}/availability`, {
           diaSemana: item.dia,
           horarioInicio: item.inicio,
-          horarioFim: item.fim,
-          periodoLetivo: PERIODO_LETIVO
+          horarioFim: item.fim
         });
       }
       setSuccess(true);
@@ -130,7 +124,7 @@ export function TeacherAvailability({ teacherId }: { teacherId: string }) {
         <div className="min-w-0 flex-1">
           <h1 className="text-lg text-slate-800">Disponibilidade</h1>
           <p className="truncate text-xs text-slate-500">
-            {teacherName ? `${teacherName} · ` : ""}Semestre {PERIODO_LETIVO}
+            {teacherName}
           </p>
         </div>
         <div className="text-right">

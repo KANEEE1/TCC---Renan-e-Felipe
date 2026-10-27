@@ -1,7 +1,7 @@
 import { hasRole, type Actor } from "../../shared/auth.js";
 import { HttpError } from "../../shared/http.js";
 import type { StatusSubstituicao } from "@prisma/client";
-import { formatTimeHHMM, periodoLetivoOf, todayInSaoPaulo } from "../../shared/time.js";
+import { formatTimeHHMM, todayInSaoPaulo } from "../../shared/time.js";
 import { overlaps } from "../grade-horaria/grade-horaria.allocator.js";
 import { rankCandidatos, type Candidato } from "./substituicoes.ranking.js";
 import type { SubstituicoesRepository } from "./substituicoes.repository.js";
@@ -100,7 +100,7 @@ export class SubstituicoesService {
     const fimMes = new Date(Date.UTC(ausencia.data.getUTCFullYear(), ausencia.data.getUTCMonth() + 1, 1));
 
     const [disponibilidades, aulas, substituicoesMes, recusadas] = await Promise.all([
-      repository.findDisponibilidades(ids, ausencia.aula.diaSemana, periodoLetivoOf(ausencia.data)),
+      repository.findDisponibilidades(ids, ausencia.aula.diaSemana),
       repository.findAulasDosProfessores(ids),
       repository.findAtivasDosSubstitutosNoPeriodo(ids, inicioMes, fimMes),
       repository.findRecusadasByAusencia(ausencia.id)

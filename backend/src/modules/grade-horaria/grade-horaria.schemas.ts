@@ -15,7 +15,6 @@ export const createAulaSchema = z.object({
 });
 
 export const suggestScheduleSchema = z.object({
-  periodoLetivo: z.string().min(1),
   pedidos: z
     .array(
       z.object({
@@ -36,7 +35,6 @@ export const confirmScheduleSchema = z.object({
 
 export const generateScheduleSchema = z.object({
   turmaId: z.string().cuid(),
-  periodoLetivo: z.string().min(1),
   professoresExcluidos: z.array(z.string().cuid()).optional()
 });
 

@@ -111,6 +111,8 @@ model Turma {
   sala        String?
   coordenador String?
   capacidade  Int?
+  gradeInicio DateTime? @db.Date
+  gradeFim    DateTime? @db.Date
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -170,13 +172,12 @@ model Disponibilidade {
   diaSemana     String
   horarioInicio DateTime @db.Time(0)
   horarioFim    DateTime @db.Time(0)
-  periodoLetivo String
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   professor User @relation("ProfessorDisponibilidades", fields: [professorId], references: [id])
 
-  @@unique([professorId, diaSemana, horarioInicio, horarioFim, periodoLetivo])
+  @@unique([professorId, diaSemana, horarioInicio, horarioFim])
 }
 
 model Aula {

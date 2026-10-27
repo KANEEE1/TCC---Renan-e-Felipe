@@ -1,7 +1,7 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "../src/shared/prisma.js";
-import { app, createUser, loginAs, resetDb, asTeacher } from "./helpers.js";
+import { app, createUser, loginAs, resetDb, asTeacher, asGestao } from "./helpers.js";
 
 const DIAS = ["DOMINGO", "SEGUNDA", "TERCA", "QUARTA", "QUINTA", "SEXTA", "SABADO"];
 const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
@@ -175,7 +175,7 @@ describe("substitutions", () => {
       return `${d.getUTCFullYear()}-${d.getUTCMonth() < 6 ? 1 : 2}`;
     };
     const setDisciplinas = (id: string, disciplinaIds: string[]) =>
-      request(app).put(`/teachers/${id}`).send({ disciplinaIds });
+      request(app).put(`/teachers/${id}`).set(asGestao()).send({ disciplinaIds });
     const addDisp = (id: string, data: string, inicio = "07:00", fim = "12:00") =>
       request(app).post(`/teachers/${id}/availability`).set(asTeacher(id)).send({
         periodoLetivo: periodo(data),

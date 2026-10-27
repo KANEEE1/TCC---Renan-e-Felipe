@@ -8,12 +8,13 @@ export const createTeacherSchema = z.object({
   disciplinaIds: z.array(z.string().cuid()).optional()
 });
 
-export const updateTeacherSchema = z.object({
-  name: z.string().min(1).optional(),
-  celular: z.string().min(1).optional(),
-  ativo: z.boolean().optional(),
-  disciplinaIds: z.array(z.string().cuid()).optional()
-});
+// A gestão altera só disciplinas e status; os dados pessoais são do próprio professor (PUT /auth/me).
+export const updateTeacherSchema = z
+  .object({
+    ativo: z.boolean().optional(),
+    disciplinaIds: z.array(z.string().cuid()).optional()
+  })
+  .strict();
 
 export type CreateTeacherInput = z.infer<typeof createTeacherSchema>;
 export type UpdateTeacherInput = z.infer<typeof updateTeacherSchema>;

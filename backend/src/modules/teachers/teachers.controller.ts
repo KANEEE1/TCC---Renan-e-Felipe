@@ -1,5 +1,5 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
-import { getActor, requireAuth } from "../../shared/auth.js";
+import { getActor, requireAuth, requireRole } from "../../shared/auth.js";
 import { asyncHandler, HttpError } from "../../shared/http.js";
 import { createDisponibilidadeSchema, updateDisponibilidadeSchema } from "../disponibilidade/disponibilidade.schemas.js";
 import type { DisponibilidadeService } from "../disponibilidade/disponibilidade.service.js";
@@ -39,7 +39,7 @@ export class TeachersController {
       res.status(201).json(await this.teachersService.create(input));
     }));
 
-    this.router.put("/:id", asyncHandler(async (req, res) => {
+    this.router.put("/:id", requireAuth, requireRole("GESTAO"), asyncHandler(async (req, res) => {
       const input = updateTeacherSchema.parse(req.body);
       res.json(await this.teachersService.update(req.params.id as string, input));
     }));

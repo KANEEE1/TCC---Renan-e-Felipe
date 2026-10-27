@@ -1,6 +1,6 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
-import { app, createUser, resetDb, asTeacher, loginAs } from "./helpers.js";
+import { app, createUser, resetDb, asTeacher, loginAs, asGestao } from "./helpers.js";
 
 describe("teachers", () => {
   beforeEach(async () => {
@@ -38,16 +38,29 @@ describe("teachers", () => {
   it("deactivates a teacher via PUT", async () => {
     const teacher = await request(app).post("/teachers").send({ name: "Prof", email: "prof2@test.com", password: "senha1234" });
 
-    const res = await request(app).put(`/teachers/${teacher.body.id}`).send({ ativo: false });
+    const res = await request(app).put(`/teachers/${teacher.body.id}`).set(asGestao()).send({ ativo: false });
 
     expect(res.status).toBe(200);
     expect(res.body.ativo).toBe(false);
   });
 
+  it("only GESTAO updates a teacher, and only subjects and status", async () => {
+    const teacher = await request(app).post("/teachers").send({ name: "Prof", email: "prof3@test.com", password: "senha1234" });
+    const url = `/teachers/${teacher.body.id}`;
+
+    expect((await request(app).put(url).send({ ativo: false })).status).toBe(401);
+    expect((await request(app).put(url).set(asTeacher(teacher.body.id)).send({ ativo: false })).status).toBe(403);
+    expect((await request(app).put(url).set(asGestao()).send({ name: "Outro nome" })).status).toBe(400);
+
+    const res = await request(app).put(url).set(asGestao()).send({ ativo: false, disciplinaIds: [] });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ name: "Prof", ativo: false });
+  });
+
   it("lists deactivated teachers after the active ones", async () => {
     const inativo = await request(app).post("/teachers").send({ name: "Ana", email: "ana@test.com", password: "senha1234" });
     const ativo = await request(app).post("/teachers").send({ name: "Bruno", email: "bruno@test.com", password: "senha1234" });
-    await request(app).put(`/teachers/${inativo.body.id}`).send({ ativo: false });
+    await request(app).put(`/teachers/${inativo.body.id}`).set(asGestao()).send({ ativo: false });
 
     const list = await request(app).get("/teachers");
     expect(list.body.map((t: { id: string }) => t.id)).toEqual([ativo.body.id, inativo.body.id]);

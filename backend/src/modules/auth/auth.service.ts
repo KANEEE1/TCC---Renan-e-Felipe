@@ -31,7 +31,7 @@ export class AuthService {
   }
 
   async setup(input: SetupInput) {
-    const { password, tambemProfessor, ...rest } = input;
+    const { password, ...rest } = input;
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
     const user = await this.usersRepository.transaction(async (repository) => {
@@ -39,7 +39,7 @@ export class AuthService {
         throw new HttpError(409, "Management account already exists");
       }
 
-      return repository.create({ ...rest, passwordHash, roles: tambemProfessor ? ["GESTAO", "PROFESSOR"] : ["GESTAO"] });
+      return repository.create({ ...rest, passwordHash, roles: ["GESTAO"] });
     });
 
     return this.session(user);

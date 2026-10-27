@@ -20,7 +20,6 @@ export function FirstAccessCard() {
   const [celular, setCelular] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [tambemProfessor, setTambemProfessor] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -53,8 +52,7 @@ export function FirstAccessCard() {
         name: name.trim(),
         email: email.trim(),
         celular: celular.trim() || undefined,
-        password,
-        tambemProfessor
+        password
       });
       saveSession(token, user);
       router.push("/dashboard");
@@ -91,9 +89,7 @@ export function FirstAccessCard() {
 
       {disponivel && (
         <form className="mt-6 flex flex-col gap-4" onSubmit={handleSubmit}>
-          <p className="text-sm text-slate-500">
-            Crie a conta de quem vai coordenar o cursinho. Depois, a gestão cadastra professores, turmas e alunos.
-          </p>
+          <p className="text-sm text-slate-500">Crie a conta de quem vai coordenar o cursinho.</p>
 
           <label className="flex flex-col gap-1.5 text-sm">
             <span className="font-semibold text-slate-900">Nome</span>
@@ -157,16 +153,6 @@ export function FirstAccessCard() {
               required
               className={inputClass}
             />
-          </label>
-
-          <label className="flex items-center gap-2 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={tambemProfessor}
-              onChange={(event) => setTambemProfessor(event.target.checked)}
-              className="h-4 w-4 rounded border-slate-300 accent-purple-600"
-            />
-            Também dou aulas no cursinho
           </label>
 
           {error && <p className="text-sm text-red-600">{error}</p>}

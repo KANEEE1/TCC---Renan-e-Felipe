@@ -16,8 +16,7 @@ export const setupSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
   celular: z.string().min(1).optional(),
-  password: z.string().min(8),
-  tambemProfessor: z.boolean().optional()
+  password: z.string().min(8)
 });
 
 export type LoginInput = z.infer<typeof loginSchema>;

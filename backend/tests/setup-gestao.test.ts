@@ -30,13 +30,6 @@ describe("first management account setup", () => {
     expect((await request(app).get("/auth/setup")).body).toEqual({ disponivel: false });
   });
 
-  it("adds the PROFESSOR role when tambemProfessor is set", async () => {
-    const res = await request(app).post("/auth/setup").send({ ...gestor, tambemProfessor: true });
-
-    expect(res.status).toBe(201);
-    expect(res.body.user.roles).toEqual(["GESTAO", "PROFESSOR"]);
-  });
-
   it("rejects a second setup", async () => {
     await request(app).post("/auth/setup").send(gestor);
 

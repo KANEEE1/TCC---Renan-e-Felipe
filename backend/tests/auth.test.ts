@@ -1,6 +1,6 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
-import { app, createUser, loginAs, resetDb } from "./helpers.js";
+import { app, createUser, loginAs, resetDb, asGestao } from "./helpers.js";
 
 describe("auth", () => {
   beforeEach(async () => {
@@ -26,7 +26,7 @@ describe("auth", () => {
   it("blocks login of a deactivated user only after the password matches", async () => {
     await request(app).post("/teachers").send({ name: "Prof", email: "prof@test.com", password: "senha1234" });
     const teacher = await request(app).get("/teachers");
-    await request(app).put(`/teachers/${teacher.body[0].id}`).send({ ativo: false });
+    await request(app).put(`/teachers/${teacher.body[0].id}`).set(asGestao()).send({ ativo: false });
 
     const wrong = await request(app).post("/auth/login").send({ email: "prof@test.com", password: "outra-senha" });
     expect(wrong.status).toBe(401);

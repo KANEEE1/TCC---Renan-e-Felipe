@@ -48,3 +48,8 @@ export async function loginAs(email: string, password = "senha1234") {
 export function asTeacher(professorId: string) {
   return { Authorization: `Bearer ${signAuthToken({ sub: professorId, roles: ["PROFESSOR"] })}` };
 }
+
+// Header de autenticação de um gestor, sem passar pelo login.
+export function asGestao() {
+  return { Authorization: `Bearer ${signAuthToken({ sub: "gestao-teste", roles: ["GESTAO"] })}` };
+}

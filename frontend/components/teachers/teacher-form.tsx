@@ -62,7 +62,8 @@ export function TeacherForm({ isEdit = false, teacherId }: TeacherFormProps) {
 
     try {
       if (isEdit && teacherId) {
-        await api.put(`/teachers/${teacherId}`, { name, celular: phone, ativo, disciplinaIds: subjectIds });
+        // A gestão altera só disciplinas e status; dados pessoais são editados pelo próprio professor no perfil.
+        await api.put(`/teachers/${teacherId}`, { ativo, disciplinaIds: subjectIds });
       } else {
         await api.post("/teachers", { name, email, celular: phone, password, disciplinaIds: subjectIds });
       }
@@ -85,6 +86,15 @@ export function TeacherForm({ isEdit = false, teacherId }: TeacherFormProps) {
 
       <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 pb-32">
         <div className="space-y-4 rounded-lg bg-white p-4 shadow">
+          {isEdit ? (
+            <div className="rounded-lg bg-gray-50 p-3">
+              <p className="font-medium text-gray-900">{name}</p>
+              <p className="text-sm text-gray-500">{email}</p>
+              {phone && <p className="text-sm text-gray-500">{phone}</p>}
+              <p className="mt-2 text-xs text-gray-400">Os dados pessoais são editados pelo próprio professor no perfil.</p>
+            </div>
+          ) : (
+            <>
           <div>
             <label className="mb-2 block text-gray-700">Nome Completo</label>
             <input
@@ -103,27 +113,24 @@ export function TeacherForm({ isEdit = false, teacherId }: TeacherFormProps) {
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              disabled={isEdit}
-              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-black focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
+              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="email@escola.com"
               required
             />
           </div>
 
-          {!isEdit && (
-            <div>
-              <label className="mb-2 block text-gray-700">Senha de acesso</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Mínimo 8 caracteres"
-                minLength={8}
-                required
-              />
-            </div>
-          )}
+          <div>
+            <label className="mb-2 block text-gray-700">Senha de acesso</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Mínimo 8 caracteres"
+              minLength={8}
+              required
+            />
+          </div>
 
           <div>
             <label className="mb-2 block text-gray-700">Telefone</label>
@@ -136,6 +143,8 @@ export function TeacherForm({ isEdit = false, teacherId }: TeacherFormProps) {
               required
             />
           </div>
+            </>
+          )}
 
           <div>
             <label className="mb-2 block text-gray-700">Disciplinas</label>

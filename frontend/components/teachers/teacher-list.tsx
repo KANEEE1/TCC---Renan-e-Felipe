@@ -6,7 +6,7 @@ import { BookOpen, Calendar, Edit, Mail, Phone, Search, UserPlus } from "lucide-
 import { api } from "@/lib/api";
 import { getSessionUser } from "@/lib/auth";
 
-const isCoordinator = true;
+const GRID_COLS: Record<number, string> = { 1: "grid-cols-1", 2: "grid-cols-2", 3: "grid-cols-3" };
 
 const AVATAR_GRADIENTS = [
   "from-blue-500 to-indigo-600",
@@ -36,13 +36,18 @@ interface Teacher {
 export function TeacherList() {
   const [searchTerm, setSearchTerm] = useState("");
   const [teachers, setTeachers] = useState<Teacher[]>([]);
-  // A aba "Horários" só aparece no card do próprio professor: a gestão não edita disponibilidade.
+  // "Editar" (disciplinas e status) é da gestão; "Horários" só aparece no card do próprio professor.
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
+  const [isManagement, setIsManagement] = useState(false);
 
   useEffect(() => {
-    setSessionUserId(getSessionUser()?.id ?? null);
+    const user = getSessionUser();
+    setSessionUserId(user?.id ?? null);
+    setIsManagement(!!user?.roles.includes("GESTAO"));
     api.get<Teacher[]>("/teachers").then(setTeachers).catch(() => setTeachers([]));
   }, []);
+
+  const actionCount = (teacherId: string) => (isManagement ? 1 : 0) + 1 + (teacherId === sessionUserId ? 1 : 0);
 
   const filteredTeachers = teachers.filter(
     (teacher) =>
@@ -59,7 +64,7 @@ export function TeacherList() {
             <p className="mt-0.5 text-sm text-blue-200">Gerenciar equipe docente</p>
           </div>
           <div className="flex gap-2">
-            {isCoordinator && (
+            {isManagement && (
               <Link
                 href="/teachers/register"
                 title="Cadastrar novo professor"
@@ -130,29 +135,31 @@ export function TeacherList() {
               </div>
             </div>
 
-            <div className={`grid border-t border-slate-100 ${teacher.id === sessionUserId ? "grid-cols-3" : "grid-cols-2"}`}>
-              <Link
-                href={`/teachers/edit/${teacher.id}`}
-                className="flex items-center justify-center gap-1.5 border-r border-slate-100 py-3 text-xs text-slate-500 transition-colors hover:bg-slate-50 hover:text-blue-600"
-              >
-                <Edit size={14} />
-                Editar
-              </Link>
+            <div className={`grid divide-x divide-slate-100 border-t border-slate-100 ${GRID_COLS[actionCount(teacher.id)]}`}>
+              {isManagement && (
+                <Link
+                  href={`/teachers/edit/${teacher.id}`}
+                  className="flex items-center justify-center gap-1.5 py-3 text-xs text-slate-500 transition-colors hover:bg-slate-50 hover:text-blue-600"
+                >
+                  <Edit size={14} />
+                  Editar
+                </Link>
+              )}
               <Link
                 href={`/teachers/schedule?teacher=${teacher.id}`}
-                className={`flex items-center justify-center gap-1.5 py-3 ${teacher.id === sessionUserId ? "border-r border-slate-100" : ""} text-xs text-slate-500 transition-colors hover:bg-emerald-50 hover:text-emerald-600`}
+                className="flex items-center justify-center gap-1.5 py-3 text-xs text-slate-500 transition-colors hover:bg-emerald-50 hover:text-emerald-600"
               >
                 <BookOpen size={14} />
                 Agenda
               </Link>
               {teacher.id === sessionUserId && (
-              <Link
-                href={`/teachers/${teacher.id}/availability`}
-                className="flex items-center justify-center gap-1.5 py-3 text-xs text-slate-500 transition-colors hover:bg-purple-50 hover:text-purple-600"
-              >
-                <Calendar size={14} />
-                Horários
-              </Link>
+                <Link
+                  href={`/teachers/${teacher.id}/availability`}
+                  className="flex items-center justify-center gap-1.5 py-3 text-xs text-slate-500 transition-colors hover:bg-purple-50 hover:text-purple-600"
+                >
+                  <Calendar size={14} />
+                  Horários
+                </Link>
               )}
             </div>
           </div>

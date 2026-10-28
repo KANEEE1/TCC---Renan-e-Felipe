@@ -216,12 +216,12 @@ export function ScheduleWizard() {
     setRows(rowsOf(cls.cargas ?? []));
   };
 
-  const continueFromClass = async () => {
-    if (!classId || !detail) return;
-    if (detail.gradeFim && detail.gradeFim >= todayInSaoPaulo()) {
+  // Único ponto de saída do passo 1 (clique no card ou "Continuar"): avisa antes se a turma já tem grade ativa.
+  const advanceFromClass = async (id: string, cls: ClassDetail) => {
+    if (cls.gradeFim && cls.gradeFim >= todayInSaoPaulo()) {
       setCheckingActive(true);
       try {
-        const aulas = await api.get<unknown[]>(`/schedule/by-class/${classId}`);
+        const aulas = await api.get<unknown[]>(`/schedule/by-class/${id}`);
         if (aulas.length > 0) {
           setActiveGrade({ aulas: aulas.length });
           return;
@@ -235,6 +235,10 @@ export function ScheduleWizard() {
     setStep(2);
   };
 
+  const continueFromClass = () => {
+    if (classId && detail) void advanceFromClass(classId, detail);
+  };
+
   const goTo = (next: number) => {
     setError(null);
     if (next < 6) setResult(null);
@@ -244,7 +248,7 @@ export function ScheduleWizard() {
   const selectClass = async (id: string) => {
     setError(null);
     if (id === classId && detail) {
-      setStep(2);
+      await advanceFromClass(id, detail);
       return;
     }
     setLoadingClass(true);
@@ -257,7 +261,7 @@ export function ScheduleWizard() {
       setExcluded(new Set());
       setResult(null);
       setCreated(null);
-      setStep(2);
+      await advanceFromClass(id, cls);
     } catch {
       setError("Não foi possível carregar a turma.");
     } finally {

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { BookOpen, ChevronLeft, ChevronRight, Clock, MapPin, Plus, Tag, User, Users, X } from "lucide-react";
+import { AlertTriangle, BookOpen, ChevronLeft, ChevronRight, Clock, MapPin, Plus, Tag, User, UserX, Users, X } from "lucide-react";
 import { useSchedule, type ScheduleItem } from "@/components/schedule/schedule-context";
 import { api } from "@/lib/api";
 import { getSessionUser } from "@/lib/auth";
@@ -15,6 +15,26 @@ const DAY_SHORT = ["SEG", "TER", "QUA", "QUI", "SEX", "SÁB", "DOM"];
 const DAY_FULL = ["segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo"];
 const VIEW_LABELS: Record<ViewMode, string> = { day: "Dia", week: "Semana", month: "Mês" };
 const TYPE_LABELS: Record<string, string> = { aula: "Aula", plantao: "Plantão", aulao: "Aulão" };
+
+// Aulas que o professor avisou que não vai conseguir dar (por enquanto só visual, guardado neste navegador).
+const DECLINED_KEY = "agenda-nao-vou-participar";
+const DECLINED_COLOR = "bg-slate-400";
+
+function loadDeclined(): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(DECLINED_KEY) ?? "[]") as string[]);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveDeclined(keys: Set<string>) {
+  try {
+    localStorage.setItem(DECLINED_KEY, JSON.stringify([...keys]));
+  } catch {
+    // Sem armazenamento disponível: a marcação vale só enquanto a tela estiver aberta.
+  }
+}
 
 const HOUR_HEIGHT = 52;
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
@@ -135,7 +155,27 @@ export function CalendarView() {
     if (user && user.roles.includes("PROFESSOR") && !user.roles.includes("GESTAO")) setSelectedTeacher(user.id);
     // Só na abertura da tela.
   }, []);
-  const [selectedEvent, setSelectedEvent] = useState<ScheduleItem | null>(null);
+
+  // Sessão e marcações "não vou participar": lidas após montar (ficam no navegador).
+  const [session, setSession] = useState<{ id: string; isManagement: boolean } | null>(null);
+  const [declined, setDeclined] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const user = getSessionUser();
+    if (user) setSession({ id: user.id, isManagement: user.roles.includes("GESTAO") });
+    setDeclined(loadDeclined());
+  }, []);
+  const occurrenceKey = (event: ScheduleItem, date: Date) => `${event.id}|${dateKey(date)}`;
+  const isDeclined = (event: ScheduleItem, date: Date) => declined.has(occurrenceKey(event, date));
+  const colorOf = (event: ScheduleItem, date: Date) => (isDeclined(event, date) ? DECLINED_COLOR : event.color);
+
+  // A aula aberta no painel é uma ocorrência (aula + data), para saber se é futura e se foi marcada.
+  const [selected, setSelected] = useState<{ event: ScheduleItem; date: Date } | null>(null);
+  const [confirmingDecline, setConfirmingDecline] = useState(false);
+  const selectedEvent = selected?.event ?? null;
+  const setSelectedEvent = (value: null) => {
+    setSelected(value);
+    setConfirmingDecline(false);
+  };
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const classes = useMemo(
@@ -292,8 +332,8 @@ export function CalendarView() {
                     <button
                       key={event.id}
                       type="button"
-                      onClick={() => setSelectedEvent(event)}
-                      className={`absolute overflow-hidden rounded-md border border-white px-1.5 py-0.5 text-left text-white shadow-sm transition hover:brightness-110 ${event.color}`}
+                      onClick={() => setSelected({ event, date: day })}
+                      className={`absolute overflow-hidden rounded-md border border-white px-1.5 py-0.5 text-left text-white shadow-sm transition hover:brightness-110 ${colorOf(event, day)}`}
                       style={{
                         top: (start / 60) * HOUR_HEIGHT + 1,
                         height: height - 2,
@@ -363,7 +403,7 @@ export function CalendarView() {
                 {events.slice(0, 3).map((event) => (
                   <span
                     key={event.id}
-                    className={`block truncate rounded px-1 text-[10px] leading-4 text-white ${event.color} ${inMonth ? "" : "opacity-50"}`}
+                    className={`block truncate rounded px-1 text-[10px] leading-4 text-white ${colorOf(event, date)} ${inMonth ? "" : "opacity-50"}`}
                   >
                     {event.startTime} {event.subject}
                   </span>
@@ -506,7 +546,7 @@ export function CalendarView() {
         <Plus size={28} />
       </button>
 
-      {selectedEvent && (
+      {selected && selectedEvent && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center" onClick={() => setSelectedEvent(null)}>
           <div
             role="dialog"
@@ -525,12 +565,15 @@ export function CalendarView() {
               </button>
             </div>
             <div className="flex gap-4 px-6">
-              <span className={`mt-1.5 h-4 w-4 shrink-0 rounded ${selectedEvent.color}`} />
+              <span className={`mt-1.5 h-4 w-4 shrink-0 rounded ${colorOf(selectedEvent, selected.date)}`} />
               <div className="min-w-0">
                 <h2 className="text-xl text-slate-800">{selectedEvent.subject}</h2>
                 <p className="mt-0.5 text-sm text-slate-500">
-                  Toda {DAY_FULL[selectedEvent.day]} · {selectedEvent.startTime} – {selectedEvent.endTime}
+                  <span className="capitalize">{DAY_FULL[selectedEvent.day]}</span>,{" "}
+                  {selected.date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })} · {selectedEvent.startTime} –{" "}
+                  {selectedEvent.endTime}
                 </p>
+                <p className="text-xs text-slate-400">Repete toda {DAY_FULL[selectedEvent.day]}</p>
               </div>
             </div>
             <ul className="mt-4 space-y-3 px-6 text-sm text-slate-700">
@@ -559,22 +602,96 @@ export function CalendarView() {
                 </li>
               )}
             </ul>
-            <div className="mt-6 flex justify-end gap-2 px-6">
-              <button
-                type="button"
-                onClick={() => setSelectedEvent(null)}
-                className="rounded-full px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
-              >
-                Fechar
-              </button>
-              <button
-                type="button"
-                onClick={() => router.push(`/schedule/edit/${selectedEvent.id}`)}
-                className="rounded-full bg-blue-600 px-5 py-2 text-sm text-white hover:bg-blue-700"
-              >
-                Editar
-              </button>
-            </div>
+            {(() => {
+              // Gestão: Fechar/Editar. Professor: só o X; na própria aula futura, pode avisar que não vai participar.
+              if (session?.isManagement) {
+                return (
+                  <div className="mt-6 flex justify-end gap-2 px-6">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedEvent(null)}
+                      className="rounded-full px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
+                    >
+                      Fechar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/schedule/edit/${selectedEvent.id}`)}
+                      className="rounded-full bg-blue-600 px-5 py-2 text-sm text-white hover:bg-blue-700"
+                    >
+                      Editar
+                    </button>
+                  </div>
+                );
+              }
+
+              const isOwn = session?.id === selectedEvent.teacherId;
+              if (!isOwn) return null;
+
+              if (isDeclined(selectedEvent, selected.date)) {
+                return (
+                  <p className="mx-6 mt-6 flex items-center gap-2 rounded-xl bg-slate-100 px-4 py-3 text-sm text-slate-600">
+                    <UserX size={16} className="shrink-0" /> Você informou que não vai conseguir participar desta aula.
+                  </p>
+                );
+              }
+
+              const [h, m] = selectedEvent.startTime.split(":").map(Number);
+              const startsAt = new Date(selected.date);
+              startsAt.setHours(h, m, 0, 0);
+              if (startsAt <= new Date()) return null;
+
+              if (confirmingDecline) {
+                return (
+                  <div className="mx-6 mt-6 space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-500" />
+                      <div>
+                        <p className="font-medium text-slate-800">Tem certeza?</p>
+                        <p className="mt-0.5 text-sm text-slate-600">
+                          Você está informando que não vai conseguir dar a aula de {selectedEvent.subject} em{" "}
+                          {selected.date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setConfirmingDecline(false)}
+                        className="rounded-full px-4 py-2 text-sm text-slate-600 hover:bg-white"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = new Set(declined);
+                          next.add(occurrenceKey(selectedEvent, selected.date));
+                          setDeclined(next);
+                          saveDeclined(next);
+                          setConfirmingDecline(false);
+                        }}
+                        className="rounded-full bg-amber-500 px-4 py-2 text-sm text-white hover:bg-amber-600"
+                      >
+                        Sim, não vou participar
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="mt-6 px-6">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingDecline(true)}
+                    className="flex w-full items-center justify-center gap-2 rounded-full border border-slate-300 py-2.5 text-sm text-slate-700 hover:bg-slate-50"
+                  >
+                    <UserX size={16} /> Não vou conseguir participar
+                  </button>
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}

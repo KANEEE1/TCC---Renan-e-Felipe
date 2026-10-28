@@ -1,6 +1,6 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
-import { app, createUser, resetDb } from "./helpers.js";
+import { app, createUser, resetDb, asGestao } from "./helpers.js";
 
 describe("disciplinas", () => {
   beforeEach(async () => {
@@ -37,7 +37,7 @@ describe("disciplinas", () => {
 
     const usada = await request(app).post("/disciplinas").send({ nome: "História" });
     await request(app)
-      .post("/classes")
+      .post("/classes").set(asGestao())
       .send({ nome: "T", anoLetivo: 2026, disciplinas: [{ disciplinaId: usada.body.id, aulasPorSemana: 2, duracaoMinutos: 90 }] });
     const res = await request(app).delete(`/disciplinas/${usada.body.id}`);
     expect(res.status).toBe(409);
@@ -65,7 +65,7 @@ describe("class curriculum matrix", () => {
   it("creates the matrix resolving by id and by name (creating the discipline)", async () => {
     const mat = await request(app).post("/disciplinas").send({ nome: "Matemática" });
     const res = await request(app)
-      .post("/classes")
+      .post("/classes").set(asGestao())
       .send({
         nome: "Extensivo",
         anoLetivo: 2026,
@@ -78,7 +78,7 @@ describe("class curriculum matrix", () => {
     expect(res.status).toBe(400);
 
     const ok = await request(app)
-      .post("/classes")
+      .post("/classes").set(asGestao())
       .send({
         nome: "Extensivo",
         anoLetivo: 2026,
@@ -97,24 +97,24 @@ describe("class curriculum matrix", () => {
   it("update: undefined keeps, [] clears, list replaces", async () => {
     const mat = await request(app).post("/disciplinas").send({ nome: "Matemática" });
     const turma = await request(app)
-      .post("/classes")
+      .post("/classes").set(asGestao())
       .send({ nome: "T", anoLetivo: 2026, disciplinas: [{ disciplinaId: mat.body.id, aulasPorSemana: 3, duracaoMinutos: 60 }] });
 
-    const kept = await request(app).put(`/classes/${turma.body.id}`).send({ sala: "1" });
+    const kept = await request(app).put(`/classes/${turma.body.id}`).set(asGestao()).send({ sala: "1" });
     expect(kept.body.cargas).toHaveLength(1);
 
     const replaced = await request(app)
-      .put(`/classes/${turma.body.id}`)
+      .put(`/classes/${turma.body.id}`).set(asGestao())
       .send({ disciplinas: [{ disciplinaId: mat.body.id, aulasPorSemana: 5, duracaoMinutos: 100 }] });
     expect(replaced.body.cargas[0]).toMatchObject({ aulasPorSemana: 5, duracaoMinutos: 100 });
 
-    const cleared = await request(app).put(`/classes/${turma.body.id}`).send({ disciplinas: [] });
+    const cleared = await request(app).put(`/classes/${turma.body.id}`).set(asGestao()).send({ disciplinas: [] });
     expect(cleared.body.cargas).toHaveLength(0);
   });
 
   it("validates rows", async () => {
     const base = { nome: "T", anoLetivo: 2026 };
-    const post = (disciplinas: unknown[]) => request(app).post("/classes").send({ ...base, disciplinas });
+    const post = (disciplinas: unknown[]) => request(app).post("/classes").set(asGestao()).send({ ...base, disciplinas });
     expect((await post([{ aulasPorSemana: 1, duracaoMinutos: 60 }])).status).toBe(400);
     expect((await post([{ nome: "X", aulasPorSemana: 0, duracaoMinutos: 60 }])).status).toBe(400);
     expect((await post([{ nome: "X", aulasPorSemana: 1, duracaoMinutos: 62 }])).status).toBe(400);
@@ -128,7 +128,7 @@ describe("class curriculum matrix (extra)", () => {
     await resetDb();
   });
 
-  const post = (disciplinas: unknown[]) => request(app).post("/classes").send({ nome: "T", anoLetivo: 2026, disciplinas });
+  const post = (disciplinas: unknown[]) => request(app).post("/classes").set(asGestao()).send({ nome: "T", anoLetivo: 2026, disciplinas });
 
   it("reuses an existing discipline when the name differs only by case/spaces", async () => {
     const mat = await request(app).post("/disciplinas").send({ nome: "Matemática" });
@@ -173,7 +173,7 @@ describe("class curriculum matrix and existing lessons", () => {
   it("changing the matrix keeps the lessons already in the schedule", async () => {
     const professor = await createUser({ email: "prof@test.com", roles: ["PROFESSOR"] });
     const turma = await request(app)
-      .post("/classes")
+      .post("/classes").set(asGestao())
       .send({ nome: "Turma Matriz", anoLetivo: 2026, disciplinas: [{ nome: "Física", aulasPorSemana: 2, duracaoMinutos: 90 }] });
     expect(turma.status).toBe(201);
     const disciplinaId = turma.body.cargas[0].disciplina.id as string;
@@ -188,7 +188,7 @@ describe("class curriculum matrix and existing lessons", () => {
     });
     expect(aula.status).toBe(201);
 
-    expect((await request(app).put(`/classes/${turma.body.id}`).send({ disciplinas: [] })).status).toBe(200);
+    expect((await request(app).put(`/classes/${turma.body.id}`).set(asGestao()).send({ disciplinas: [] })).status).toBe(200);
 
     const schedule = await request(app).get("/schedule");
     expect(schedule.body.map((item: { id: string }) => item.id)).toContain(aula.body.id);

@@ -35,11 +35,28 @@ interface AulaDTO {
 // Índice do dia na semana começando na segunda (0) até o domingo (6).
 const DAY_TO_INDEX: Record<string, number> = { SEGUNDA: 0, TERCA: 1, QUARTA: 2, QUINTA: 3, SEXTA: 4, SABADO: 5, DOMINGO: 6 };
 const INDEX_TO_DAY = ["SEGUNDA", "TERCA", "QUARTA", "QUINTA", "SEXTA", "SABADO", "DOMINGO"];
-const COLORS = ["bg-blue-500", "bg-emerald-500", "bg-violet-500", "bg-orange-500", "bg-rose-500", "bg-teal-500", "bg-indigo-500", "bg-amber-500"];
+// Uma cor por disciplina (todas as aulas da mesma matéria com a mesma cor), atribuída na ordem alfabética das
+// disciplinas: com até 12 matérias, nenhuma repete cor.
+const COLORS = [
+  "bg-blue-500",
+  "bg-emerald-500",
+  "bg-violet-500",
+  "bg-orange-500",
+  "bg-rose-500",
+  "bg-teal-500",
+  "bg-indigo-500",
+  "bg-amber-500",
+  "bg-cyan-600",
+  "bg-fuchsia-500",
+  "bg-lime-600",
+  "bg-red-500"
+];
 
-function colorFor(id: string) {
-  const sum = Array.from(id).reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
-  return COLORS[sum % COLORS.length];
+function colorsBySubject(aulas: AulaDTO[]) {
+  const subjects = [...new Map(aulas.map((aula) => [aula.disciplina.id, aula.disciplina.nome]))].sort((a, b) =>
+    a[1].localeCompare(b[1], "pt-BR")
+  );
+  return new Map(subjects.map(([id], index) => [id, COLORS[index % COLORS.length]]));
 }
 
 function toHHMM(iso: string) {
@@ -52,7 +69,7 @@ function durationOf(start: string, end: string) {
   return (eh * 60 + em - (sh * 60 + sm)) / 60;
 }
 
-function fromAula(aula: AulaDTO): ScheduleItem {
+function fromAula(aula: AulaDTO, color: string): ScheduleItem {
   const startTime = toHHMM(aula.horarioInicio);
   const endTime = toHHMM(aula.horarioFim);
   return {
@@ -68,7 +85,7 @@ function fromAula(aula: AulaDTO): ScheduleItem {
     teacher: aula.professor.name,
     teacherId: aula.professor.id,
     room: aula.sala ?? "",
-    color: colorFor(aula.id),
+    color,
     type: aula.tipo.toLowerCase() as ScheduleItem["type"]
   };
 }
@@ -92,7 +109,8 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     try {
       const aulas = await api.get<AulaDTO[]>("/schedule/weekly");
-      setSchedules(aulas.map(fromAula));
+      const colors = colorsBySubject(aulas);
+      setSchedules(aulas.map((aula) => fromAula(aula, colors.get(aula.disciplina.id) ?? COLORS[0])));
     } finally {
       setLoading(false);
     }

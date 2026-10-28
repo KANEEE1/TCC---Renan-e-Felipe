@@ -5,6 +5,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { BookOpen, ChevronLeft, ChevronRight, Clock, MapPin, Plus, Tag, User, Users, X } from "lucide-react";
 import { useSchedule, type ScheduleItem } from "@/components/schedule/schedule-context";
 import { api } from "@/lib/api";
+import { getSessionUser } from "@/lib/auth";
 
 type ViewMode = "day" | "week" | "month";
 
@@ -125,6 +126,15 @@ export function CalendarView() {
   // Filtros combináveis: turma e professor, ambos por id. Ficam na URL (?class=&teacher=).
   const [selectedClass, setSelectedClass] = useState<string>(searchParams.get("class") || "all");
   const [selectedTeacher, setSelectedTeacher] = useState<string>(searchParams.get("teacher") || "all");
+
+  // Para professores (sem papel de gestão), a agenda abre filtrada nas próprias aulas, salvo filtro na URL.
+  // Feito após montar porque a sessão fica no navegador (localStorage).
+  useEffect(() => {
+    if (searchParams.get("teacher")) return;
+    const user = getSessionUser();
+    if (user && user.roles.includes("PROFESSOR") && !user.roles.includes("GESTAO")) setSelectedTeacher(user.id);
+    // Só na abertura da tela.
+  }, []);
   const [selectedEvent, setSelectedEvent] = useState<ScheduleItem | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 

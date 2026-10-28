@@ -4,15 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Check, Save, User, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
-
-interface AulaDTO {
-  id: string;
-  horarioInicio: string;
-  horarioFim: string;
-  disciplina: { nome: string };
-  turma: { id: string; nome: string };
-  professor: { name: string };
-}
+import type { TodayItem } from "./attendance-list";
 
 interface ClassDetail {
   matriculas: { aluno: { id: string; nome: string; numero: string | null } }[];
@@ -25,37 +17,47 @@ interface StudentRow {
   present: boolean;
 }
 
-function toHHMM(iso: string) {
-  return new Date(iso).toISOString().slice(11, 16);
+function reason(item: TodayItem) {
+  if (!item.responsavel) return "Somente o professor responsável pela aula registra a presença.";
+  if (item.status === "AGUARDANDO") return `A chamada abre às ${item.aula.horarioInicio}.`;
+  return "A janela de registro desta aula já encerrou.";
 }
 
 export function MarkAttendance({ aulaId }: { aulaId: string }) {
-  const [lesson, setLesson] = useState<AulaDTO | null>(null);
+  const [item, setItem] = useState<TodayItem | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const [students, setStudents] = useState<StudentRow[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    api.get<AulaDTO[]>("/schedule/weekly").then((aulas) => {
-      const found = aulas.find((a) => a.id === aulaId) ?? null;
-      setLesson(found);
-      if (found) {
-        api.get<ClassDetail>(`/classes/${found.turma.id}`).then((cls) => {
-          setStudents(
-            cls.matriculas.map((m) => ({ id: m.aluno.id, name: m.aluno.nome, number: m.aluno.numero ?? "-", present: true }))
-          );
-        });
-      }
-    });
+    api
+      .get<TodayItem[]>("/attendance/today")
+      .then((items) => {
+        const found = items.find((i) => i.aula.id === aulaId) ?? null;
+        setItem(found);
+        if (found) {
+          api.get<ClassDetail>(`/classes/${found.aula.turma.id}`).then((cls) => {
+            setStudents(
+              cls.matriculas.map((m) => ({ id: m.aluno.id, name: m.aluno.nome, number: m.aluno.numero ?? "-", present: true }))
+            );
+          });
+        }
+      })
+      .catch((err) => setError(err instanceof ApiError ? err.message : "Não foi possível carregar a aula."))
+      .finally(() => setLoaded(true));
   }, [aulaId]);
 
+  const canEdit = item?.podeRegistrar === true;
+
   const toggleAttendance = (studentId: string) => {
+    if (!canEdit) return;
     setStudents((prev) => prev.map((student) => (student.id === studentId ? { ...student, present: !student.present } : student)));
   };
 
-  const markAllPresent = () => setStudents((prev) => prev.map((student) => ({ ...student, present: true })));
-  const markAllAbsent = () => setStudents((prev) => prev.map((student) => ({ ...student, present: false })));
+  const markAllPresent = () => canEdit && setStudents((prev) => prev.map((student) => ({ ...student, present: true })));
+  const markAllAbsent = () => canEdit && setStudents((prev) => prev.map((student) => ({ ...student, present: false })));
 
   const presentCount = students.filter((s) => s.present).length;
   const absentCount = students.length - presentCount;
@@ -66,7 +68,6 @@ export function MarkAttendance({ aulaId }: { aulaId: string }) {
     try {
       await api.post("/attendance/mark", {
         aulaId,
-        data: new Date().toISOString().slice(0, 10),
         entries: students.map((s) => ({ alunoId: s.id, presente: s.present }))
       });
       setSaved(true);
@@ -88,10 +89,10 @@ export function MarkAttendance({ aulaId }: { aulaId: string }) {
         </div>
 
         <div className="rounded-lg bg-green-500 p-3">
-          <div className="text-sm text-green-100">{lesson ? `${lesson.disciplina.nome} - ${lesson.turma.nome}` : "Carregando..."}</div>
-          {lesson && (
+          <div className="text-sm text-green-100">{item ? `${item.aula.disciplina.nome} - ${item.aula.turma.nome}` : loaded ? "Aula não encontrada hoje" : "Carregando..."}</div>
+          {item && (
             <div className="text-sm text-green-100">
-              {toHHMM(lesson.horarioInicio)} - {toHHMM(lesson.horarioFim)} | {lesson.professor.name}
+              {item.aula.horarioInicio} - {item.aula.horarioFim} | {item.aula.professor.name}
             </div>
           )}
         </div>
@@ -129,7 +130,7 @@ export function MarkAttendance({ aulaId }: { aulaId: string }) {
             <div
               key={student.id}
               onClick={() => toggleAttendance(student.id)}
-              className={`cursor-pointer rounded-lg bg-white p-4 shadow transition-all ${student.present ? "border-l-4 border-green-500" : "border-l-4 border-red-500"}`}
+              className={`${canEdit ? "cursor-pointer" : "cursor-not-allowed opacity-70"} rounded-lg bg-white p-4 shadow transition-all ${student.present ? "border-l-4 border-green-500" : "border-l-4 border-red-500"}`}
             >
               <div className="flex items-center justify-between">
                 <div className="flex flex-1 items-center">
@@ -159,6 +160,7 @@ export function MarkAttendance({ aulaId }: { aulaId: string }) {
           ))}
         </div>
 
+        {item && !canEdit && <p className="mb-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-700">{reason(item)}</p>}
         {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
         {saved && <p className="mt-3 text-sm text-emerald-600">Presença salva com sucesso.</p>}
       </div>
@@ -170,7 +172,7 @@ export function MarkAttendance({ aulaId }: { aulaId: string }) {
         <button
           type="button"
           onClick={handleSave}
-          disabled={saving || students.length === 0}
+          disabled={saving || !canEdit || students.length === 0}
           className="flex w-full items-center justify-center rounded-lg bg-green-600 py-3 text-white transition-colors hover:bg-green-700 disabled:opacity-60"
         >
           <Save size={20} className="mr-2" />

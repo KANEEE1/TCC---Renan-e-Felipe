@@ -30,3 +30,12 @@ export function todayInSaoPaulo(now: Date = new Date()) {
 export function diaSemanaOfDateOnly(value: string) {
   return SCHEDULE_WEEKDAYS[(parseDateOnly(value).getUTCDay() + 6) % 7];
 }
+
+export function timeOfDayInSaoPaulo(now: Date = new Date()) {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: SAO_PAULO_TIMEZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23"
+  }).format(now);
+}

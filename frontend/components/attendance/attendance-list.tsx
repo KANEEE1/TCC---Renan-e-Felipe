@@ -5,14 +5,22 @@ import Link from "next/link";
 import { CheckCircle, XCircle } from "lucide-react";
 import { api } from "@/lib/api";
 
-interface AulaDTO {
-  id: string;
-  diaSemana: string;
-  horarioInicio: string;
-  horarioFim: string;
-  disciplina: { nome: string };
-  turma: { id: string; nome: string };
-  professor: { name: string };
+export interface TodayItem {
+  aula: {
+    id: string;
+    horarioInicio: string;
+    horarioFim: string;
+    disciplina: { id: string; nome: string };
+    turma: { id: string; nome: string };
+    professor: { id: string; name: string };
+  };
+  status: "AGUARDANDO" | "ABERTA" | "ENCERRADA";
+  registrada: boolean;
+  automatica: boolean;
+  responsavel: boolean;
+  podeRegistrar: boolean;
+  presentes: number;
+  total: number;
 }
 
 interface PresencaDTO {
@@ -24,44 +32,16 @@ interface PresencaDTO {
 
 const COLORS = ["bg-blue-500", "bg-emerald-500", "bg-orange-400", "bg-purple-500", "bg-teal-500"];
 
-function toHHMM(iso: string) {
-  return new Date(iso).toISOString().slice(11, 16);
-}
-
-function todayDiaSemana() {
-  const names = ["DOMINGO", "SEGUNDA", "TERCA", "QUARTA", "QUINTA", "SEXTA", "SABADO"];
-  return names[new Date().getDay()];
-}
-
-function statusFor(start: string, end: string) {
-  const now = new Date();
-  const nowHHMM = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-  if (nowHHMM < toHHMM(start)) return "agendada";
-  if (nowHHMM > toHHMM(end)) return "concluída";
-  return "pendente";
-}
-
 export function AttendanceList() {
-  const [todayLessons, setTodayLessons] = useState<AulaDTO[]>([]);
+  const [todayClasses, setTodayClasses] = useState<TodayItem[]>([]);
   const [allPresences, setAllPresences] = useState<PresencaDTO[]>([]);
 
   useEffect(() => {
-    api.get<AulaDTO[]>("/schedule/weekly").then((aulas) => {
-      setTodayLessons(aulas.filter((a) => a.diaSemana === todayDiaSemana()));
-    });
+    api.get<TodayItem[]>("/attendance/today").then(setTodayClasses).catch(() => setTodayClasses([]));
     api.get<PresencaDTO[]>("/attendance").then(setAllPresences).catch(() => setAllPresences([]));
   }, []);
 
   const todayDateStr = new Date().toISOString().slice(0, 10);
-
-  const todayClasses = todayLessons.map((lesson) => {
-    const status = statusFor(lesson.horarioInicio, lesson.horarioFim);
-    const presencesForLesson = allPresences.filter((p) => p.aulaId === lesson.id && p.data.slice(0, 10) === todayDateStr);
-    const present = presencesForLesson.filter((p) => p.presente).length;
-    const absent = presencesForLesson.filter((p) => !p.presente).length;
-    const total = presencesForLesson.length;
-    return { lesson, status, present, absent, total };
-  });
 
   const recentClasses = useMemo(() => {
     const groups = new Map<string, { subject: string; class: string; date: string; present: number; total: number }>();
@@ -139,48 +119,50 @@ export function AttendanceList() {
           {todayClasses.length === 0 && <p className="text-sm text-slate-400">Nenhuma aula hoje.</p>}
 
           <div className="space-y-2.5">
-            {todayClasses.map(({ lesson, status, present, absent, total }, idx) => (
-              <div key={lesson.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            {todayClasses.map(({ aula, status, registrada, automatica, responsavel, podeRegistrar, presentes, total }, idx) => (
+              <div key={aula.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <div className="flex">
                   <div className={`w-1.5 shrink-0 rounded-l-2xl ${COLORS[idx % COLORS.length]}`} />
                   <div className="flex-1 p-4">
                     <div className="mb-3 flex items-start justify-between gap-2">
                       <div>
-                        <p className="text-sm text-slate-800">{lesson.disciplina.nome}</p>
+                        <p className="text-sm text-slate-800">{aula.disciplina.nome}</p>
                         <p className="mt-0.5 text-xs text-slate-400">
-                          {lesson.turma.nome} · {toHHMM(lesson.horarioInicio)} – {toHHMM(lesson.horarioFim)}
+                          {aula.turma.nome} · {aula.horarioInicio} – {aula.horarioFim}
                         </p>
-                        <p className="text-xs text-slate-400">{lesson.professor.name}</p>
+                        <p className="text-xs text-slate-400">{aula.professor.name}</p>
                       </div>
-                      <span className="shrink-0 rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-xs text-slate-500">{status}</span>
                     </div>
 
-                    {status === "concluída" && total > 0 ? (
-                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                        <div className="mb-2 flex items-center justify-between">
-                          <div className="flex items-center gap-3 text-xs">
-                            <span className="flex items-center gap-1 text-emerald-600">
-                              <CheckCircle size={13} /> {present} presentes
-                            </span>
-                            <span className="flex items-center gap-1 text-rose-500">
-                              <XCircle size={13} /> {absent} ausentes
-                            </span>
-                          </div>
-                          <span className="text-xs text-slate-600">{Math.round((present / total) * 100)}%</span>
+                    {status === "AGUARDANDO" && (
+                      <div className="w-full rounded-xl bg-slate-100 py-2.5 text-center text-sm text-slate-400">Abre às {aula.horarioInicio}</div>
+                    )}
+                    {status === "ABERTA" &&
+                      (podeRegistrar ? (
+                        <Link
+                          href={`/attendance/mark/${aula.id}`}
+                          className="block w-full rounded-xl bg-emerald-600 py-2.5 text-center text-sm text-white transition-colors hover:bg-emerald-700"
+                        >
+                          Registrar presença
+                        </Link>
+                      ) : (
+                        <div className="w-full rounded-xl bg-slate-100 py-2.5 text-center text-sm text-slate-500">
+                          {responsavel ? "Em andamento" : "Somente o professor responsável registra"}
                         </div>
-                        <div className="h-1.5 overflow-hidden rounded-full bg-slate-200">
-                          <div className="h-full rounded-full bg-emerald-500" style={{ width: `${Math.round((present / total) * 100)}%` }} />
+                      ))}
+                    {status === "ENCERRADA" && (
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-slate-600">
+                            Encerrada · {registrada ? "Presença registrada" : automatica ? "Presença automática (todos presentes)" : "Sem registro"}
+                          </span>
+                          {total > 0 && (
+                            <span className="text-slate-600">
+                              {presentes}/{total}
+                            </span>
+                          )}
                         </div>
                       </div>
-                    ) : status !== "agendada" ? (
-                      <Link
-                        href={`/attendance/mark/${lesson.id}`}
-                        className="block w-full rounded-xl bg-emerald-600 py-2.5 text-center text-sm text-white transition-colors hover:bg-emerald-700"
-                      >
-                        Marcar Presença
-                      </Link>
-                    ) : (
-                      <div className="w-full cursor-not-allowed rounded-xl bg-slate-100 py-2.5 text-center text-sm text-slate-400">Aula Futura</div>
                     )}
                   </div>
                 </div>

@@ -1,6 +1,7 @@
 import request from "supertest";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildAttendanceSummary } from "../src/modules/presenca/presenca.service.js";
+import { prisma } from "../src/shared/prisma.js";
 import { app, resetDb } from "./helpers.js";
 
 const T1 = { id: "t1", nome: "Turma 1" };
@@ -58,6 +59,12 @@ describe("buildAttendanceSummary", () => {
 describe("GET /attendance/summary", () => {
   beforeEach(async () => {
     await resetDb();
+    // Relógio antes da criação das aulas: a consolidação automática não gera presenças extras.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2020-01-01T12:00:00Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   async function setupClass(nome: string, email: string, dia: string) {
@@ -78,8 +85,9 @@ describe("GET /attendance/summary", () => {
     const id = aluno.body.id;
     await request(app).post(`/classes/${c1.turmaId}/students`).send({ studentIds: [id] });
     await request(app).post(`/classes/${c2.turmaId}/students`).send({ studentIds: [id] });
-    await request(app).post("/attendance/mark").send({ aulaId: c1.aulaId, data: "2026-09-01", entries: [{ alunoId: id, presente: true }] });
-    await request(app).post("/attendance/mark").send({ aulaId: c2.aulaId, data: "2026-09-01", entries: [{ alunoId: id, presente: false }] });
+    const data = new Date("2026-09-01");
+    await prisma.presenca.create({ data: { alunoId: id, aulaId: c1.aulaId, data, presente: true } });
+    await prisma.presenca.create({ data: { alunoId: id, aulaId: c2.aulaId, data, presente: false } });
 
     const filtered = await request(app).get(`/attendance/summary?turmaId=${c1.turmaId}`);
     expect(filtered.status).toBe(200);

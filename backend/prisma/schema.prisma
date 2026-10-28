@@ -222,6 +222,7 @@ model Presenca {
   alunoId   String
   aulaId    String
   presente  Boolean
+  automatica Boolean @default(false)
   data      DateTime @db.Date
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -18,6 +18,9 @@ export interface ScheduleItem {
   room: string;
   color: string;
   type: "aula" | "plantao" | "aulao";
+  // Período da grade da turma ("YYYY-MM-DD"); a aula só acontece entre essas datas. Ausente = sem restrição.
+  periodStart?: string | null;
+  periodEnd?: string | null;
 }
 
 interface AulaDTO {
@@ -27,7 +30,7 @@ interface AulaDTO {
   horarioFim: string;
   sala: string | null;
   tipo: "AULA" | "PLANTAO" | "AULAO";
-  turma: { id: string; nome: string };
+  turma: { id: string; nome: string; gradeInicio?: string | null; gradeFim?: string | null };
   disciplina: { id: string; nome: string };
   professor: { id: string; name: string };
 }
@@ -86,6 +89,8 @@ function fromAula(aula: AulaDTO, color: string): ScheduleItem {
     teacherId: aula.professor.id,
     room: aula.sala ?? "",
     color,
+    periodStart: aula.turma.gradeInicio?.slice(0, 10) ?? null,
+    periodEnd: aula.turma.gradeFim?.slice(0, 10) ?? null,
     type: aula.tipo.toLowerCase() as ScheduleItem["type"]
   };
 }

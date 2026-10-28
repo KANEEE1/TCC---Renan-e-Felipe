@@ -345,3 +345,49 @@ describe("geração de grade: cenários integrados", () => {
     expect(res.body.propostas[0]).toMatchObject({ horarioInicio: "23:00", horarioFim: "23:59" });
   });
 });
+
+describe("POST /schedule/generate: gerar novamente", () => {
+  beforeEach(resetDb);
+
+  const generate = (body: object) => request(app).post("/schedule/generate").set(asGestao()).send(body);
+
+  it("returns a different grade, with no fewer lessons, when asked to avoid the previous ones", async () => {
+    const { turmaId } = await setup();
+    await request(app).put(`/classes/${turmaId}/janelas`).set(asGestao()).send({ janelas });
+
+    const primeira = await generate({ turmaId });
+    expect(primeira.status).toBe(200);
+    expect(primeira.body.repetida).toBe(false);
+    expect((await generate({ turmaId })).body.assinatura).toBe(primeira.body.assinatura);
+
+    const vistas = [primeira.body.assinatura];
+    for (let i = 0; i < 3; i++) {
+      const nova = await generate({ turmaId, evitar: vistas });
+      expect(nova.status).toBe(200);
+      expect(nova.body.repetida).toBe(false);
+      expect(vistas).not.toContain(nova.body.assinatura);
+      expect(nova.body.propostas).toHaveLength(primeira.body.propostas.length);
+      vistas.push(nova.body.assinatura);
+    }
+  });
+
+  it("flags repetida when no other valid grade exists", async () => {
+    const { turmaId } = await setup();
+    // Uma disciplina, uma aula de 1h e uma janela de exatamente 1h: só existe uma grade possível.
+    await prisma.cargaDisciplinaTurma.deleteMany({ where: { turmaId } });
+    const fis = await prisma.disciplina.findFirstOrThrow({ where: { nomeNormalizado: "fisica" } });
+    await prisma.cargaDisciplinaTurma.create({ data: { turmaId, disciplinaId: fis.id, aulasPorSemana: 1, duracaoMinutos: 60 } });
+    await request(app)
+      .put(`/classes/${turmaId}/janelas`)
+      .set(asGestao())
+      .send({ janelas: [{ diaSemana: "SEGUNDA", horarioInicio: "08:00", horarioFim: "09:00" }] });
+
+    const primeira = await generate({ turmaId });
+    expect(primeira.body.propostas).toHaveLength(1);
+
+    const outra = await generate({ turmaId, evitar: [primeira.body.assinatura] });
+    expect(outra.status).toBe(200);
+    expect(outra.body.repetida).toBe(true);
+    expect(outra.body.assinatura).toBe(primeira.body.assinatura);
+  });
+});

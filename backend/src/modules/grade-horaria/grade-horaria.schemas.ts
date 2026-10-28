@@ -35,7 +35,9 @@ export const confirmScheduleSchema = z.object({
 
 export const generateScheduleSchema = z.object({
   turmaId: z.string().cuid(),
-  professoresExcluidos: z.array(z.string().cuid()).optional()
+  professoresExcluidos: z.array(z.string().cuid()).optional(),
+  // Assinaturas de grades já mostradas ao gestor ("Gerar novamente" pede uma diferente delas).
+  evitar: z.array(z.string().min(1).max(64)).max(100).optional()
 });
 
 export const replaceScheduleSchema = z.object({

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allocateTurma } from "../src/modules/grade-horaria/grade-horaria.turma-allocator.js";
+import { allocateTurma, criarAleatorio } from "../src/modules/grade-horaria/grade-horaria.turma-allocator.js";
 
 const disp = (professorId: string, diaSemana: string, horarioInicio: string, horarioFim: string) => ({
   professorId,
@@ -133,5 +133,42 @@ describe("allocateTurma", () => {
     );
     expect(propostas).toHaveLength(1);
     expect(naoAlocados).toEqual([{ disciplinaId: "d1", faltantes: 2, motivo: "CONFLITO" }]);
+  });
+});
+
+describe("allocateTurma with a random source", () => {
+  const janelas = [win("SEGUNDA", "07:00", "12:00"), win("TERCA", "07:00", "12:00"), win("QUARTA", "07:00", "12:00")];
+  const disponibilidades = [
+    disp("a", "SEGUNDA", "07:00", "12:00"),
+    disp("a", "TERCA", "07:00", "12:00"),
+    disp("b", "TERCA", "07:00", "12:00"),
+    disp("b", "QUARTA", "07:00", "12:00")
+  ];
+  const ocupacoes = [{ professorId: "a", diaSemana: "SEGUNDA", horarioInicio: "07:00", horarioFim: "08:00" }];
+  const pedidos = [pedido(2, ["a", "b"], 60, "d1"), pedido(2, ["a", "b"], 90, "d2")];
+  const dentro = (dia: string, ini: string, fim: string, lista: { diaSemana: string; horarioInicio: string; horarioFim: string }[]) =>
+    lista.some((j) => j.diaSemana === dia && j.horarioInicio <= ini && j.horarioFim >= fim);
+  const sobrepoem = (a: { diaSemana: string; horarioInicio: string; horarioFim: string }, b: typeof a) =>
+    a.diaSemana === b.diaSemana && a.horarioInicio < b.horarioFim && b.horarioInicio < a.horarioFim;
+
+  it("keeps every rule for many seeds and produces different grades", () => {
+    const assinaturas = new Set<string>();
+    for (let semente = 1; semente <= 60; semente++) {
+      const { propostas, naoAlocados } = allocateTurma(pedidos, janelas, disponibilidades, ocupacoes, { aleatorio: criarAleatorio(semente) });
+      expect(naoAlocados).toEqual([]);
+      for (const p of propostas) {
+        expect(dentro(p.diaSemana, p.horarioInicio, p.horarioFim, janelas)).toBe(true);
+        expect(dentro(p.diaSemana, p.horarioInicio, p.horarioFim, disponibilidades.filter((d) => d.professorId === p.professorId))).toBe(true);
+        expect(ocupacoes.some((o) => o.professorId === p.professorId && sobrepoem(o, p))).toBe(false);
+      }
+      propostas.forEach((p, i) => propostas.slice(i + 1).forEach((q) => expect(sobrepoem(p, q)).toBe(false)));
+      assinaturas.add(JSON.stringify(propostas));
+    }
+    expect(assinaturas.size).toBeGreaterThan(1);
+  });
+
+  it("is reproducible for the same seed", () => {
+    const run = () => allocateTurma(pedidos, janelas, disponibilidades, ocupacoes, { aleatorio: criarAleatorio(42) });
+    expect(run()).toEqual(run());
   });
 });

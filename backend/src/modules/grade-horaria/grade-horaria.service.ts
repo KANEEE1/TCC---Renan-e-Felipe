@@ -1,8 +1,23 @@
+import { createHash, randomInt } from "node:crypto";
 import { HttpError } from "../../shared/http.js";
 import { formatTimeHHMM } from "../../shared/time.js";
 import type { DisponibilidadeService } from "../disponibilidade/disponibilidade.service.js";
 import { allocate, overlaps } from "./grade-horaria.allocator.js";
-import { allocateTurma } from "./grade-horaria.turma-allocator.js";
+import { allocateTurma, criarAleatorio, type PropostaTurma } from "./grade-horaria.turma-allocator.js";
+
+// Quantas variações sorteadas tentar ao pedir uma grade diferente das já mostradas.
+const TENTATIVAS_VARIACAO = 40;
+
+// Identifica uma grade pelo conjunto de aulas (independe da ordem).
+function assinaturaDaGrade(propostas: PropostaTurma[]) {
+  const chave = propostas
+    .map((p) => `${p.disciplinaId}|${p.professorId}|${p.diaSemana}|${p.horarioInicio}|${p.horarioFim}`)
+    .sort()
+    .join(";");
+  return createHash("sha1").update(chave).digest("hex").slice(0, 16);
+}
+
+const faltantesDe = (naoAlocados: { faltantes: number }[]) => naoAlocados.reduce((soma, item) => soma + item.faltantes, 0);
 import type {
   ConfirmScheduleInput,
   CreateAulaInput,
@@ -191,7 +206,7 @@ export class GradeHorariaService {
       this.gradeHorariaRepository.countAulasDaTurma(input.turmaId)
     ]);
 
-    const { propostas, naoAlocados } = allocateTurma(
+    const alocar = (aleatorio?: () => number) => allocateTurma(
       cargas.map((carga) => ({
         disciplinaId: carga.disciplinaId,
         quantidade: carga.aulasPorSemana,
@@ -216,8 +231,26 @@ export class GradeHorariaService {
         diaSemana: aula.diaSemana,
         horarioInicio: formatTimeHHMM(aula.horarioInicio),
         horarioFim: formatTimeHHMM(aula.horarioFim)
-      }))
+      })),
+      { aleatorio }
     );
+
+    // Primeira geração: resultado determinístico. "Gerar novamente" (evitar preenchido): sorteia variações e
+    // devolve a primeira diferente de todas as já mostradas que não aloque menos aulas que a determinística.
+    const padrao = alocar();
+    const evitar = new Set(input.evitar ?? []);
+    let escolhido = padrao;
+    let repetida = false;
+    if (evitar.size > 0) {
+      const limite = faltantesDe(padrao.naoAlocados);
+      const candidatos = [padrao, ...Array.from({ length: TENTATIVAS_VARIACAO }, () => alocar(criarAleatorio(randomInt(2 ** 31))))];
+      const nova = candidatos.find(
+        (opcao) => faltantesDe(opcao.naoAlocados) <= limite && !evitar.has(assinaturaDaGrade(opcao.propostas))
+      );
+      escolhido = nova ?? padrao;
+      repetida = !nova;
+    }
+    const { propostas, naoAlocados } = escolhido;
 
     const disciplinaNome = new Map(cargas.map((carga) => [carga.disciplinaId, carga.disciplina.nome]));
     const professorNome = new Map(professores.map((professor) => [professor.id, professor.name]));
@@ -231,7 +264,9 @@ export class GradeHorariaService {
         ...item,
         disciplinaNome: disciplinaNome.get(item.disciplinaId) as string
       })),
-      aulasAtuais
+      aulasAtuais,
+      assinatura: assinaturaDaGrade(propostas),
+      repetida
     };
   }
 

@@ -117,6 +117,8 @@ interface GenerateResult {
   propostas: Proposta[];
   naoAlocados: NaoAlocado[];
   aulasAtuais: number;
+  assinatura: string;
+  repetida: boolean;
 }
 
 const cardClass = "rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100";
@@ -170,6 +172,9 @@ export function ScheduleWizard() {
 
   const [result, setResult] = useState<GenerateResult | null>(null);
   const [confirming, setConfirming] = useState(false);
+  // Grades já mostradas nesta revisão: "Gerar novamente" pede ao servidor uma diferente de todas elas.
+  const [seen, setSeen] = useState<string[]>([]);
+  const [notice, setNotice] = useState<string | null>(null);
   // Grade ativa da turma escolhida (aulas na grade e data final >= hoje): pede confirmação antes de seguir.
   const [activeGrade, setActiveGrade] = useState<{ aulas: number } | null>(null);
   const [checkingActive, setCheckingActive] = useState(false);
@@ -241,7 +246,11 @@ export function ScheduleWizard() {
 
   const goTo = (next: number) => {
     setError(null);
-    if (next < 6) setResult(null);
+    if (next < 6) {
+      setResult(null);
+      setSeen([]);
+      setNotice(null);
+    }
     setStep(next);
   };
 
@@ -260,6 +269,8 @@ export function ScheduleWizard() {
       setGrid(emptyGrid());
       setExcluded(new Set());
       setResult(null);
+      setSeen([]);
+      setNotice(null);
       setCreated(null);
       await advanceFromClass(id, cls);
     } catch {
@@ -352,17 +363,27 @@ export function ScheduleWizard() {
     return PALETTE[(index === -1 ? 0 : index) % PALETTE.length];
   };
 
-  const generate = async () => {
+  const generate = async (regenerate = false) => {
     if (!classId) return;
     setBusy(true);
     setError(null);
+    setNotice(null);
     try {
       const professoresExcluidos = eligibleTeachers.filter((t) => excluded.has(t.id)).map((t) => t.id);
+      const evitar = regenerate ? seen : [];
       const data = await api.post<GenerateResult>("/schedule/generate", {
         turmaId: classId,
-        ...(professoresExcluidos.length > 0 ? { professoresExcluidos } : {})
+        ...(professoresExcluidos.length > 0 ? { professoresExcluidos } : {}),
+        ...(evitar.length > 0 ? { evitar } : {})
       });
       setResult(data);
+      if (data.repetida) {
+        setNotice("Não há outra combinação diferente com as regras atuais. Esta é a única grade possível.");
+      } else {
+        const vistas = regenerate ? [...seen, data.assinatura] : [data.assinatura];
+        setSeen(vistas);
+        if (regenerate) setNotice(`Nova combinação gerada (${vistas.length}ª opção).`);
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Não foi possível gerar a grade.");
     } finally {
@@ -651,7 +672,7 @@ export function ScheduleWizard() {
                     </div>
                     <button
                       type="button"
-                      onClick={generate}
+                      onClick={() => generate()}
                       disabled={busy}
                       className="mx-auto flex w-full max-w-xs items-center justify-center rounded-full bg-teal-600 py-4 text-lg text-white shadow transition-colors hover:bg-teal-700 disabled:opacity-60"
                     >
@@ -667,6 +688,15 @@ export function ScheduleWizard() {
                         result.propostas.length !== 1 ? "s" : ""
                       }${gradeInicio && gradeFim ? ` Período: ${formatPeriodo(gradeInicio, gradeFim)}.` : ""}`}
                     />
+                    {notice && (
+                      <p
+                        className={`rounded-xl px-4 py-3 text-sm ${
+                          result.repetida ? "bg-amber-50 text-amber-800" : "bg-teal-50 text-teal-800"
+                        }`}
+                      >
+                        {notice}
+                      </p>
+                    )}
                     <section className={`${cardClass} space-y-3`}>
                       <WeekGrid
                         value={grid}
@@ -724,7 +754,7 @@ export function ScheduleWizard() {
               <>
                 <button
                   type="button"
-                  onClick={generate}
+                  onClick={() => generate(true)}
                   disabled={busy}
                   className="flex items-center justify-center gap-1.5 rounded-full border border-teal-600 px-4 py-3 text-teal-700 hover:bg-teal-50 disabled:opacity-50"
                 >

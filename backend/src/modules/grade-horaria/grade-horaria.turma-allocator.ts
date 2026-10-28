@@ -38,6 +38,33 @@ export interface NaoAlocadoTurma {
 
 const PASSO_MINUTOS = 30;
 
+export interface OpcoesAlocacao {
+  // Sem `aleatorio`, o resultado é determinístico (horários mais cedo primeiro). Com ele, a ordem dos horários
+  // e os desempates entre disciplinas e professores são sorteados, sem afrouxar nenhuma regra.
+  aleatorio?: () => number;
+}
+
+// Gerador pseudoaleatório com semente (mulberry32): o mesmo número gera sempre a mesma grade.
+export function criarAleatorio(semente: number) {
+  let estado = semente >>> 0;
+  return () => {
+    estado = (estado + 0x6d2b79f5) >>> 0;
+    let t = estado;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function embaralhar<T>(lista: T[], aleatorio: () => number) {
+  const copia = [...lista];
+  for (let i = copia.length - 1; i > 0; i--) {
+    const j = Math.floor(aleatorio() * (i + 1));
+    [copia[i], copia[j]] = [copia[j], copia[i]];
+  }
+  return copia;
+}
+
 interface Intervalo {
   dia: string;
   ini: number;
@@ -136,7 +163,8 @@ export function allocateTurma(
   pedidos: PedidoTurma[],
   janelasTurma: JanelaTurmaHorario[],
   disponibilidades: JanelaDisponibilidade[],
-  ocupacoes: OcupacaoProfessor[]
+  ocupacoes: OcupacaoProfessor[],
+  { aleatorio }: OpcoesAlocacao = {}
 ) {
   const janelas = janelasTurma.map(toIntervalo);
   const dispPorProfessor = new Map<string, Intervalo[]>();
@@ -158,19 +186,19 @@ export function allocateTurma(
 
   const estaticos = (pedido: PedidoTurma) =>
     new Map(
-      pedido.professoresElegiveis.map((id) => [
-        id,
-        candidatosEstaticos(pedido.duracaoMinutos, janelas, dispPorProfessor.get(id) ?? [])
-      ])
+      pedido.professoresElegiveis.map((id) => {
+        const lista = candidatosEstaticos(pedido.duracaoMinutos, janelas, dispPorProfessor.get(id) ?? []);
+        return [id, aleatorio ? embaralhar(lista, aleatorio) : lista];
+      })
     );
 
   const ordenados = pedidos
     .map((pedido) => {
       const candidatos = estaticos(pedido);
       const total = [...candidatos.values()].reduce((soma, lista) => soma + lista.length, 0);
-      return { pedido, candidatos, total };
+      return { pedido, candidatos, total, sorteio: aleatorio ? aleatorio() : 0 };
     })
-    .sort((a, b) => a.total - b.total);
+    .sort((a, b) => a.total - b.total || a.sorteio - b.sorteio);
 
   const propostas: PropostaTurma[] = [];
   const naoAlocados: NaoAlocadoTurma[] = [];
@@ -189,11 +217,20 @@ export function allocateTurma(
       // dias diferentes e, depois, quem tem menor carga.
       const cobertura = (id: string, passadas: boolean[]) =>
         colocar(clonar(estado), id, candidatos.get(id) ?? [], faltam, new Set(diasUsados), passadas).length;
-      const avaliacoes = restantes.map((id) => ({ id, cobertura: cobertura(id, [true, false]), espalhadas: cobertura(id, [true]) }));
+      const avaliacoes = restantes.map((id) => ({
+        id,
+        cobertura: cobertura(id, [true, false]),
+        espalhadas: cobertura(id, [true]),
+        sorteio: aleatorio ? aleatorio() : 0
+      }));
 
       avaliacoes.sort(
         (a, b) =>
-          b.cobertura - a.cobertura || b.espalhadas - a.espalhadas || carga(a.id) - carga(b.id) || a.id.localeCompare(b.id)
+          b.cobertura - a.cobertura ||
+          b.espalhadas - a.espalhadas ||
+          carga(a.id) - carga(b.id) ||
+          a.sorteio - b.sorteio ||
+          a.id.localeCompare(b.id)
       );
       const melhor = avaliacoes[0];
       if (melhor.cobertura === 0) break;

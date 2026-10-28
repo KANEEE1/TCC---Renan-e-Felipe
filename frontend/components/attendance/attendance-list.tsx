@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { CheckCircle, XCircle } from "lucide-react";
+import { CheckCircle } from "lucide-react";
 import { api } from "@/lib/api";
 
 export interface TodayItem {
@@ -60,53 +60,22 @@ export function AttendanceList() {
       .map(([key, value]) => ({ id: key, ...value }));
   }, [allPresences, todayDateStr]);
 
-  const overallTotal = allPresences.length;
-  const overallPresent = allPresences.filter((p) => p.presente).length;
-  const presenceRate = overallTotal === 0 ? 0 : Math.round((overallPresent / overallTotal) * 100);
 
   return (
     <div className="flex flex-1 flex-col bg-slate-50">
-      <div className="bg-gradient-to-r from-emerald-600 to-teal-700 px-5 pb-7 pt-5 text-white">
-        <div className="mb-5 flex items-center justify-between">
+      <div className="bg-gradient-to-r from-emerald-600 to-teal-700 px-5 pb-6 pt-5 text-white">
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/20">
+            <CheckCircle size={22} />
+          </div>
           <div>
             <h1 className="text-white">Presença</h1>
-            <p className="mt-0.5 text-sm text-emerald-200">Controle de frequência</p>
-          </div>
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20">
-            <CheckCircle size={20} />
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-2xl border border-white/20 bg-white/15 p-3.5">
-            <div className="mb-1 flex items-center gap-2">
-              <CheckCircle size={16} className="text-emerald-200" />
-              <span className="text-xs text-white/70">Taxa de Presença</span>
-            </div>
-            <p className="text-2xl text-white">{presenceRate}%</p>
-            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/20">
-              <div className="h-full rounded-full bg-emerald-300" style={{ width: `${presenceRate}%` }} />
-            </div>
-          </div>
-          <div className="rounded-2xl border border-white/20 bg-white/15 p-3.5">
-            <div className="mb-1 flex items-center gap-2">
-              <XCircle size={16} className="text-rose-300" />
-              <span className="text-xs text-white/70">Taxa de Ausência</span>
-            </div>
-            <p className="text-2xl text-white">{100 - presenceRate}%</p>
-            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/20">
-              <div className="h-full rounded-full bg-rose-400" style={{ width: `${100 - presenceRate}%` }} />
-            </div>
+            <p className="mt-0.5 text-sm text-emerald-100">Registre aqui a presença dos alunos nas aulas de hoje.</p>
           </div>
         </div>
       </div>
 
       <div className="flex-1 space-y-5 overflow-y-auto px-4 py-4 pb-6">
-        <Link
-          href="/attendance/summary"
-          className="block w-full rounded-xl border border-emerald-200 bg-white py-2.5 text-center text-sm text-emerald-700 transition-colors hover:bg-emerald-50"
-        >
-          Relatório de frequência
-        </Link>
         <section>
           <div className="mb-3 flex items-center gap-2">
             <div className="h-5 w-1 rounded-full bg-blue-500" />

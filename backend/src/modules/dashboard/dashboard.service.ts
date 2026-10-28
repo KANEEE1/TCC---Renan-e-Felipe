@@ -1,7 +1,14 @@
-import { currentDiaSemana, currentTimeOfDay } from "../../shared/time.js";
+import { currentDiaSemana, currentTimeOfDay, todayInSaoPaulo } from "../../shared/time.js";
 import type { GradeHorariaRepository } from "../grade-horaria/grade-horaria.repository.js";
 import type { SimuladosRepository } from "../simulados/simulados.repository.js";
 import type { TurmasRepository } from "../turmas/turmas.repository.js";
+
+// A aula só acontece dentro do período da grade da turma; turma sem período não restringe.
+function emVigencia(turma: { gradeInicio: Date | null; gradeFim: Date | null }, hoje: string) {
+  const inicio = turma.gradeInicio?.toISOString().slice(0, 10);
+  const fim = turma.gradeFim?.toISOString().slice(0, 10);
+  return (!inicio || inicio <= hoje) && (!fim || fim >= hoje);
+}
 
 function statusFor(horarioInicio: Date, horarioFim: Date, now: Date) {
   if (now < horarioInicio) return "agendada";
@@ -25,9 +32,10 @@ export class DashboardService {
 
     const today = currentDiaSemana();
     const now = currentTimeOfDay();
+    const hoje = todayInSaoPaulo();
 
     const todayActivities = aulas
-      .filter((aula) => aula.diaSemana === today)
+      .filter((aula) => aula.diaSemana === today && emVigencia(aula.turma, hoje))
       .map((aula) => ({
         id: aula.id,
         subject: aula.disciplina.nome,

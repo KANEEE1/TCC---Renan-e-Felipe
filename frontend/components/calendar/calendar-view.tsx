@@ -41,6 +41,11 @@ function addDays(date: Date, days: number) {
   return d;
 }
 
+// "YYYY-MM-DD" da data local, para comparar com o período da grade sem problemas de fuso.
+function dateKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 function isSameDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
@@ -136,7 +141,13 @@ export function CalendarView() {
     () => (selectedTeacher === "all" ? ofClass : ofClass.filter((s) => s.teacher === selectedTeacher)),
     [ofClass, selectedTeacher]
   );
-  const eventsOn = (date: Date) => filtered.filter((s) => s.day === weekdayIndex(date));
+  // A aula se repete toda semana, mas só dentro do período da grade da turma.
+  const eventsOn = (date: Date) => {
+    const key = dateKey(date);
+    return filtered.filter(
+      (s) => s.day === weekdayIndex(date) && (!s.periodStart || s.periodStart <= key) && (!s.periodEnd || s.periodEnd >= key)
+    );
+  };
 
   const weekStart = startOfWeek(cursor);
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));

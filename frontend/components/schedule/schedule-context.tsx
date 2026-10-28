@@ -32,8 +32,9 @@ interface AulaDTO {
   professor: { id: string; name: string };
 }
 
-const DAY_TO_INDEX: Record<string, number> = { SEGUNDA: 0, TERCA: 1, QUARTA: 2, QUINTA: 3, SEXTA: 4 };
-const INDEX_TO_DAY = ["SEGUNDA", "TERCA", "QUARTA", "QUINTA", "SEXTA"];
+// Índice do dia na semana começando na segunda (0) até o domingo (6).
+const DAY_TO_INDEX: Record<string, number> = { SEGUNDA: 0, TERCA: 1, QUARTA: 2, QUINTA: 3, SEXTA: 4, SABADO: 5, DOMINGO: 6 };
+const INDEX_TO_DAY = ["SEGUNDA", "TERCA", "QUARTA", "QUINTA", "SEXTA", "SABADO", "DOMINGO"];
 const COLORS = ["bg-blue-500", "bg-emerald-500", "bg-violet-500", "bg-orange-500", "bg-rose-500", "bg-teal-500", "bg-indigo-500", "bg-amber-500"];
 
 function colorFor(id: string) {

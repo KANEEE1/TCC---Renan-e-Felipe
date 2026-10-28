@@ -7,7 +7,7 @@ import { BookOpen, CalendarDays, ClipboardCheck, GraduationCap, Home, Trophy, Us
 const NAV_ITEMS = [
   { href: "/dashboard", icon: Home, label: "Início" },
   { href: "/teachers", icon: Users, label: "Professores" },
-  { href: "/calendar", icon: CalendarDays, label: "Calendário" },
+  { href: "/calendar", icon: CalendarDays, label: "Agenda" },
   { href: "/attendance", icon: ClipboardCheck, label: "Presença" },
   { href: "/students", icon: GraduationCap, label: "Alunos" },
   { href: "/classes", icon: BookOpen, label: "Turmas" },

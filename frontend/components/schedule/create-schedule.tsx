@@ -12,7 +12,9 @@ const DAY_MAP: Record<string, number> = {
   "Terça-feira": 1,
   "Quarta-feira": 2,
   "Quinta-feira": 3,
-  "Sexta-feira": 4
+  "Sexta-feira": 4,
+  "Sábado": 5,
+  Domingo: 6
 };
 
 const DAYS = Object.keys(DAY_MAP);

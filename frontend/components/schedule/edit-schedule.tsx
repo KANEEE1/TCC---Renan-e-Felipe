@@ -7,7 +7,7 @@ import { ArrowLeft, Save, Trash2 } from "lucide-react";
 import { useSchedule } from "@/components/schedule/schedule-context";
 import { api, ApiError } from "@/lib/api";
 
-const DAYS = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira"];
+const DAYS = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"];
 const TIMES = [
   "07:00", "07:30", "08:00", "08:30", "09:00", "09:30",
   "10:00", "10:30", "11:00", "11:30", "12:00", "12:30",

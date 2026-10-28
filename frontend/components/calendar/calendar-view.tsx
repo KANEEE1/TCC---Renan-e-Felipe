@@ -1,100 +1,109 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, Plus, Users } from "lucide-react";
+import { BookOpen, ChevronLeft, ChevronRight, Clock, MapPin, Plus, Tag, User, Users, X } from "lucide-react";
 import { useSchedule, type ScheduleItem } from "@/components/schedule/schedule-context";
 
-type ViewMode = "month" | "week" | "day";
+type ViewMode = "day" | "week" | "month";
 
-const MONTH_NAMES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
-const DAY_LABELS = ["Seg", "Ter", "Qua", "Qui", "Sex"];
-const DAY_LABELS_MONTH = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
-const DAY_FULL = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta"];
-
-const HOUR_HEIGHT = 64;
-const START_HOUR = 7;
-const END_HOUR = 20;
-const HOURS = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i);
-const TOTAL_HEIGHT = (END_HOUR - START_HOUR) * HOUR_HEIGHT;
-
+const MONTH_NAMES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+// Semana começando na segunda, como os índices de ScheduleItem.day (0 = segunda ... 6 = domingo).
+const DAY_SHORT = ["SEG", "TER", "QUA", "QUI", "SEX", "SÁB", "DOM"];
+const DAY_FULL = ["segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo"];
+const VIEW_LABELS: Record<ViewMode, string> = { day: "Dia", week: "Semana", month: "Mês" };
 const TYPE_LABELS: Record<string, string> = { aula: "Aula", plantao: "Plantão", aulao: "Aulão" };
 
-const AVATAR_GRADIENTS = [
-  "from-blue-500 to-blue-700",
-  "from-violet-500 to-purple-700",
-  "from-pink-500 to-rose-600",
-  "from-indigo-500 to-indigo-700",
-  "from-teal-500 to-teal-700",
-  "from-orange-500 to-orange-600",
-  "from-red-500 to-red-700",
-  "from-emerald-500 to-emerald-700"
-];
+const HOUR_HEIGHT = 52;
+const HOURS = Array.from({ length: 24 }, (_, i) => i);
+const TOTAL_HEIGHT = 24 * HOUR_HEIGHT;
 
-function parseMinutes(time: string): number {
+function minutesOf(time: string) {
   if (!time) return 0;
   const [h, m] = time.split(":").map(Number);
   return h * 60 + m;
 }
 
-function getEventStyle(item: ScheduleItem) {
-  const startMin = parseMinutes(item.startTime) - START_HOUR * 60;
-  const endMin = item.endTime ? parseMinutes(item.endTime) - START_HOUR * 60 : startMin + item.duration * 60;
-  const top = Math.max(0, (startMin / 60) * HOUR_HEIGHT);
-  const height = Math.max(((endMin - startMin) / 60) * HOUR_HEIGHT, 28);
-  return { top, height };
+function weekdayIndex(date: Date) {
+  return (date.getDay() + 6) % 7;
 }
 
-function getWeekMonday(date: Date): Date {
+function startOfWeek(date: Date) {
   const d = new Date(date);
-  const dow = d.getDay();
-  const diff = dow === 0 ? -6 : 1 - dow;
-  d.setDate(d.getDate() + diff);
+  d.setDate(d.getDate() - weekdayIndex(d));
   d.setHours(0, 0, 0, 0);
   return d;
 }
 
-function getWeekDays(date: Date): Date[] {
-  const monday = getWeekMonday(date);
-  return Array.from({ length: 5 }, (_, i) => {
-    const d = new Date(monday);
-    d.setDate(monday.getDate() + i);
-    return d;
-  });
-}
-
-function getMonthGrid(year: number, month: number) {
-  const firstDay = new Date(year, month, 1);
-  const lastDay = new Date(year, month + 1, 0);
-  const startDow = firstDay.getDay();
-  const paddingBefore = startDow === 0 ? 6 : startDow - 1;
-  const days: { date: Date; isCurrentMonth: boolean }[] = [];
-  for (let i = paddingBefore; i > 0; i--) {
-    days.push({ date: new Date(year, month, 1 - i), isCurrentMonth: false });
-  }
-  for (let d = 1; d <= lastDay.getDate(); d++) {
-    days.push({ date: new Date(year, month, d), isCurrentMonth: true });
-  }
-  while (days.length % 7 !== 0 || days.length < 35) {
-    const nextD = days.length - paddingBefore - lastDay.getDate() + 1;
-    days.push({ date: new Date(year, month + 1, nextD), isCurrentMonth: false });
-  }
-  return days;
+function addDays(date: Date, days: number) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
 }
 
 function isSameDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-function jsDateToSchedDay(date: Date): number | null {
-  const jd = date.getDay();
-  if (jd === 0 || jd === 6) return null;
-  return jd - 1;
+// Semanas completas (segunda a domingo) que cobrem o mês inteiro.
+function monthGrid(year: number, month: number) {
+  const first = new Date(year, month, 1);
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const weeks = Math.ceil((weekdayIndex(first) + daysInMonth) / 7);
+  const start = startOfWeek(first);
+  return Array.from({ length: weeks * 7 }, (_, i) => addDays(start, i));
 }
 
-const TODAY = new Date(2026, 4, 4);
-function isToday(d: Date) {
-  return isSameDay(d, TODAY);
+// Aulas que se sobrepõem no mesmo dia ficam lado a lado, como no Google Agenda.
+function layoutDay(events: ScheduleItem[]) {
+  const sorted = [...events].sort((a, b) => minutesOf(a.startTime) - minutesOf(b.startTime) || minutesOf(b.endTime) - minutesOf(a.endTime));
+  const placed: { event: ScheduleItem; column: number; columns: number }[] = [];
+  let cluster: typeof placed = [];
+  let clusterEnd = -1;
+  let columnEnds: number[] = [];
+
+  const closeCluster = () => {
+    for (const item of cluster) item.columns = columnEnds.length;
+    cluster = [];
+    columnEnds = [];
+  };
+
+  for (const event of sorted) {
+    const start = minutesOf(event.startTime);
+    const end = Math.max(minutesOf(event.endTime), start + 15);
+    if (start >= clusterEnd) closeCluster();
+    let column = columnEnds.findIndex((columnEnd) => columnEnd <= start);
+    if (column === -1) {
+      column = columnEnds.length;
+      columnEnds.push(end);
+    } else {
+      columnEnds[column] = end;
+    }
+    const item = { event, column, columns: 1 };
+    cluster.push(item);
+    placed.push(item);
+    clusterEnd = Math.max(clusterEnd, end);
+  }
+  closeCluster();
+  return placed;
+}
+
+function initials(name: string) {
+  return name
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
+function useNow() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
+  return now;
 }
 
 export function CalendarView() {
@@ -102,25 +111,31 @@ export function CalendarView() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { schedules } = useSchedule();
+  const now = useNow();
 
+  // A agenda sempre abre na semana de hoje.
   const [viewMode, setViewMode] = useState<ViewMode>("week");
-  const [currentDate, setCurrentDate] = useState<Date>(new Date(TODAY));
-  const [selectedDay, setSelectedDay] = useState<Date>(new Date(TODAY));
+  const [cursor, setCursor] = useState<Date>(() => new Date());
   const [selectedTeacher, setSelectedTeacher] = useState<string>(searchParams.get("teacher") || "all");
   const [selectedEvent, setSelectedEvent] = useState<ScheduleItem | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  const allTeachers = useMemo(() => {
-    const names = new Set(schedules.map((s) => s.teacher));
-    return Array.from(names).sort();
-  }, [schedules]);
+  const teachers = useMemo(() => Array.from(new Set(schedules.map((s) => s.teacher))).sort(), [schedules]);
+  const filtered = useMemo(
+    () => (selectedTeacher === "all" ? schedules : schedules.filter((s) => s.teacher === selectedTeacher)),
+    [schedules, selectedTeacher]
+  );
+  const eventsOn = (date: Date) => filtered.filter((s) => s.day === weekdayIndex(date));
 
-  const filtered = useMemo(() => {
-    if (selectedTeacher === "all") return schedules;
-    return schedules.filter((s) => s.teacher === selectedTeacher);
-  }, [schedules, selectedTeacher]);
+  const weekStart = startOfWeek(cursor);
+  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  const visibleDays = viewMode === "day" ? [cursor] : weekDays;
 
-  const weekDays = useMemo(() => getWeekDays(currentDate), [currentDate]);
-  const monthGrid = useMemo(() => getMonthGrid(currentDate.getFullYear(), currentDate.getMonth()), [currentDate]);
+  // Nas visões de dia e semana, rola até pouco antes da hora atual (como o Google Agenda).
+  useEffect(() => {
+    if (viewMode === "month" || !scrollRef.current) return;
+    scrollRef.current.scrollTop = Math.max(0, (new Date().getHours() - 1) * HOUR_HEIGHT);
+  }, [viewMode]);
 
   const handleTeacherSelect = (name: string) => {
     setSelectedTeacher(name);
@@ -129,168 +144,120 @@ export function CalendarView() {
     router.replace(params.size > 0 ? `${pathname}?${params.toString()}` : pathname, { scroll: false });
   };
 
-  const prev = () => {
-    const d = new Date(currentDate);
-    if (viewMode === "month") d.setMonth(d.getMonth() - 1);
-    else if (viewMode === "week") d.setDate(d.getDate() - 7);
-    else {
-      d.setDate(d.getDate() - 1);
-      setSelectedDay(d);
-    }
-    setCurrentDate(d);
-  };
-
-  const next = () => {
-    const d = new Date(currentDate);
-    if (viewMode === "month") d.setMonth(d.getMonth() + 1);
-    else if (viewMode === "week") d.setDate(d.getDate() + 7);
-    else {
-      d.setDate(d.getDate() + 1);
-      setSelectedDay(d);
-    }
-    setCurrentDate(d);
+  const move = (direction: 1 | -1) => {
+    const d = new Date(cursor);
+    if (viewMode === "day") d.setDate(d.getDate() + direction);
+    else if (viewMode === "week") d.setDate(d.getDate() + 7 * direction);
+    else d.setMonth(d.getMonth() + direction, 1);
+    setCursor(d);
   };
 
   const goToday = () => {
-    setCurrentDate(new Date(TODAY));
-    setSelectedDay(new Date(TODAY));
+    setCursor(new Date());
+    if (scrollRef.current) scrollRef.current.scrollTop = Math.max(0, (new Date().getHours() - 1) * HOUR_HEIGHT);
   };
 
-  const headerTitle = useMemo(() => {
-    if (viewMode === "month") return `${MONTH_NAMES[currentDate.getMonth()]} ${currentDate.getFullYear()}`;
-    if (viewMode === "week") {
-      const [first, last] = [weekDays[0], weekDays[4]];
-      if (first.getMonth() === last.getMonth()) return `${first.getDate()}–${last.getDate()} ${MONTH_NAMES[first.getMonth()]} ${first.getFullYear()}`;
-      return `${first.getDate()} ${MONTH_NAMES[first.getMonth()].slice(0, 3)} – ${last.getDate()} ${MONTH_NAMES[last.getMonth()].slice(0, 3)} ${last.getFullYear()}`;
+  const openDay = (date: Date) => {
+    setCursor(date);
+    setViewMode("day");
+  };
+
+  const title = (() => {
+    if (viewMode === "month" || viewMode === "day") {
+      return `${MONTH_NAMES[cursor.getMonth()]} de ${cursor.getFullYear()}`;
     }
-    return `${selectedDay.getDate()} de ${MONTH_NAMES[selectedDay.getMonth()]} ${selectedDay.getFullYear()}`;
-  }, [viewMode, currentDate, weekDays, selectedDay]);
+    const [first, last] = [weekDays[0], weekDays[6]];
+    if (first.getMonth() === last.getMonth()) return `${MONTH_NAMES[first.getMonth()]} de ${first.getFullYear()}`;
+    return `${MONTH_NAMES[first.getMonth()].slice(0, 3)} – ${MONTH_NAMES[last.getMonth()].slice(0, 3)} de ${last.getFullYear()}`;
+  })();
 
-  const getEventsForDayIndex = (dayIdx: number) => filtered.filter((s) => s.day === dayIdx);
-  const getEventsForDate = (date: Date) => {
-    const sd = jsDateToSchedDay(date);
-    if (sd === null) return [];
-    return filtered.filter((s) => s.day === sd);
-  };
+  const nowTop = ((now.getHours() * 60 + now.getMinutes()) / 60) * HOUR_HEIGHT;
 
-  const getTeacherInitials = (name: string) => name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
-
-  const monthView = (
-    <div className="flex-1 overflow-y-auto px-3 py-3">
-      <div className="mb-1 grid grid-cols-7 px-0.5">
-        {DAY_LABELS_MONTH.map((l) => (
-          <div key={l} className="py-1 text-center text-xs text-slate-400">
-            {l}
-          </div>
-        ))}
-      </div>
-      <div className="grid grid-cols-7 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        {monthGrid.map(({ date, isCurrentMonth }, idx) => {
-          const events = getEventsForDate(date);
-          const today = isToday(date);
-          const isWeekend = date.getDay() === 0 || date.getDay() === 6;
-          return (
-            <div
-              key={idx}
-              onClick={() => {
-                if (!isWeekend) {
-                  setSelectedDay(date);
-                  setCurrentDate(date);
-                  setViewMode("day");
-                }
-              }}
-              className={`min-h-[70px] border-b border-r border-slate-100 p-1.5 transition-colors last:border-r-0 ${
-                !isCurrentMonth ? "bg-slate-50/70" : isWeekend ? "bg-slate-50" : "cursor-pointer hover:bg-blue-50/40"
-              }`}
-            >
-              <div
-                className={`mx-auto mb-1 flex h-7 w-7 items-center justify-center rounded-full text-xs ${
-                  today ? "bg-blue-600 text-white shadow-sm" : isCurrentMonth ? "text-slate-700" : "text-slate-300"
-                }`}
-              >
-                {date.getDate()}
-              </div>
-              <div className="space-y-0.5">
-                {events.slice(0, 2).map((ev) => (
-                  <div key={ev.id} className={`${ev.color} truncate rounded px-1 py-0.5 text-[9px] leading-tight text-white`}>
-                    {ev.startTime} {ev.subject}
-                  </div>
-                ))}
-                {events.length > 2 && <div className="text-[9px] text-blue-500">+{events.length - 2}</div>}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-
-  const weekView = (
-    <div className="flex flex-1 flex-col overflow-hidden">
+  const timeGrid = (
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex shrink-0 border-b border-slate-200 bg-white">
-        <div className="w-10 shrink-0 border-r border-slate-100" />
-        {weekDays.map((day, idx) => {
-          const today = isToday(day);
+        <div className="w-12 shrink-0" />
+        {visibleDays.map((day) => {
+          const today = isSameDay(day, now);
           return (
-            <div
-              key={idx}
-              onClick={() => {
-                setSelectedDay(day);
-                setCurrentDate(day);
-                setViewMode("day");
-              }}
-              className="flex-1 cursor-pointer border-r border-slate-100 py-2.5 text-center transition-colors last:border-r-0 hover:bg-slate-50"
+            <button
+              key={day.toDateString()}
+              type="button"
+              onClick={() => openDay(day)}
+              className={`flex flex-1 flex-col items-center py-2 ${viewMode === "day" ? "items-start pl-3" : ""}`}
             >
-              <div className="text-xs uppercase tracking-wide text-slate-400">{DAY_LABELS[idx]}</div>
-              <div
-                className={`mx-auto mt-0.5 flex h-8 w-8 items-center justify-center rounded-full text-sm ${
-                  today ? "bg-blue-600 text-white shadow-sm" : "text-slate-700 hover:bg-slate-100"
+              <span className={`text-[11px] font-medium tracking-wide ${today ? "text-blue-600" : "text-slate-500"}`}>
+                {DAY_SHORT[weekdayIndex(day)]}
+              </span>
+              <span
+                className={`mt-0.5 flex h-9 w-9 items-center justify-center rounded-full text-lg ${
+                  today ? "bg-blue-600 text-white" : "text-slate-800 hover:bg-slate-100"
                 }`}
               >
                 {day.getDate()}
-              </div>
-            </div>
+              </span>
+            </button>
           );
         })}
       </div>
-      <div className="flex-1 overflow-y-auto bg-white">
-        <div className="relative flex" style={{ height: `${TOTAL_HEIGHT}px` }}>
-          <div className="relative w-10 shrink-0 border-r border-slate-100">
-            {HOURS.map((h) => (
-              <div key={h} className="absolute right-2 -translate-y-2.5 text-[10px] text-slate-300" style={{ top: `${(h - START_HOUR) * HOUR_HEIGHT}px` }}>
-                {h}h
-              </div>
+
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto bg-white">
+        <div className="relative flex" style={{ height: TOTAL_HEIGHT }}>
+          <div className="relative w-12 shrink-0">
+            {HOURS.slice(1).map((h) => (
+              <span key={h} className="absolute right-2 -translate-y-1/2 text-[10px] text-slate-400" style={{ top: h * HOUR_HEIGHT }}>
+                {String(h).padStart(2, "0")}:00
+              </span>
             ))}
           </div>
-          {weekDays.map((_, dayIdx) => {
-            const events = getEventsForDayIndex(dayIdx);
+
+          {visibleDays.map((day) => {
+            const today = isSameDay(day, now);
             return (
-              <div key={dayIdx} className="relative flex-1 border-r border-slate-100 last:border-r-0">
+              <div key={day.toDateString()} className="relative flex-1 border-l border-slate-200">
                 {HOURS.map((h) => (
-                  <div key={h} className="absolute w-full border-t border-slate-100" style={{ top: `${(h - START_HOUR) * HOUR_HEIGHT}px` }} />
+                  <div key={h} className="absolute inset-x-0 border-t border-slate-100" style={{ top: h * HOUR_HEIGHT }} />
                 ))}
-                {HOURS.map((h) => (
-                  <div key={`half-${h}`} className="absolute w-full border-t border-slate-50" style={{ top: `${(h - START_HOUR) * HOUR_HEIGHT + HOUR_HEIGHT / 2}px` }} />
-                ))}
-                {events.map((ev) => {
-                  const { top, height } = getEventStyle(ev);
+
+                {layoutDay(eventsOn(day)).map(({ event, column, columns }) => {
+                  const start = minutesOf(event.startTime);
+                  const end = Math.max(minutesOf(event.endTime), start + 15);
+                  const height = ((end - start) / 60) * HOUR_HEIGHT;
                   return (
-                    <div
-                      key={ev.id}
-                      onClick={() => setSelectedEvent(ev)}
-                      className={`absolute ${ev.color} cursor-pointer overflow-hidden rounded-lg text-white shadow-sm transition-opacity hover:opacity-90`}
-                      style={{ top: `${top + 1}px`, height: `${height - 2}px`, left: "3px", right: "3px" }}
+                    <button
+                      key={event.id}
+                      type="button"
+                      onClick={() => setSelectedEvent(event)}
+                      className={`absolute overflow-hidden rounded-md border border-white px-1.5 py-0.5 text-left text-white shadow-sm transition hover:brightness-110 ${event.color}`}
+                      style={{
+                        top: (start / 60) * HOUR_HEIGHT + 1,
+                        height: height - 2,
+                        left: `calc(${(column / columns) * 100}% + 2px)`,
+                        width: `calc(${100 / columns}% - 4px)`
+                      }}
                     >
-                      <div className="px-1.5 py-1">
-                        <div className="truncate text-[11px] leading-tight">{ev.subject}</div>
-                        <div className="truncate text-[10px] opacity-80">
-                          {ev.startTime}–{ev.endTime}
-                        </div>
-                        {height > 52 && <div className="truncate text-[10px] opacity-70">{ev.teacher}</div>}
-                      </div>
-                    </div>
+                      <span className="block truncate text-[11px] font-semibold leading-tight">{event.subject}</span>
+                      {height >= 34 && (
+                        <span className="block truncate text-[10px] leading-tight opacity-90">
+                          {event.startTime} – {event.endTime}
+                        </span>
+                      )}
+                      {height >= 52 && (
+                        <span className="block truncate text-[10px] leading-tight opacity-80">
+                          {viewMode === "day" ? `${event.teacher} · ${event.class}` : event.class}
+                        </span>
+                      )}
+                    </button>
                   );
                 })}
+
+                {today && (
+                  <div className="pointer-events-none absolute inset-x-0 z-10" style={{ top: nowTop }}>
+                    <div className="relative h-0.5 bg-red-500">
+                      <span className="absolute -left-1.5 -top-[5px] h-3 w-3 rounded-full bg-red-500" />
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -299,208 +266,217 @@ export function CalendarView() {
     </div>
   );
 
-  const sd = jsDateToSchedDay(selectedDay);
-  const dayEvents = sd !== null ? filtered.filter((s) => s.day === sd).sort((a, b) => a.startTime.localeCompare(b.startTime)) : [];
-  const isDayWeekend = selectedDay.getDay() === 0 || selectedDay.getDay() === 6;
-
-  const dayView = (
-    <div className="flex-1 overflow-y-auto bg-white">
-      {(dayEvents.length === 0 || isDayWeekend) && (
-        <div className="flex flex-col items-center justify-center py-20 text-slate-300">
-          <div className="mb-3 text-5xl">📭</div>
-          <p className="text-sm text-slate-400">{isDayWeekend ? "Sem aulas nos fins de semana" : "Nenhum agendamento neste dia"}</p>
-        </div>
-      )}
-      {!isDayWeekend && (
-        <div className="relative flex" style={{ height: `${TOTAL_HEIGHT}px` }}>
-          <div className="relative w-10 shrink-0 border-r border-slate-100">
-            {HOURS.map((h) => (
-              <div key={h} className="absolute right-2 -translate-y-2.5 text-[10px] text-slate-300" style={{ top: `${(h - START_HOUR) * HOUR_HEIGHT}px` }}>
-                {h}h
-              </div>
-            ))}
+  const monthView = (
+    <div className="min-h-0 flex-1 overflow-y-auto bg-white">
+      <div className="grid grid-cols-7 border-b border-slate-200">
+        {DAY_SHORT.map((label) => (
+          <div key={label} className="py-2 text-center text-[11px] font-medium text-slate-500">
+            {label}
           </div>
-          <div className="relative flex-1">
-            {HOURS.map((h) => (
-              <div key={h} className="absolute w-full border-t border-slate-100" style={{ top: `${(h - START_HOUR) * HOUR_HEIGHT}px` }} />
-            ))}
-            {dayEvents.map((ev) => {
-              const { top, height } = getEventStyle(ev);
-              return (
-                <div
-                  key={ev.id}
-                  onClick={() => setSelectedEvent(ev)}
-                  className={`absolute ${ev.color} cursor-pointer overflow-hidden rounded-xl text-white shadow-md transition-opacity hover:opacity-90`}
-                  style={{ top: `${top + 1}px`, height: `${height - 2}px`, left: "8px", right: "8px" }}
-                >
-                  <div className="p-3">
-                    <div className="truncate text-sm">{ev.subject}</div>
-                    <div className="text-xs opacity-90">
-                      {ev.startTime} – {ev.endTime}
-                    </div>
-                    {height > 60 && (
-                      <div className="text-xs opacity-75">
-                        {ev.teacher} · {ev.class}
-                      </div>
-                    )}
-                    {height > 80 && ev.room && <div className="text-xs opacity-65">{ev.room}</div>}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+        ))}
+      </div>
+      <div className="grid grid-cols-7">
+        {monthGrid(cursor.getFullYear(), cursor.getMonth()).map((date) => {
+          const inMonth = date.getMonth() === cursor.getMonth();
+          const today = isSameDay(date, now);
+          const events = eventsOn(date).sort((a, b) => a.startTime.localeCompare(b.startTime));
+          return (
+            <button
+              key={date.toDateString()}
+              type="button"
+              onClick={() => openDay(date)}
+              className="min-h-[88px] border-b border-r border-slate-100 p-1 text-left transition-colors hover:bg-slate-50"
+            >
+              <span
+                className={`mx-auto mb-1 flex h-6 w-6 items-center justify-center rounded-full text-xs ${
+                  today ? "bg-blue-600 font-semibold text-white" : inMonth ? "text-slate-700" : "text-slate-300"
+                }`}
+              >
+                {date.getDate()}
+              </span>
+              <span className="block space-y-0.5">
+                {events.slice(0, 3).map((event) => (
+                  <span
+                    key={event.id}
+                    className={`block truncate rounded px-1 text-[10px] leading-4 text-white ${event.color} ${inMonth ? "" : "opacity-50"}`}
+                  >
+                    {event.startTime} {event.subject}
+                  </span>
+                ))}
+                {events.length > 3 && <span className="block px-1 text-[10px] text-slate-500">+{events.length - 3} mais</span>}
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden bg-slate-50">
-      <div className="shrink-0 bg-gradient-to-r from-violet-600 to-purple-700 px-4 pb-3 pt-4 text-white">
-        <div className="mb-3 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <button
-              type="button"
-              onClick={() => router.back()}
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 transition-colors hover:bg-white/30"
-            >
-              <ChevronLeft size={18} />
-            </button>
-            <div>
-              <h1 className="leading-tight text-white">Calendário</h1>
-              <p className="text-xs text-purple-200">{headerTitle}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={goToday}
-              className="rounded-full border border-white/20 bg-white/20 px-3 py-1.5 text-xs text-white transition-colors hover:bg-white/30"
-            >
-              Hoje
-            </button>
-            <button
-              type="button"
-              onClick={() => router.push("/teachers/schedule")}
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 transition-colors hover:bg-white/30"
-            >
-              <Users size={16} />
-            </button>
-            <button
-              type="button"
-              onClick={() => router.push("/schedule/create")}
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-white shadow-sm transition-colors hover:bg-white/90"
-            >
-              <Plus size={16} className="text-violet-600" />
-            </button>
-          </div>
-        </div>
-
-        <div className="flex rounded-xl bg-white/15 p-0.5">
-          {(["month", "week", "day"] as ViewMode[]).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => setViewMode(m)}
-              className={`flex-1 rounded-[10px] py-1.5 text-sm transition-all ${
-                viewMode === m ? "bg-white text-violet-700 shadow-sm" : "text-white/80 hover:text-white"
-              }`}
-            >
-              {m === "month" ? "Mês" : m === "week" ? "Semana" : "Dia"}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 py-2">
-        <button type="button" onClick={prev} className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-slate-100">
-          <ChevronLeft size={18} className="text-slate-500" />
-        </button>
-        <span className="text-sm text-slate-600">{headerTitle}</span>
-        <button type="button" onClick={next} className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-slate-100">
-          <ChevronRight size={18} className="text-slate-500" />
-        </button>
-      </div>
-
-      <div className="shrink-0 overflow-x-auto border-b border-slate-200 bg-white px-4 py-2.5">
-        <div className="flex min-w-max gap-2">
+    <div className="relative flex h-full flex-col bg-white">
+      <header className="shrink-0 border-b border-slate-200 bg-white px-3 pb-2 pt-3">
+        <div className="flex items-center gap-1">
+          <h1 className="mr-1 text-xl text-slate-800">Agenda</h1>
           <button
             type="button"
-            onClick={() => handleTeacherSelect("all")}
-            className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition-all ${
-              selectedTeacher === "all" ? "border-violet-600 bg-violet-600 text-white shadow-sm" : "border-slate-200 bg-white text-slate-500 hover:border-violet-300"
-            }`}
+            onClick={goToday}
+            className="ml-auto rounded-full border border-slate-300 px-3.5 py-1.5 text-sm text-slate-700 transition-colors hover:bg-slate-50"
           >
-            <Users size={12} />
-            Todos
+            Hoje
           </button>
-          {allTeachers.map((name, idx) => (
-            <button
-              key={name}
-              type="button"
-              onClick={() => handleTeacherSelect(name)}
-              className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition-all ${
-                selectedTeacher === name ? "border-violet-600 bg-violet-600 text-white shadow-sm" : "border-slate-200 bg-white text-slate-500 hover:border-violet-300"
-              }`}
-            >
-              <div
-                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-white ${AVATAR_GRADIENTS[idx % AVATAR_GRADIENTS.length]}`}
-                style={{ fontSize: "7px" }}
-              >
-                {getTeacherInitials(name)}
-              </div>
-              {name.split(" ")[0]}
-            </button>
-          ))}
+          <button
+            type="button"
+            onClick={() => router.push("/teachers/schedule")}
+            aria-label="Agenda dos professores"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-slate-600 transition-colors hover:bg-slate-100"
+          >
+            <Users size={18} />
+          </button>
         </div>
-      </div>
 
-      <div className="flex flex-1 flex-col overflow-hidden">
-        {viewMode === "month" && monthView}
-        {viewMode === "week" && weekView}
-        {viewMode === "day" && dayView}
-      </div>
+        <div className="mt-2 flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => move(-1)}
+            aria-label="Anterior"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100"
+          >
+            <ChevronLeft size={20} />
+          </button>
+          <button
+            type="button"
+            onClick={() => move(1)}
+            aria-label="Próximo"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100"
+          >
+            <ChevronRight size={20} />
+          </button>
+          <span className="ml-1 truncate text-base capitalize text-slate-700">{title}</span>
+
+          <div className="ml-auto flex shrink-0 rounded-full bg-slate-100 p-0.5">
+            {(["day", "week", "month"] as ViewMode[]).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setViewMode(mode)}
+                className={`rounded-full px-3 py-1 text-xs transition-all ${
+                  viewMode === mode ? "bg-white font-medium text-blue-700 shadow-sm" : "text-slate-600 hover:text-slate-800"
+                }`}
+              >
+                {VIEW_LABELS[mode]}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {teachers.length > 0 && (
+          <div className="-mx-3 mt-2 overflow-x-auto px-3">
+            <div className="flex min-w-max gap-1.5">
+              {["all", ...teachers].map((name) => {
+                const active = selectedTeacher === name;
+                return (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => handleTeacherSelect(name)}
+                    className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors ${
+                      active ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    {name === "all" ? (
+                      <Users size={12} />
+                    ) : (
+                      <span className="flex h-4 w-4 items-center justify-center rounded-full bg-slate-200 text-[7px] text-slate-700">
+                        {initials(name)}
+                      </span>
+                    )}
+                    {name === "all" ? "Todos" : name.split(" ")[0]}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </header>
+
+      {viewMode === "month" ? monthView : timeGrid}
+
+      <button
+        type="button"
+        onClick={() => router.push("/schedule/create")}
+        aria-label="Nova aula"
+        className="absolute bottom-5 right-4 z-20 flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-blue-600 shadow-lg ring-1 ring-slate-200 transition hover:shadow-xl"
+      >
+        <Plus size={28} />
+      </button>
 
       {selectedEvent && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50" onClick={() => setSelectedEvent(null)}>
-          <div className="w-full max-w-lg rounded-t-3xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="mx-auto mb-1 mt-3 h-1 w-10 rounded-full bg-slate-200" />
-            <div className={`mx-4 my-4 ${selectedEvent.color} rounded-2xl p-4`}>
-              <p className="text-lg leading-tight text-white">{selectedEvent.subject}</p>
-              <p className="mt-1 text-sm text-white/80">
-                {selectedEvent.startTime} – {selectedEvent.endTime}
-              </p>
-            </div>
-            <div className="space-y-0 px-4 pb-2">
-              {[
-                ["Professor", selectedEvent.teacher],
-                ["Turma", selectedEvent.class],
-                ["Tipo", TYPE_LABELS[selectedEvent.type]],
-                ["Sala", selectedEvent.room],
-                ["Dia", DAY_FULL[selectedEvent.day]]
-              ]
-                .filter(([, v]) => v)
-                .map(([label, value]) => (
-                  <div key={label} className="flex justify-between border-b border-slate-100 py-2.5 last:border-0">
-                    <span className="text-sm text-slate-400">{label}</span>
-                    <span className="text-sm text-slate-700">{value}</span>
-                  </div>
-                ))}
-            </div>
-            <div className="flex gap-3 px-4 pb-8 pt-2">
-              <button
-                type="button"
-                onClick={() => router.push(`/schedule/edit/${selectedEvent.id}`)}
-                className="flex-1 rounded-xl bg-violet-600 py-3 text-sm text-white shadow-sm transition-colors hover:bg-violet-700"
-              >
-                Editar
-              </button>
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center" onClick={() => setSelectedEvent(null)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="w-full max-w-md rounded-t-3xl bg-white pb-6 shadow-2xl sm:rounded-3xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex justify-end px-3 pt-3">
               <button
                 type="button"
                 onClick={() => setSelectedEvent(null)}
-                className="flex-1 rounded-xl bg-slate-100 py-3 text-sm text-slate-600 transition-colors hover:bg-slate-200"
+                aria-label="Fechar"
+                className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="flex gap-4 px-6">
+              <span className={`mt-1.5 h-4 w-4 shrink-0 rounded ${selectedEvent.color}`} />
+              <div className="min-w-0">
+                <h2 className="text-xl text-slate-800">{selectedEvent.subject}</h2>
+                <p className="mt-0.5 text-sm text-slate-500">
+                  Toda {DAY_FULL[selectedEvent.day]} · {selectedEvent.startTime} – {selectedEvent.endTime}
+                </p>
+              </div>
+            </div>
+            <ul className="mt-4 space-y-3 px-6 text-sm text-slate-700">
+              <li className="flex items-center gap-4">
+                <Clock size={18} className="shrink-0 text-slate-400" />
+                {selectedEvent.duration % 1 === 0 ? `${selectedEvent.duration}h` : `${Math.round(selectedEvent.duration * 60)} min`} de aula
+              </li>
+              <li className="flex items-center gap-4">
+                <User size={18} className="shrink-0 text-slate-400" />
+                {selectedEvent.teacher}
+              </li>
+              <li className="flex items-center gap-4">
+                <BookOpen size={18} className="shrink-0 text-slate-400" />
+                {selectedEvent.class}
+              </li>
+              {selectedEvent.room && (
+                <li className="flex items-center gap-4">
+                  <MapPin size={18} className="shrink-0 text-slate-400" />
+                  {selectedEvent.room}
+                </li>
+              )}
+              {TYPE_LABELS[selectedEvent.type] && (
+                <li className="flex items-center gap-4">
+                  <Tag size={18} className="shrink-0 text-slate-400" />
+                  {TYPE_LABELS[selectedEvent.type]}
+                </li>
+              )}
+            </ul>
+            <div className="mt-6 flex justify-end gap-2 px-6">
+              <button
+                type="button"
+                onClick={() => setSelectedEvent(null)}
+                className="rounded-full px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
               >
                 Fechar
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push(`/schedule/edit/${selectedEvent.id}`)}
+                className="rounded-full bg-blue-600 px-5 py-2 text-sm text-white hover:bg-blue-700"
+              >
+                Editar
               </button>
             </div>
           </div>

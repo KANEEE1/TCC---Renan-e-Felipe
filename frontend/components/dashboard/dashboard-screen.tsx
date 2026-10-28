@@ -154,7 +154,7 @@ export function DashboardScreen() {
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-600">
               <CalendarDays size={20} className="text-white" />
             </div>
-            <span className="text-sm leading-tight text-slate-700">Ver Calendário</span>
+            <span className="text-sm leading-tight text-slate-700">Ver agenda</span>
           </Link>
           <Link
             href="/teachers/register"

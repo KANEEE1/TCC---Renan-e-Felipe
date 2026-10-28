@@ -116,14 +116,25 @@ export function CalendarView() {
   // A agenda sempre abre na semana de hoje.
   const [viewMode, setViewMode] = useState<ViewMode>("week");
   const [cursor, setCursor] = useState<Date>(() => new Date());
+  // Filtros combináveis: turma (por id) e professor (por nome). Ambos ficam na URL.
+  const [selectedClass, setSelectedClass] = useState<string>(searchParams.get("class") || "all");
   const [selectedTeacher, setSelectedTeacher] = useState<string>(searchParams.get("teacher") || "all");
   const [selectedEvent, setSelectedEvent] = useState<ScheduleItem | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const teachers = useMemo(() => Array.from(new Set(schedules.map((s) => s.teacher))).sort(), [schedules]);
+  const classes = useMemo(
+    () => [...new Map(schedules.map((s) => [s.classId, s.class]))].sort((a, b) => a[1].localeCompare(b[1], "pt-BR")),
+    [schedules]
+  );
+  const ofClass = useMemo(
+    () => (selectedClass === "all" ? schedules : schedules.filter((s) => s.classId === selectedClass)),
+    [schedules, selectedClass]
+  );
+  // Com uma turma escolhida, só aparecem os professores que dão aula nela.
+  const teachers = useMemo(() => Array.from(new Set(ofClass.map((s) => s.teacher))).sort(), [ofClass]);
   const filtered = useMemo(
-    () => (selectedTeacher === "all" ? schedules : schedules.filter((s) => s.teacher === selectedTeacher)),
-    [schedules, selectedTeacher]
+    () => (selectedTeacher === "all" ? ofClass : ofClass.filter((s) => s.teacher === selectedTeacher)),
+    [ofClass, selectedTeacher]
   );
   const eventsOn = (date: Date) => filtered.filter((s) => s.day === weekdayIndex(date));
 
@@ -137,12 +148,23 @@ export function CalendarView() {
     scrollRef.current.scrollTop = Math.max(0, (new Date().getHours() - 1) * HOUR_HEIGHT);
   }, [viewMode]);
 
-  const handleTeacherSelect = (name: string) => {
-    setSelectedTeacher(name);
+  const applyFilters = (classId: string, teacher: string) => {
+    setSelectedClass(classId);
+    setSelectedTeacher(teacher);
     const params = new URLSearchParams();
-    if (name !== "all") params.set("teacher", name);
+    if (classId !== "all") params.set("class", classId);
+    if (teacher !== "all") params.set("teacher", teacher);
     router.replace(params.size > 0 ? `${pathname}?${params.toString()}` : pathname, { scroll: false });
   };
+
+  const handleClassSelect = (classId: string) => {
+    // Mantém o professor só se ele também dá aula na nova turma.
+    const keepsTeacher =
+      selectedTeacher === "all" || classId === "all" || schedules.some((s) => s.classId === classId && s.teacher === selectedTeacher);
+    applyFilters(classId, keepsTeacher ? selectedTeacher : "all");
+  };
+
+  const handleTeacherSelect = (name: string) => applyFilters(selectedClass, name);
 
   const move = (direction: 1 | -1) => {
     const d = new Date(cursor);
@@ -369,9 +391,34 @@ export function CalendarView() {
           </div>
         </div>
 
-        {teachers.length > 0 && (
+        {classes.length > 0 && (
           <div className="-mx-3 mt-2 overflow-x-auto px-3">
-            <div className="flex min-w-max gap-1.5">
+            <div className="flex min-w-max items-center gap-1.5">
+              <span className="w-16 shrink-0 text-[11px] font-medium uppercase tracking-wide text-slate-400">Turma</span>
+              {[["all", "Todas"] as [string, string], ...classes].map(([id, name]) => {
+                const active = selectedClass === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => handleClassSelect(id)}
+                    className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors ${
+                      active ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    {id === "all" ? <BookOpen size={12} /> : null}
+                    {name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {teachers.length > 0 && (
+          <div className="-mx-3 mt-1.5 overflow-x-auto px-3">
+            <div className="flex min-w-max items-center gap-1.5">
+              <span className="w-16 shrink-0 text-[11px] font-medium uppercase tracking-wide text-slate-400">Professor</span>
               {["all", ...teachers].map((name) => {
                 const active = selectedTeacher === name;
                 return (

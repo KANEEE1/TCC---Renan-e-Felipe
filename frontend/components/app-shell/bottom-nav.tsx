@@ -1,7 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { getSessionUser } from "@/lib/auth";
 import { BookOpen, CalendarDays, ClipboardCheck, GraduationCap, Home, Trophy, Users } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -16,11 +18,19 @@ const NAV_ITEMS = [
 
 export function BottomNav() {
   const pathname = usePathname();
+  // Presença é registrada por professores; a gestão acompanha a frequência pela aba de alunos.
+  const [takesAttendance, setTakesAttendance] = useState(false);
+
+  useEffect(() => {
+    setTakesAttendance(!!getSessionUser()?.roles.includes("PROFESSOR"));
+  }, []);
+
+  const items = NAV_ITEMS.filter((item) => item.href !== "/attendance" || takesAttendance);
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-slate-200 bg-white/95 shadow-xl backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-screen-lg items-center justify-around px-1">
-        {NAV_ITEMS.map(({ href, icon: Icon, label }) => {
+        {items.map(({ href, icon: Icon, label }) => {
           const isActive = pathname.startsWith(href);
           return (
             <Link

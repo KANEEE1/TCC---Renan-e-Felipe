@@ -60,6 +60,7 @@ export function DashboardScreen() {
   const [userName, setUserName] = useState("Usuário");
   const [pendingSubstitutions, setPendingSubstitutions] = useState(0);
   const [userRole, setUserRole] = useState("gestão");
+  const [takesAttendance, setTakesAttendance] = useState(false);
 
   useEffect(() => {
     api.get<DashboardSummary>("/dashboard/summary").then(setSummary).catch(() => setSummary(null));
@@ -72,6 +73,7 @@ export function DashboardScreen() {
       .then((me) => {
         setUserName(me.name);
         setUserRole(me.roles.includes("GESTAO") ? "gestão" : "professor");
+        setTakesAttendance(me.roles.includes("PROFESSOR"));
       })
       .catch(() => {});
   }, []);
@@ -138,15 +140,17 @@ export function DashboardScreen() {
             </div>
             <span className="text-sm leading-tight text-slate-700">Criar Agendamento</span>
           </Link>
-          <Link
-            href="/attendance"
-            className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-md transition-shadow hover:shadow-lg"
-          >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600">
-              <BookOpen size={20} className="text-white" />
-            </div>
-            <span className="text-sm leading-tight text-slate-700">Marcar Presença</span>
-          </Link>
+          {takesAttendance && (
+            <Link
+              href="/attendance"
+              className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-md transition-shadow hover:shadow-lg"
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600">
+                <BookOpen size={20} className="text-white" />
+              </div>
+              <span className="text-sm leading-tight text-slate-700">Marcar Presença</span>
+            </Link>
+          )}
           <Link
             href="/calendar"
             className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-md transition-shadow hover:shadow-lg"

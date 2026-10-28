@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { BookOpen, ChevronLeft, ChevronRight, Clock, MapPin, Plus, Tag, User, Users, X } from "lucide-react";
 import { useSchedule, type ScheduleItem } from "@/components/schedule/schedule-context";
+import { api } from "@/lib/api";
 
 type ViewMode = "day" | "week" | "month";
 
@@ -121,7 +122,7 @@ export function CalendarView() {
   // A agenda sempre abre na semana de hoje.
   const [viewMode, setViewMode] = useState<ViewMode>("week");
   const [cursor, setCursor] = useState<Date>(() => new Date());
-  // Filtros combináveis: turma (por id) e professor (por nome). Ambos ficam na URL.
+  // Filtros combináveis: turma e professor, ambos por id. Ficam na URL (?class=&teacher=).
   const [selectedClass, setSelectedClass] = useState<string>(searchParams.get("class") || "all");
   const [selectedTeacher, setSelectedTeacher] = useState<string>(searchParams.get("teacher") || "all");
   const [selectedEvent, setSelectedEvent] = useState<ScheduleItem | null>(null);
@@ -136,11 +137,32 @@ export function CalendarView() {
     [schedules, selectedClass]
   );
   // Com uma turma escolhida, só aparecem os professores que dão aula nela.
-  const teachers = useMemo(() => Array.from(new Set(ofClass.map((s) => s.teacher))).sort(), [ofClass]);
+  // Nome do professor vindo pela URL (ex.: botão "Agenda" na lista de professores) que ainda não tem aulas.
+  const [extraTeacher, setExtraTeacher] = useState<[string, string] | null>(null);
+  const teachers = useMemo(() => {
+    const list = [...new Map(ofClass.map((s) => [s.teacherId, s.teacher]))];
+    if (extraTeacher && !list.some(([id]) => id === extraTeacher[0])) list.push(extraTeacher);
+    return list.sort((a, b) => a[1].localeCompare(b[1], "pt-BR"));
+  }, [ofClass, extraTeacher]);
   const filtered = useMemo(
-    () => (selectedTeacher === "all" ? ofClass : ofClass.filter((s) => s.teacher === selectedTeacher)),
+    () => (selectedTeacher === "all" ? ofClass : ofClass.filter((s) => s.teacherId === selectedTeacher)),
     [ofClass, selectedTeacher]
   );
+
+  useEffect(() => {
+    if (selectedTeacher === "all" || schedules.some((s) => s.teacherId === selectedTeacher)) return;
+    let cancelled = false;
+    api
+      .get<{ id: string; name: string }>(`/teachers/${selectedTeacher}`)
+      .then((teacher) => !cancelled && setExtraTeacher([teacher.id, teacher.name]))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTeacher, schedules]);
+
+  const selectedTeacherName = teachers.find(([id]) => id === selectedTeacher)?.[1];
+  const teacherWithoutLessons = selectedTeacher !== "all" && !!selectedTeacherName && filtered.length === 0;
   // A aula se repete toda semana, mas só dentro do período da grade da turma.
   const eventsOn = (date: Date) => {
     const key = dateKey(date);
@@ -171,11 +193,11 @@ export function CalendarView() {
   const handleClassSelect = (classId: string) => {
     // Mantém o professor só se ele também dá aula na nova turma.
     const keepsTeacher =
-      selectedTeacher === "all" || classId === "all" || schedules.some((s) => s.classId === classId && s.teacher === selectedTeacher);
+      selectedTeacher === "all" || classId === "all" || schedules.some((s) => s.classId === classId && s.teacherId === selectedTeacher);
     applyFilters(classId, keepsTeacher ? selectedTeacher : "all");
   };
 
-  const handleTeacherSelect = (name: string) => applyFilters(selectedClass, name);
+  const handleTeacherSelect = (teacherId: string) => applyFilters(selectedClass, teacherId);
 
   const move = (direction: 1 | -1) => {
     const d = new Date(cursor);
@@ -430,30 +452,36 @@ export function CalendarView() {
           <div className="-mx-3 mt-1.5 overflow-x-auto px-3">
             <div className="flex min-w-max items-center gap-1.5">
               <span className="w-16 shrink-0 text-[11px] font-medium uppercase tracking-wide text-slate-400">Professor</span>
-              {["all", ...teachers].map((name) => {
-                const active = selectedTeacher === name;
+              {[["all", "Todos"] as [string, string], ...teachers].map(([id, name]) => {
+                const active = selectedTeacher === id;
                 return (
                   <button
-                    key={name}
+                    key={id}
                     type="button"
-                    onClick={() => handleTeacherSelect(name)}
+                    onClick={() => handleTeacherSelect(id)}
                     className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors ${
                       active ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 text-slate-600 hover:bg-slate-50"
                     }`}
                   >
-                    {name === "all" ? (
+                    {id === "all" ? (
                       <Users size={12} />
                     ) : (
                       <span className="flex h-4 w-4 items-center justify-center rounded-full bg-slate-200 text-[7px] text-slate-700">
                         {initials(name)}
                       </span>
                     )}
-                    {name === "all" ? "Todos" : name.split(" ")[0]}
+                    {id === "all" ? name : name.split(" ")[0]}
                   </button>
                 );
               })}
             </div>
           </div>
+        )}
+
+        {teacherWithoutLessons && (
+          <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+            {selectedTeacherName} ainda não tem aulas{selectedClass !== "all" ? " nesta turma" : " na grade"}.
+          </p>
         )}
       </header>
 

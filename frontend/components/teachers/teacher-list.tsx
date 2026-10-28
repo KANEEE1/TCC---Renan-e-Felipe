@@ -143,7 +143,7 @@ export function TeacherList() {
                 </Link>
               )}
               <Link
-                href={`/teachers/schedule?teacher=${teacher.id}`}
+                href={`/calendar?teacher=${teacher.id}`}
                 className="flex items-center justify-center gap-1.5 py-3 text-xs text-slate-500 transition-colors hover:bg-emerald-50 hover:text-emerald-600"
               >
                 <BookOpen size={14} />

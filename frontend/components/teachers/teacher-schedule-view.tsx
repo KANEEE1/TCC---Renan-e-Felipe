@@ -6,8 +6,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { BookOpen, Calendar, ChevronLeft, ChevronRight, Clock, Users } from "lucide-react";
 import { useSchedule, type ScheduleItem } from "@/components/schedule/schedule-context";
 
-const DAY_NAMES = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta"];
-const DAY_SHORT = ["Seg", "Ter", "Qua", "Qui", "Sex"];
+const DAY_NAMES = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"];
+const DAY_SHORT = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
 
 const TYPE_COLORS: Record<string, string> = {
   aula: "bg-blue-100 text-blue-700 border-blue-200",
@@ -51,17 +52,22 @@ function calcHours(items: ScheduleItem[]): number {
 export function TeacherScheduleView() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { schedules } = useSchedule();
+  const { schedules, loading } = useSchedule();
 
   const allTeachers = useMemo(() => {
     const names = new Set(schedules.map((s) => s.teacher));
     return Array.from(names).sort();
   }, [schedules]);
 
-  const [selectedTeacher, setSelectedTeacher] = useState(searchParams.get("teacher") || allTeachers[0] || "");
+  // As aulas chegam depois do primeiro render: o professor exibido é derivado (escolha do usuário, depois o da
+  // URL — por id ou nome —, depois o primeiro da lista), em vez de fixado no estado inicial vazio.
+  const [chosenTeacher, setSelectedTeacher] = useState("");
   const [activeDay, setActiveDay] = useState<number | null>(null);
+  const param = searchParams.get("teacher");
+  const fromParam = param ? (schedules.find((s) => s.teacherId === param)?.teacher ?? param) : "";
+  const selectedTeacher = chosenTeacher || (allTeachers.includes(fromParam) ? fromParam : "") || allTeachers[0] || "";
 
-  const teacherIdx = allTeachers.indexOf(selectedTeacher);
+  const teacherIdx = Math.max(0, allTeachers.indexOf(selectedTeacher));
 
   const teacherItems = useMemo(() => schedules.filter((s) => s.teacher === selectedTeacher), [schedules, selectedTeacher]);
 
@@ -74,7 +80,7 @@ export function TeacherScheduleView() {
 
   const itemsByDay = useMemo(() => {
     const map: Record<number, ScheduleItem[]> = {};
-    for (let d = 0; d < 5; d++) {
+    for (const d of ALL_DAYS) {
       map[d] = teacherItems.filter((s) => s.day === d).sort((a, b) => a.startTime.localeCompare(b.startTime));
     }
     return map;
@@ -95,7 +101,18 @@ export function TeacherScheduleView() {
 
   const gradient = HEADER_GRADIENTS[teacherIdx % HEADER_GRADIENTS.length];
   const avatarGradient = AVATAR_GRADIENTS[teacherIdx % AVATAR_GRADIENTS.length];
-  const daysToShow = activeDay === null ? [0, 1, 2, 3, 4] : [activeDay];
+  const daysToShow = activeDay === null ? ALL_DAYS : [activeDay];
+
+  if (allTeachers.length === 0) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 bg-slate-50 p-8 text-center">
+        <p className="text-sm text-slate-500">{loading ? "Carregando agenda..." : "Nenhuma aula cadastrada na grade ainda."}</p>
+        <Link href="/calendar" className="text-sm text-blue-600 underline">
+          Voltar para a agenda
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-slate-50">

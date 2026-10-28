@@ -30,17 +30,18 @@ export class TurmasController {
       res.json(await this.turmasService.replaceJanelas(req.params.id as string, input));
     }));
 
-    this.router.post("/", asyncHandler(async (req, res) => {
+    // Criar, editar e matricular alunos em turmas é da gestão; a leitura continua aberta.
+    this.router.post("/", requireAuth, requireRole("GESTAO"), asyncHandler(async (req, res) => {
       const input = createTurmaSchema.parse(req.body);
       res.status(201).json(await this.turmasService.create(input));
     }));
 
-    this.router.put("/:id", asyncHandler(async (req, res) => {
+    this.router.put("/:id", requireAuth, requireRole("GESTAO"), asyncHandler(async (req, res) => {
       const input = updateTurmaSchema.parse(req.body);
       res.json(await this.turmasService.update(req.params.id as string, input));
     }));
 
-    this.router.post("/:id/students", asyncHandler(async (req, res) => {
+    this.router.post("/:id/students", requireAuth, requireRole("GESTAO"), asyncHandler(async (req, res) => {
       await this.turmasService.getById(req.params.id as string);
       const input = assignStudentsSchema.parse(req.body);
       res.status(201).json(await this.matriculasService.assignStudents(req.params.id as string, input));

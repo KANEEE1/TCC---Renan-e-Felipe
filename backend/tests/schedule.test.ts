@@ -1,10 +1,10 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
-import { app, resetDb, asTeacher } from "./helpers.js";
+import { app, resetDb, asTeacher, asGestao } from "./helpers.js";
 
 async function setupLessonDeps() {
   const disciplina = await request(app).post("/disciplinas").send({ nome: "Física" });
-  const turma = await request(app).post("/classes").send({
+  const turma = await request(app).post("/classes").set(asGestao()).send({
     nome: "Turma Sched",
     anoLetivo: 2026,
     disciplinas: [{ disciplinaId: disciplina.body.id, aulasPorSemana: 2, duracaoMinutos: 120 }]
@@ -126,7 +126,7 @@ describe("schedule", () => {
 
   it("suggest uses the class matrix duration and rejects requests without a matrix entry", async () => {
     const { turmaId, disciplinaId, professorId } = await setupLessonDeps();
-    await request(app).put(`/classes/${turmaId}`).send({ disciplinas: [{ disciplinaId, aulasPorSemana: 2, duracaoMinutos: 60 }] });
+    await request(app).put(`/classes/${turmaId}`).set(asGestao()).send({ disciplinas: [{ disciplinaId, aulasPorSemana: 2, duracaoMinutos: 60 }] });
     await addAvailability(professorId, "SEGUNDA", "08:00", "10:00");
 
     const res = await request(app)
@@ -138,7 +138,7 @@ describe("schedule", () => {
       ["09:00", "10:00"]
     ]);
 
-    await request(app).put(`/classes/${turmaId}`).send({ disciplinas: [] });
+    await request(app).put(`/classes/${turmaId}`).set(asGestao()).send({ disciplinas: [] });
     const semCarga = await request(app)
       .post("/schedule/suggest")
       .send({ pedidos: [{ professorId, disciplinaId, turmaId, quantidade: 2 }] });
@@ -148,7 +148,7 @@ describe("schedule", () => {
 
   it("suggest uses 90-minute matrix duration for horarioFim", async () => {
     const { turmaId, disciplinaId, professorId } = await setupLessonDeps();
-    await request(app).put(`/classes/${turmaId}`).send({ disciplinas: [{ disciplinaId, aulasPorSemana: 1, duracaoMinutos: 90 }] });
+    await request(app).put(`/classes/${turmaId}`).set(asGestao()).send({ disciplinas: [{ disciplinaId, aulasPorSemana: 1, duracaoMinutos: 90 }] });
     await addAvailability(professorId, "SEGUNDA", "08:00", "12:00");
 
     const res = await request(app)
@@ -160,7 +160,7 @@ describe("schedule", () => {
 
   it("suggest reports JANELA_INSUFICIENTE when duration exceeds the availability window", async () => {
     const { turmaId, disciplinaId, professorId } = await setupLessonDeps();
-    await request(app).put(`/classes/${turmaId}`).send({ disciplinas: [{ disciplinaId, aulasPorSemana: 1, duracaoMinutos: 120 }] });
+    await request(app).put(`/classes/${turmaId}`).set(asGestao()).send({ disciplinas: [{ disciplinaId, aulasPorSemana: 1, duracaoMinutos: 120 }] });
     await addAvailability(professorId, "SEGUNDA", "08:00", "09:00");
 
     const res = await request(app)
@@ -231,7 +231,7 @@ describe("schedule", () => {
 
   it("rejects partial overlap for the same teacher with 409", async () => {
     const { turmaId, disciplinaId, professorId } = await setupLessonDeps();
-    const otherTurma = await request(app).post("/classes").send({ nome: "Outra", anoLetivo: 2026 });
+    const otherTurma = await request(app).post("/classes").set(asGestao()).send({ nome: "Outra", anoLetivo: 2026 });
     const base = { disciplinaId, professorId, diaSemana: "SEGUNDA" };
 
     await request(app).post("/schedule").send({ ...base, turmaId, horarioInicio: "08:00", horarioFim: "10:00" });

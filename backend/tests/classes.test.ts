@@ -1,6 +1,6 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
-import { app, resetDb, asGestao } from "./helpers.js";
+import { app, resetDb, asGestao, asTeacher } from "./helpers.js";
 
 describe("classes", () => {
   beforeEach(async () => {
@@ -8,7 +8,7 @@ describe("classes", () => {
   });
 
   it("creates and lists a class", async () => {
-    const created = await request(app).post("/classes").send({ nome: "Extensivo - Manhã", anoLetivo: 2026 });
+    const created = await request(app).post("/classes").set(asGestao()).send({ nome: "Extensivo - Manhã", anoLetivo: 2026 });
     expect(created.status).toBe(201);
 
     const list = await request(app).get("/classes");
@@ -18,7 +18,7 @@ describe("classes", () => {
 
   it("saves and returns the grade period as YYYY-MM-DD", async () => {
     const base = { nome: "Turma P", anoLetivo: 2026 };
-    const created = await request(app).post("/classes").send({ ...base, gradeInicio: "2026-08-03", gradeFim: "2026-12-18" });
+    const created = await request(app).post("/classes").set(asGestao()).send({ ...base, gradeInicio: "2026-08-03", gradeFim: "2026-12-18" });
     expect(created.status).toBe(201);
     expect(created.body).toMatchObject({ gradeInicio: "2026-08-03", gradeFim: "2026-12-18" });
 
@@ -27,21 +27,21 @@ describe("classes", () => {
     const list = await request(app).get("/classes");
     expect(list.body[0]).toMatchObject({ gradeInicio: "2026-08-03", gradeFim: "2026-12-18" });
 
-    const upd = await request(app).put(`/classes/${created.body.id}`).send({ gradeFim: "2026-12-20" });
+    const upd = await request(app).put(`/classes/${created.body.id}`).set(asGestao()).send({ gradeFim: "2026-12-20" });
     expect(upd.status).toBe(200);
     expect(upd.body).toMatchObject({ gradeInicio: "2026-08-03", gradeFim: "2026-12-20" });
 
-    const none = await request(app).post("/classes").send({ nome: "Sem período", anoLetivo: 2026 });
+    const none = await request(app).post("/classes").set(asGestao()).send({ nome: "Sem período", anoLetivo: 2026 });
     expect(none.body).toMatchObject({ gradeInicio: null, gradeFim: null });
   });
 
   it("a PUT with only the period keeps the shift and the curriculum matrix", async () => {
     const created = await request(app)
-      .post("/classes")
+      .post("/classes").set(asGestao())
       .send({ nome: "Turma M", anoLetivo: 2026, turno: "Manhã", disciplinas: [{ nome: "Física", aulasPorSemana: 2, duracaoMinutos: 90 }] });
     expect(created.status).toBe(201);
 
-    const upd = await request(app).put(`/classes/${created.body.id}`).send({ gradeInicio: "2026-02-02", gradeFim: "2026-06-30" });
+    const upd = await request(app).put(`/classes/${created.body.id}`).set(asGestao()).send({ gradeInicio: "2026-02-02", gradeFim: "2026-06-30" });
     expect(upd.status).toBe(200);
     expect(upd.body).toMatchObject({ turno: "Manhã", gradeInicio: "2026-02-02", gradeFim: "2026-06-30" });
     expect(upd.body.cargas).toEqual([expect.objectContaining({ aulasPorSemana: 2, duracaoMinutos: 90 })]);
@@ -49,7 +49,7 @@ describe("classes", () => {
 
   it("validates the grade period", async () => {
     const base = { nome: "Turma V", anoLetivo: 2026 };
-    const post = (extra: object) => request(app).post("/classes").send({ ...base, ...extra });
+    const post = (extra: object) => request(app).post("/classes").set(asGestao()).send({ ...base, ...extra });
     expect((await post({ gradeInicio: "2026-08-03" })).status).toBe(400);
     expect((await post({ gradeFim: "2026-08-03" })).status).toBe(400);
     expect((await post({ gradeInicio: "2026-12-18", gradeFim: "2026-08-03" })).status).toBe(400);
@@ -58,21 +58,21 @@ describe("classes", () => {
     expect(await request(app).get("/classes").then((r) => r.body)).toHaveLength(0);
 
     const ok = await post({ gradeInicio: "2026-08-03", gradeFim: "2026-12-18" });
-    const bad = await request(app).put(`/classes/${ok.body.id}`).send({ gradeFim: "2026-01-01" });
+    const bad = await request(app).put(`/classes/${ok.body.id}`).set(asGestao()).send({ gradeFim: "2026-01-01" });
     expect(bad.status).toBe(400);
   });
 
   it("rejects a duplicate nome+anoLetivo combination", async () => {
-    await request(app).post("/classes").send({ nome: "Turma A", anoLetivo: 2026 });
-    const dup = await request(app).post("/classes").send({ nome: "Turma A", anoLetivo: 2026 });
+    await request(app).post("/classes").set(asGestao()).send({ nome: "Turma A", anoLetivo: 2026 });
+    const dup = await request(app).post("/classes").set(asGestao()).send({ nome: "Turma A", anoLetivo: 2026 });
 
     expect(dup.status).toBe(409);
   });
 
   it("updates a class", async () => {
-    const created = await request(app).post("/classes").send({ nome: "Turma B", anoLetivo: 2026 });
+    const created = await request(app).post("/classes").set(asGestao()).send({ nome: "Turma B", anoLetivo: 2026 });
 
-    const res = await request(app).put(`/classes/${created.body.id}`).send({ sala: "201", capacidade: 50 });
+    const res = await request(app).put(`/classes/${created.body.id}`).set(asGestao()).send({ sala: "201", capacidade: 50 });
 
     expect(res.status).toBe(200);
     expect(res.body.sala).toBe("201");
@@ -83,29 +83,42 @@ describe("classes", () => {
     const student = await request(app).post("/students").set(asGestao()).send({ nome: "Aluno Teste" });
 
     const res = await request(app)
-      .post("/classes/nonexistent-id/students")
+      .post("/classes/nonexistent-id/students").set(asGestao())
       .send({ studentIds: [student.body.id] });
 
     expect(res.status).toBe(404);
   });
 
   it("assigns students to a class and is idempotent on repeat", async () => {
-    const turma = await request(app).post("/classes").send({ nome: "Turma C", anoLetivo: 2026 });
+    const turma = await request(app).post("/classes").set(asGestao()).send({ nome: "Turma C", anoLetivo: 2026 });
     const aluno = await request(app).post("/students").set(asGestao()).send({ nome: "Aluno Assign" });
 
     const first = await request(app)
-      .post(`/classes/${turma.body.id}/students`)
+      .post(`/classes/${turma.body.id}/students`).set(asGestao())
       .send({ studentIds: [aluno.body.id] });
     expect(first.status).toBe(201);
     expect(first.body).toHaveLength(1);
 
     const second = await request(app)
-      .post(`/classes/${turma.body.id}/students`)
+      .post(`/classes/${turma.body.id}/students`).set(asGestao())
       .send({ studentIds: [aluno.body.id] });
     expect(second.status).toBe(201);
     expect(second.body).toHaveLength(1);
 
     const classWithRoster = await request(app).get(`/classes/${turma.body.id}`);
     expect(classWithRoster.body.matriculas).toHaveLength(1);
+  });
+
+  it("only GESTAO creates, edits or enrolls students in a class", async () => {
+    const created = await request(app).post("/classes").set(asGestao()).send({ nome: "Turma Restrita", anoLetivo: 2026 });
+    expect(created.status).toBe(201);
+    const professor = asTeacher("professor-qualquer");
+    const id = created.body.id as string;
+
+    expect((await request(app).post("/classes").send({ nome: "Sem login", anoLetivo: 2026 })).status).toBe(401);
+    expect((await request(app).post("/classes").set(professor).send({ nome: "Professor", anoLetivo: 2026 })).status).toBe(403);
+    expect((await request(app).put(`/classes/${id}`).set(professor).send({ turno: "Tarde" })).status).toBe(403);
+    expect((await request(app).post(`/classes/${id}/students`).set(professor).send({ studentIds: [] })).status).toBe(403);
+    expect((await request(app).get(`/classes/${id}`)).status).toBe(200);
   });
 });

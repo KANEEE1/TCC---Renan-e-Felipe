@@ -68,7 +68,7 @@ describe("GET /attendance/summary", () => {
   });
 
   async function setupClass(nome: string, email: string, dia: string) {
-    const turma = await request(app).post("/classes").send({ nome, anoLetivo: 2026 });
+    const turma = await request(app).post("/classes").set(asGestao()).send({ nome, anoLetivo: 2026 });
     const disciplina = await request(app).post("/disciplinas").send({ nome: `Disc ${nome}` });
     const teacher = await request(app).post("/teachers").send({ name: `Prof ${nome}`, email, password: "senha1234" });
     const aula = await request(app).post("/schedule").send({
@@ -83,8 +83,8 @@ describe("GET /attendance/summary", () => {
     const c2 = await setupClass("B", "b@sum.com", "TERCA");
     const aluno = await request(app).post("/students").set(asGestao()).send({ nome: "Aluno Sum" });
     const id = aluno.body.id;
-    await request(app).post(`/classes/${c1.turmaId}/students`).send({ studentIds: [id] });
-    await request(app).post(`/classes/${c2.turmaId}/students`).send({ studentIds: [id] });
+    await request(app).post(`/classes/${c1.turmaId}/students`).set(asGestao()).send({ studentIds: [id] });
+    await request(app).post(`/classes/${c2.turmaId}/students`).set(asGestao()).send({ studentIds: [id] });
     const data = new Date("2026-09-01");
     await prisma.presenca.create({ data: { alunoId: id, aulaId: c1.aulaId, data, presente: true } });
     await prisma.presenca.create({ data: { alunoId: id, aulaId: c2.aulaId, data, presente: false } });

@@ -1,6 +1,6 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
-import { app, createUser, loginAs, resetDb } from "./helpers.js";
+import { app, createUser, loginAs, resetDb, asGestao } from "./helpers.js";
 
 const DIAS = ["DOMINGO", "SEGUNDA", "TERCA", "QUARTA", "QUINTA", "SEXTA", "SABADO"];
 const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
@@ -22,7 +22,7 @@ async function setup() {
     p2: await loginAs("p2@test.com"),
     gestor: await loginAs("gestor@test.com")
   };
-  const turma = await request(app).post("/classes").send({ nome: "Turma Aus", anoLetivo: 2026 });
+  const turma = await request(app).post("/classes").set(asGestao()).send({ nome: "Turma Aus", anoLetivo: 2026 });
   const disciplina = await request(app).post("/disciplinas").send({ nome: "Química" });
   const aula = await request(app).post("/schedule").send({
     turmaId: turma.body.id,

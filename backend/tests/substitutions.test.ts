@@ -25,7 +25,7 @@ async function setup() {
   };
   const disciplina = await request(app).post("/disciplinas").send({ nome: "Química" });
   const mkAula = async (professorId: string, diaSemana: string, horarioInicio: string, horarioFim: string, nome: string) => {
-    const turma = await request(app).post("/classes").send({ nome, anoLetivo: 2026 });
+    const turma = await request(app).post("/classes").set(asGestao()).send({ nome, anoLetivo: 2026 });
     const res = await request(app).post("/schedule").send({
       turmaId: turma.body.id,
       disciplinaId: disciplina.body.id,

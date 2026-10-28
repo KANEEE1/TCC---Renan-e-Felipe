@@ -65,12 +65,12 @@ describe("GET /grades/class-summary/:turmaId", () => {
   });
 
   it("only counts grades from students enrolled in the class", async () => {
-    const turma = await request(app).post("/classes").send({ nome: "Turma Desempenho", anoLetivo: 2026 });
+    const turma = await request(app).post("/classes").set(asGestao()).send({ nome: "Turma Desempenho", anoLetivo: 2026 });
     const disc = await request(app).post("/disciplinas").send({ nome: "Química" });
     const exam = await request(app).post("/simulados").send({ nome: "Sim 1", data: "2026-10-01", disciplinaId: disc.body.id });
     const dentro = await request(app).post("/students").set(asGestao()).send({ nome: "Dentro" });
     const fora = await request(app).post("/students").set(asGestao()).send({ nome: "Fora" });
-    await request(app).post(`/classes/${turma.body.id}/students`).send({ studentIds: [dentro.body.id] });
+    await request(app).post(`/classes/${turma.body.id}/students`).set(asGestao()).send({ studentIds: [dentro.body.id] });
     await request(app).post("/grades").send({ alunoId: dentro.body.id, simuladoId: exam.body.id, valor: 4 });
     await request(app).post("/grades").send({ alunoId: fora.body.id, simuladoId: exam.body.id, valor: 10 });
 
@@ -84,14 +84,14 @@ describe("GET /grades/class-summary/:turmaId", () => {
   });
 
   it("treats an empty threshold as the default", async () => {
-    const turma = await request(app).post("/classes").send({ nome: "Turma Vazia", anoLetivo: 2026 });
+    const turma = await request(app).post("/classes").set(asGestao()).send({ nome: "Turma Vazia", anoLetivo: 2026 });
     const res = await request(app).get(`/grades/class-summary/${turma.body.id}?limite=`);
     expect(res.status).toBe(200);
     expect(res.body.limite).toBe(6);
   });
 
   it("rejects an invalid threshold", async () => {
-    const turma = await request(app).post("/classes").send({ nome: "Turma Lim", anoLetivo: 2026 });
+    const turma = await request(app).post("/classes").set(asGestao()).send({ nome: "Turma Lim", anoLetivo: 2026 });
     const res = await request(app).get(`/grades/class-summary/${turma.body.id}?limite=11`);
     expect(res.status).toBe(400);
   });

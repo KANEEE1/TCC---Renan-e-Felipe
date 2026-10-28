@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Calendar, Edit, MapPin, Plus, Search, Users } from "lucide-react";
 import { api } from "@/lib/api";
+import { getSessionUser } from "@/lib/auth";
 
 const SHIFT_COLORS: Record<string, string> = {
   "Manhã": "bg-amber-50 text-amber-700 border-amber-200",
@@ -36,8 +37,11 @@ interface ClassDetail extends ClassSummary {
 export function ClassList() {
   const [searchTerm, setSearchTerm] = useState("");
   const [classes, setClasses] = useState<(ClassSummary & { students: number })[]>([]);
+  // Criar, editar e matricular alunos em turmas é da gestão; professores só consultam.
+  const [isManagement, setIsManagement] = useState(false);
 
   useEffect(() => {
+    setIsManagement(!!getSessionUser()?.roles.includes("GESTAO"));
     api.get<ClassSummary[]>("/classes").then(async (list) => {
       const withCounts = await Promise.all(
         list.map(async (cls) => {
@@ -62,11 +66,13 @@ export function ClassList() {
         <div className="mb-5 flex items-center justify-between">
           <div>
             <h1 className="text-white">Turmas</h1>
-            <p className="mt-0.5 text-sm text-teal-200">Gerenciar turmas e alunos</p>
+            <p className="mt-0.5 text-sm text-teal-200">{isManagement ? "Gerenciar turmas e alunos" : "Turmas do cursinho"}</p>
           </div>
-          <Link href="/classes/add" className="flex h-10 w-10 items-center justify-center rounded-xl bg-white shadow-sm transition-colors hover:bg-teal-50">
-            <Plus size={20} className="text-teal-600" />
-          </Link>
+          {isManagement && (
+            <Link href="/classes/add" className="flex h-10 w-10 items-center justify-center rounded-xl bg-white shadow-sm transition-colors hover:bg-teal-50">
+              <Plus size={20} className="text-teal-600" />
+            </Link>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -133,6 +139,7 @@ export function ClassList() {
                 </div>
               )}
 
+              {isManagement && (
               <div className="grid grid-cols-2 gap-2">
                 <Link
                   href={`/classes/edit/${cls.id}`}
@@ -147,6 +154,7 @@ export function ClassList() {
                   <Users size={13} /> Alunos
                 </Link>
               </div>
+              )}
             </div>
           </div>
         ))}

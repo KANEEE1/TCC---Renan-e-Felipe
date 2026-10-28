@@ -1,6 +1,6 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
-import { app, resetDb } from "./helpers.js";
+import { app, resetDb, asGestao } from "./helpers.js";
 
 describe("grades", () => {
   beforeEach(async () => {
@@ -12,7 +12,7 @@ describe("grades", () => {
     const exam = await request(app).post("/simulados").send({ nome: "Simulado ENEM 1", data: "2026-10-01", disciplinaId: subject.body.id });
     expect(exam.status).toBe(201);
 
-    const student = await request(app).post("/students").send({ nome: "Aluno Grades" });
+    const student = await request(app).post("/students").set(asGestao()).send({ nome: "Aluno Grades" });
     const grade = await request(app).post("/grades").send({
       alunoId: student.body.id,
       simuladoId: exam.body.id,
@@ -28,7 +28,7 @@ describe("grades", () => {
   it("includes the linked subject and grades when listing exams", async () => {
     const subject = await request(app).post("/disciplinas").send({ nome: "Física" });
     const exam = await request(app).post("/simulados").send({ nome: "Simulado Física", data: "2026-10-02", disciplinaId: subject.body.id });
-    const student = await request(app).post("/students").send({ nome: "Aluno" });
+    const student = await request(app).post("/students").set(asGestao()).send({ nome: "Aluno" });
     await request(app).post("/grades").send({ alunoId: student.body.id, simuladoId: exam.body.id, valor: 7 });
 
     const list = await request(app).get("/simulados");
@@ -40,7 +40,7 @@ describe("grades", () => {
 
   it("rejects a second grade for the same student on the same exam", async () => {
     const exam = await request(app).post("/simulados").send({ nome: "Simulado Único", data: "2026-10-03" });
-    const student = await request(app).post("/students").send({ nome: "Aluno Dup" });
+    const student = await request(app).post("/students").set(asGestao()).send({ nome: "Aluno Dup" });
 
     await request(app).post("/grades").send({ alunoId: student.body.id, simuladoId: exam.body.id, valor: 6 });
     const dup = await request(app).post("/grades").send({ alunoId: student.body.id, simuladoId: exam.body.id, valor: 9 });
@@ -50,7 +50,7 @@ describe("grades", () => {
 
   it("rejects a negative grade", async () => {
     const exam = await request(app).post("/simulados").send({ nome: "Simulado Neg", data: "2026-10-04" });
-    const student = await request(app).post("/students").send({ nome: "Aluno Neg" });
+    const student = await request(app).post("/students").set(asGestao()).send({ nome: "Aluno Neg" });
 
     const res = await request(app).post("/grades").send({ alunoId: student.body.id, simuladoId: exam.body.id, valor: -1 });
 

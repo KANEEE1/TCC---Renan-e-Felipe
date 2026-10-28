@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { BarChart3, Edit, Plus, Search } from "lucide-react";
 import { api } from "@/lib/api";
+import { getSessionUser } from "@/lib/auth";
 
 const AVATAR_GRADIENTS = [
   "from-blue-400 to-indigo-500",
@@ -28,8 +29,11 @@ interface Student {
 export function StudentList() {
   const [searchTerm, setSearchTerm] = useState("");
   const [students, setStudents] = useState<Student[]>([]);
+  // Cadastrar e editar alunos é da gestão; professores só consultam.
+  const [isManagement, setIsManagement] = useState(false);
 
   useEffect(() => {
+    setIsManagement(!!getSessionUser()?.roles.includes("GESTAO"));
     api.get<Student[]>("/students").then(setStudents).catch(() => setStudents([]));
   }, []);
 
@@ -51,9 +55,11 @@ export function StudentList() {
             <h1 className="text-white">Alunos</h1>
             <p className="mt-0.5 text-sm text-indigo-200">Alunos matriculados</p>
           </div>
-          <Link href="/students/add" className="flex h-10 w-10 items-center justify-center rounded-xl bg-white shadow-sm transition-colors hover:bg-indigo-50">
-            <Plus size={20} className="text-indigo-600" />
-          </Link>
+          {isManagement && (
+            <Link href="/students/add" className="flex h-10 w-10 items-center justify-center rounded-xl bg-white shadow-sm transition-colors hover:bg-indigo-50">
+              <Plus size={20} className="text-indigo-600" />
+            </Link>
+          )}
         </div>
 
         <div className="grid grid-cols-3 gap-3">
@@ -105,13 +111,15 @@ export function StudentList() {
 
               {student.numero && <p className="mb-3 text-xs text-slate-400">Nº {student.numero}</p>}
 
-              <div className="grid grid-cols-2 gap-2">
-                <Link
-                  href={`/students/edit/${student.id}`}
-                  className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 py-2 text-xs text-slate-500 transition-colors hover:bg-blue-50 hover:text-blue-600"
-                >
-                  <Edit size={13} /> Editar
-                </Link>
+              <div className={`grid gap-2 ${isManagement ? "grid-cols-2" : "grid-cols-1"}`}>
+                {isManagement && (
+                  <Link
+                    href={`/students/edit/${student.id}`}
+                    className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 py-2 text-xs text-slate-500 transition-colors hover:bg-blue-50 hover:text-blue-600"
+                  >
+                    <Edit size={13} /> Editar
+                  </Link>
+                )}
                 <Link
                   href={`/attendance/report/${student.id}`}
                   className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 py-2 text-xs text-slate-500 transition-colors hover:bg-purple-50 hover:text-purple-600"

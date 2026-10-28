@@ -17,6 +17,7 @@ import {
   Users
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
+import { todayInSaoPaulo } from "@/lib/date";
 import { GradeCreatedDialog } from "@/components/schedule/grade-created-dialog";
 import { PeriodPicker, formatPeriodo } from "@/components/schedule/period-picker";
 import { CurriculumEditor, formatHours, makeRow, toDisciplinasPayload, type CargaRow } from "@/components/classes/curriculum-editor";
@@ -169,6 +170,9 @@ export function ScheduleWizard() {
 
   const [result, setResult] = useState<GenerateResult | null>(null);
   const [confirming, setConfirming] = useState(false);
+  // Grade ativa da turma escolhida (aulas na grade e data final >= hoje): pede confirmação antes de seguir.
+  const [activeGrade, setActiveGrade] = useState<{ aulas: number } | null>(null);
+  const [checkingActive, setCheckingActive] = useState(false);
   const [created, setCreated] = useState<number | null>(null);
 
   const loadBase = () => {
@@ -212,6 +216,29 @@ export function ScheduleWizard() {
     setRows(rowsOf(cls.cargas ?? []));
   };
 
+  // Único ponto de saída do passo 1 (clique no card ou "Continuar"): avisa antes se a turma já tem grade ativa.
+  const advanceFromClass = async (id: string, cls: ClassDetail) => {
+    if (cls.gradeFim && cls.gradeFim >= todayInSaoPaulo()) {
+      setCheckingActive(true);
+      try {
+        const aulas = await api.get<unknown[]>(`/schedule/by-class/${id}`);
+        if (aulas.length > 0) {
+          setActiveGrade({ aulas: aulas.length });
+          return;
+        }
+      } catch {
+        // Sem a contagem, segue: a confirmação final de substituição ainda protege a grade atual.
+      } finally {
+        setCheckingActive(false);
+      }
+    }
+    setStep(2);
+  };
+
+  const continueFromClass = () => {
+    if (classId && detail) void advanceFromClass(classId, detail);
+  };
+
   const goTo = (next: number) => {
     setError(null);
     if (next < 6) setResult(null);
@@ -221,7 +248,7 @@ export function ScheduleWizard() {
   const selectClass = async (id: string) => {
     setError(null);
     if (id === classId && detail) {
-      setStep(2);
+      await advanceFromClass(id, detail);
       return;
     }
     setLoadingClass(true);
@@ -234,7 +261,7 @@ export function ScheduleWizard() {
       setExcluded(new Set());
       setResult(null);
       setCreated(null);
-      setStep(2);
+      await advanceFromClass(id, cls);
     } catch {
       setError("Não foi possível carregar a turma.");
     } finally {
@@ -383,7 +410,7 @@ export function ScheduleWizard() {
   // Controle do rodapé (Voltar / Continuar) por passo.
   const next: { label: string; onClick: () => void; disabled: boolean } | null =
     step === 1
-      ? { label: "Continuar", onClick: () => classId && setStep(2), disabled: !classId || !detail }
+      ? { label: "Continuar", onClick: continueFromClass, disabled: !classId || !detail || checkingActive }
       : step === 2
         ? { label: "Salvar e continuar", onClick: savePeriod, disabled: busy || !gradeInicio || !gradeFim || gradeFim < gradeInicio }
         : step === 3
@@ -726,6 +753,44 @@ export function ScheduleWizard() {
               </button>
             )
           )}
+        </div>
+      )}
+
+      {activeGrade && detail && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
+          <div role="dialog" aria-modal="true" className="w-full max-w-sm space-y-4 rounded-2xl bg-white p-5 shadow-xl">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-0.5 shrink-0 text-amber-500" />
+              <div>
+                <h3 className="font-semibold text-gray-800">Você tem certeza?</h3>
+                <p className="mt-1 text-sm text-gray-600">
+                  Já existe uma grade horária ativa para a turma <strong>{detail.nome}</strong>
+                  {detail.gradeInicio && detail.gradeFim && <>, válida de {formatPeriodo(detail.gradeInicio, detail.gradeFim)}</>}, com{" "}
+                  {activeGrade.aulas} aula{activeGrade.aulas !== 1 ? "s" : ""} por semana.
+                </p>
+                <p className="mt-2 text-sm text-gray-600">Ao confirmar a nova grade, ela substituirá a atual.</p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setActiveGrade(null)}
+                className="flex-1 rounded-full border border-gray-300 py-2.5 text-gray-700 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveGrade(null);
+                  setStep(2);
+                }}
+                className="flex-1 rounded-full bg-teal-600 py-2.5 text-white hover:bg-teal-700"
+              >
+                Criar nova grade
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

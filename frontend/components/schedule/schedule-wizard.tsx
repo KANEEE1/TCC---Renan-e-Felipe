@@ -7,7 +7,6 @@ import {
   ArrowLeft,
   BookOpen,
   Check,
-  CheckCircle2,
   ChevronRight,
   CalendarRange,
   Clock,
@@ -18,6 +17,7 @@ import {
   Users
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
+import { GradeCreatedDialog } from "@/components/schedule/grade-created-dialog";
 import { PeriodPicker, formatPeriodo } from "@/components/schedule/period-picker";
 import { CurriculumEditor, formatHours, makeRow, toDisciplinasPayload, type CargaRow } from "@/components/classes/curriculum-editor";
 import {
@@ -367,19 +367,6 @@ export function ScheduleWizard() {
     }
   };
 
-  const restart = () => {
-    setClassId(null);
-    setDetail(null);
-    setResult(null);
-    setCreated(null);
-    setExcluded(new Set());
-    setGrid(emptyGrid());
-    setJanelasFor(null);
-    setError(null);
-    setStep(1);
-    loadBase();
-  };
-
   const requiredMinutes = cargaMinutes(cargas);
   const availableMinutes = grid.reduce((sum, col) => sum + col.filter(Boolean).length, 0) * 30;
   const hasWindows = availableMinutes > 0;
@@ -424,37 +411,13 @@ export function ScheduleWizard() {
         </div>
       </div>
 
-      {created === null && <Stepper step={step} onGo={(n) => n < step && goTo(n)} />}
+      <Stepper step={step} onGo={(n) => n < step && goTo(n)} />
 
       <div className="flex-1 space-y-4 overflow-y-auto p-4 pb-40">
-        {created !== null ? (
-          <div className={`${cardClass} mx-auto max-w-md space-y-4 py-8 text-center`}>
-            <CheckCircle2 size={56} className="mx-auto text-emerald-500" />
-            <div>
-              <h2 className="text-lg font-semibold text-gray-800">Grade criada!</h2>
-              <p className="mt-1 text-sm text-gray-600">
-                {created} aula{created !== 1 ? "s foram criadas" : " foi criada"} para {detail?.nome}.
-                {detail?.gradeInicio && detail.gradeFim && <> Período: {formatPeriodo(detail.gradeInicio, detail.gradeFim)}.</>}
-              </p>
-            </div>
-            <div className="flex flex-col gap-2">
-              <Link
-                href="/schedule/by-class"
-                className="rounded-full bg-teal-600 py-3 text-white transition-colors hover:bg-teal-700"
-              >
-                Ver grade da turma
-              </Link>
-              <button
-                type="button"
-                onClick={restart}
-                className="rounded-full border border-gray-300 py-3 text-gray-700 hover:bg-gray-50"
-              >
-                Gerar para outra turma
-              </button>
-            </div>
-          </div>
-        ) : (
-          <>
+        {created !== null && detail && (
+          <GradeCreatedDialog turma={detail.nome} aulas={created} gradeInicio={detail.gradeInicio} gradeFim={detail.gradeFim} />
+        )}
+
             {step === 1 && (
               <section className="space-y-3">
                 <Intro title="Qual turma?" text="Escolha a turma que terá a grade gerada." />
@@ -717,8 +680,6 @@ export function ScheduleWizard() {
             )}
 
             {error && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-600">{error}</p>}
-          </>
-        )}
       </div>
 
       {created === null && (

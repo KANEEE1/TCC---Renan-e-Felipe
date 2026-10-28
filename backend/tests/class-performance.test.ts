@@ -1,7 +1,7 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildClassPerformance, type ClassPerformanceNota } from "../src/modules/notas/notas.service.js";
-import { app, resetDb } from "./helpers.js";
+import { app, resetDb, asGestao } from "./helpers.js";
 
 const nota = (valor: number, aluno: string, sim: string, disc: { id: string; nome: string } | null, data = "2026-01-01"): ClassPerformanceNota => ({
   valor,
@@ -68,8 +68,8 @@ describe("GET /grades/class-summary/:turmaId", () => {
     const turma = await request(app).post("/classes").send({ nome: "Turma Desempenho", anoLetivo: 2026 });
     const disc = await request(app).post("/disciplinas").send({ nome: "Química" });
     const exam = await request(app).post("/simulados").send({ nome: "Sim 1", data: "2026-10-01", disciplinaId: disc.body.id });
-    const dentro = await request(app).post("/students").send({ nome: "Dentro" });
-    const fora = await request(app).post("/students").send({ nome: "Fora" });
+    const dentro = await request(app).post("/students").set(asGestao()).send({ nome: "Dentro" });
+    const fora = await request(app).post("/students").set(asGestao()).send({ nome: "Fora" });
     await request(app).post(`/classes/${turma.body.id}/students`).send({ studentIds: [dentro.body.id] });
     await request(app).post("/grades").send({ alunoId: dentro.body.id, simuladoId: exam.body.id, valor: 4 });
     await request(app).post("/grades").send({ alunoId: fora.body.id, simuladoId: exam.body.id, valor: 10 });

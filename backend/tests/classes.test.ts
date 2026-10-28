@@ -1,6 +1,6 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
-import { app, resetDb } from "./helpers.js";
+import { app, resetDb, asGestao } from "./helpers.js";
 
 describe("classes", () => {
   beforeEach(async () => {
@@ -80,7 +80,7 @@ describe("classes", () => {
   });
 
   it("returns 404 when assigning students to an unknown class", async () => {
-    const student = await request(app).post("/students").send({ nome: "Aluno Teste" });
+    const student = await request(app).post("/students").set(asGestao()).send({ nome: "Aluno Teste" });
 
     const res = await request(app)
       .post("/classes/nonexistent-id/students")
@@ -91,7 +91,7 @@ describe("classes", () => {
 
   it("assigns students to a class and is idempotent on repeat", async () => {
     const turma = await request(app).post("/classes").send({ nome: "Turma C", anoLetivo: 2026 });
-    const aluno = await request(app).post("/students").send({ nome: "Aluno Assign" });
+    const aluno = await request(app).post("/students").set(asGestao()).send({ nome: "Aluno Assign" });
 
     const first = await request(app)
       .post(`/classes/${turma.body.id}/students`)

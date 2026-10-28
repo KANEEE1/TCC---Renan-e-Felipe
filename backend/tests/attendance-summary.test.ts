@@ -2,7 +2,7 @@ import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildAttendanceSummary } from "../src/modules/presenca/presenca.service.js";
 import { prisma } from "../src/shared/prisma.js";
-import { app, resetDb } from "./helpers.js";
+import { app, resetDb, asGestao } from "./helpers.js";
 
 const T1 = { id: "t1", nome: "Turma 1" };
 const T2 = { id: "t2", nome: "Turma 2" };
@@ -81,7 +81,7 @@ describe("GET /attendance/summary", () => {
   it("filters by turmaId counting only that class's lessons", async () => {
     const c1 = await setupClass("A", "a@sum.com", "SEGUNDA");
     const c2 = await setupClass("B", "b@sum.com", "TERCA");
-    const aluno = await request(app).post("/students").send({ nome: "Aluno Sum" });
+    const aluno = await request(app).post("/students").set(asGestao()).send({ nome: "Aluno Sum" });
     const id = aluno.body.id;
     await request(app).post(`/classes/${c1.turmaId}/students`).send({ studentIds: [id] });
     await request(app).post(`/classes/${c2.turmaId}/students`).send({ studentIds: [id] });

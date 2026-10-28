@@ -1,6 +1,6 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
-import { app, resetDb } from "./helpers.js";
+import { app, resetDb, asGestao, asTeacher } from "./helpers.js";
 
 describe("students", () => {
   beforeEach(async () => {
@@ -8,7 +8,7 @@ describe("students", () => {
   });
 
   it("creates and lists a student", async () => {
-    const created = await request(app).post("/students").send({ nome: "Ana Beatriz Santos", numero: "01" });
+    const created = await request(app).post("/students").set(asGestao()).send({ nome: "Ana Beatriz Santos", numero: "01" });
     expect(created.status).toBe(201);
 
     const list = await request(app).get("/students");
@@ -18,14 +18,14 @@ describe("students", () => {
   });
 
   it("rejects duplicate email", async () => {
-    await request(app).post("/students").send({ nome: "Aluno 1", email: "aluno@test.com" });
-    const dup = await request(app).post("/students").send({ nome: "Aluno 2", email: "aluno@test.com" });
+    await request(app).post("/students").set(asGestao()).send({ nome: "Aluno 1", email: "aluno@test.com" });
+    const dup = await request(app).post("/students").set(asGestao()).send({ nome: "Aluno 2", email: "aluno@test.com" });
 
     expect(dup.status).toBe(409);
   });
 
   it("fetches a student by id", async () => {
-    const created = await request(app).post("/students").send({ nome: "Bruno Costa" });
+    const created = await request(app).post("/students").set(asGestao()).send({ nome: "Bruno Costa" });
 
     const res = await request(app).get(`/students/${created.body.id}`);
 
@@ -39,16 +39,27 @@ describe("students", () => {
   });
 
   it("updates a student", async () => {
-    const created = await request(app).post("/students").send({ nome: "Carla Silva" });
+    const created = await request(app).post("/students").set(asGestao()).send({ nome: "Carla Silva" });
 
-    const res = await request(app).put(`/students/${created.body.id}`).send({ telefone: "(11) 99999-0000" });
+    const res = await request(app).put(`/students/${created.body.id}`).set(asGestao()).send({ telefone: "(11) 99999-0000" });
 
     expect(res.status).toBe(200);
     expect(res.body.telefone).toBe("(11) 99999-0000");
   });
 
   it("rejects creating a student without a name", async () => {
-    const res = await request(app).post("/students").send({});
+    const res = await request(app).post("/students").set(asGestao()).send({});
     expect(res.status).toBe(400);
+  });
+
+  it("only GESTAO creates or edits students", async () => {
+    const created = await request(app).post("/students").set(asGestao()).send({ nome: "Aluno Teste" });
+    expect(created.status).toBe(201);
+    const professor = asTeacher("professor-qualquer");
+
+    expect((await request(app).post("/students").send({ nome: "Sem login" })).status).toBe(401);
+    expect((await request(app).post("/students").set(professor).send({ nome: "Professor" })).status).toBe(403);
+    expect((await request(app).put(`/students/${created.body.id}`).set(professor).send({ nome: "Outro" })).status).toBe(403);
+    expect((await request(app).get(`/students/${created.body.id}`)).status).toBe(200);
   });
 });

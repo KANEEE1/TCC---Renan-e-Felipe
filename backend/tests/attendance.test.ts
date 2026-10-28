@@ -1,92 +1,344 @@
 import request from "supertest";
-import { beforeEach, describe, expect, it } from "vitest";
-import { app, resetDb } from "./helpers.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { prisma } from "../src/shared/prisma.js";
+import { app, asGestao, asTeacher, createUser, resetDb } from "./helpers.js";
 
-async function setupLesson() {
-  const turma = await request(app).post("/classes").send({ nome: "Turma Att", anoLetivo: 2026 });
-  const disciplina = await request(app).post("/disciplinas").send({ nome: "Química" });
-  const teacher = await request(app).post("/teachers").send({ name: "Prof Att", email: "prof.att@test.com", password: "senha1234" });
-  const lesson = await request(app).post("/schedule").send({
-    turmaId: turma.body.id,
-    disciplinaId: disciplina.body.id,
-    professorId: teacher.body.id,
-    diaSemana: "QUARTA",
-    horarioInicio: "08:00",
-    horarioFim: "10:00"
-  });
+// America/Sao_Paulo é UTC-3. 2026-10-28 é uma quarta-feira. Aula: QUARTA 08:00-10:00 (SP).
+const QUARTA_0830 = "2026-10-28T11:30:00Z";
+const QUARTA_0759 = "2026-10-28T10:59:00Z";
+const QUARTA_1000 = "2026-10-28T13:00:00Z";
+const QUARTA_1001 = "2026-10-28T13:01:00Z";
+const QUINTA_0830 = "2026-10-29T11:30:00Z";
 
-  return { turmaId: turma.body.id, aulaId: lesson.body.id };
+function setNow(iso: string) {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date(iso));
 }
+
+async function setup(opts: { gradeInicio?: string; gradeFim?: string; diaSemana?: string; alunos?: number } = {}) {
+  const turma = await prisma.turma.create({
+    data: {
+      nome: "Turma Att",
+      anoLetivo: 2026,
+      gradeInicio: opts.gradeInicio ? new Date(opts.gradeInicio) : null,
+      gradeFim: opts.gradeFim ? new Date(opts.gradeFim) : null
+    }
+  });
+  const disciplina = await prisma.disciplina.create({ data: { nome: "Química", nomeNormalizado: "quimica" } });
+  const prof = await createUser({ email: "prof@att.com", roles: ["PROFESSOR"], name: "Prof Att" });
+  const aula = await prisma.aula.create({
+    data: {
+      turmaId: turma.id,
+      disciplinaId: disciplina.id,
+      professorId: prof.id,
+      diaSemana: opts.diaSemana ?? "QUARTA",
+      horarioInicio: new Date("1970-01-01T08:00:00Z"),
+      horarioFim: new Date("1970-01-01T10:00:00Z"),
+      createdAt: new Date("2026-10-01T12:00:00Z")
+    }
+  });
+  const alunos = [];
+  for (let i = 0; i < (opts.alunos ?? 2); i++) {
+    const aluno = await prisma.aluno.create({ data: { nome: `Aluno ${i + 1}` } });
+    await prisma.matricula.create({ data: { alunoId: aluno.id, turmaId: turma.id, dataMatricula: new Date("2026-10-01T12:00:00Z") } });
+    alunos.push(aluno);
+  }
+  return { turma, aula, prof, alunos };
+}
+
+const entriesOf = (alunos: { id: string }[], presente = true) => alunos.map((a) => ({ alunoId: a.id, presente }));
+const countPresencas = (aulaId: string) => prisma.presenca.count({ where: { aulaId } });
 
 describe("attendance", () => {
   beforeEach(async () => {
     await resetDb();
   });
-
-  it("marks attendance for multiple students in one call", async () => {
-    const { turmaId, aulaId } = await setupLesson();
-    const s1 = await request(app).post("/students").send({ nome: "Aluno 1" });
-    const s2 = await request(app).post("/students").send({ nome: "Aluno 2" });
-
-    const res = await request(app).post("/attendance/mark").send({
-      aulaId,
-      data: "2026-09-30",
-      entries: [
-        { alunoId: s1.body.id, presente: true },
-        { alunoId: s2.body.id, presente: false }
-      ]
-    });
-
-    expect(res.status).toBe(201);
-    expect(res.body).toHaveLength(2);
-
-    const byClass = await request(app).get(`/attendance/by-class/${turmaId}`);
-    expect(byClass.body).toHaveLength(2);
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
-  it("is idempotent when re-marking the same student/lesson/date", async () => {
-    const { aulaId } = await setupLesson();
-    const student = await request(app).post("/students").send({ nome: "Aluno Repeat" });
+  describe("POST /attendance/mark", () => {
+    it("lets the owner register inside the window and re-submit (upsert)", async () => {
+      const { aula, prof, alunos } = await setup();
+      setNow(QUARTA_0830);
 
-    await request(app).post("/attendance/mark").send({
-      aulaId,
-      data: "2026-09-30",
-      entries: [{ alunoId: student.body.id, presente: true }]
+      const res = await request(app).post("/attendance/mark").set(asTeacher(prof.id)).send({ aulaId: aula.id, entries: entriesOf(alunos) });
+      expect(res.status).toBe(201);
+      expect(res.body).toHaveLength(2);
+
+      const again = await request(app)
+        .post("/attendance/mark")
+        .set(asTeacher(prof.id))
+        .send({ aulaId: aula.id, data: "2026-10-28", entries: [{ alunoId: alunos[0].id, presente: false }] });
+      expect(again.status).toBe(201);
+      expect(await countPresencas(aula.id)).toBe(2);
+      const row = await prisma.presenca.findFirstOrThrow({ where: { alunoId: alunos[0].id } });
+      expect(row.presente).toBe(false);
     });
 
-    const second = await request(app).post("/attendance/mark").send({
-      aulaId,
-      data: "2026-09-30",
-      entries: [{ alunoId: student.body.id, presente: false }]
+    it("fills unsent enrolled students as present in the same registration", async () => {
+      const { aula, prof, alunos } = await setup();
+      setNow(QUARTA_0830);
+      const res = await request(app)
+        .post("/attendance/mark")
+        .set(asTeacher(prof.id))
+        .send({ aulaId: aula.id, entries: [{ alunoId: alunos[0].id, presente: false }] });
+      expect(res.status).toBe(201);
+      const rows = await prisma.presenca.findMany({ where: { aulaId: aula.id } });
+      expect(rows).toHaveLength(2);
+      expect(rows.find((r) => r.alunoId === alunos[1].id)).toMatchObject({ presente: true, automatica: false });
     });
 
-    expect(second.status).toBe(201);
+    it("requires authentication", async () => {
+      const { aula, alunos } = await setup();
+      setNow(QUARTA_0830);
+      const res = await request(app).post("/attendance/mark").send({ aulaId: aula.id, entries: entriesOf(alunos) });
+      expect(res.status).toBe(401);
+    });
 
-    const report = await request(app).get(`/attendance/report/${student.body.id}`);
-    expect(report.body.totalClasses).toBe(1);
-    expect(report.body.present).toBe(0);
+    it("accepts the window boundaries and rejects outside of them with 409", async () => {
+      const { aula, prof, alunos } = await setup();
+      const send = () => request(app).post("/attendance/mark").set(asTeacher(prof.id)).send({ aulaId: aula.id, entries: entriesOf(alunos) });
+
+      setNow(QUARTA_0759);
+      expect((await send()).status).toBe(409);
+      setNow(QUARTA_1000);
+      expect((await send()).status).toBe(201);
+      setNow(QUARTA_1001);
+      const late = await send();
+      expect(late.status).toBe(409);
+      expect(late.body.message).toBe("Fora do horário da aula");
+    });
+
+    it("rejects another weekday with 409", async () => {
+      const { aula, prof, alunos } = await setup();
+      setNow(QUINTA_0830);
+      const res = await request(app).post("/attendance/mark").set(asTeacher(prof.id)).send({ aulaId: aula.id, entries: entriesOf(alunos) });
+      expect(res.status).toBe(409);
+      expect(res.body.message).toBe("A aula não é hoje");
+    });
+
+    it("rejects dates outside the class grid period with 409", async () => {
+      const { aula, prof, alunos } = await setup({ gradeInicio: "2026-11-01", gradeFim: "2026-12-01" });
+      setNow(QUARTA_0830);
+      const res = await request(app).post("/attendance/mark").set(asTeacher(prof.id)).send({ aulaId: aula.id, entries: entriesOf(alunos) });
+      expect(res.status).toBe(409);
+      expect(res.body.message).toBe("Fora do período da grade");
+    });
+
+    it("rejects gestao and other teachers with 403", async () => {
+      const { aula, alunos } = await setup();
+      const other = await createUser({ email: "outro@att.com", roles: ["PROFESSOR"] });
+      setNow(QUARTA_0830);
+      const body = { aulaId: aula.id, entries: entriesOf(alunos) };
+      expect((await request(app).post("/attendance/mark").set(asGestao()).send(body)).status).toBe(403);
+      expect((await request(app).post("/attendance/mark").set(asTeacher(other.id)).send(body)).status).toBe(403);
+    });
+
+    async function substitution(aulaId: string, substitutoId: string, status: "ACEITA" | "PENDENTE", data = "2026-10-28") {
+      const ausencia = await prisma.ausenciaAula.create({
+        data: { aulaId, data: new Date(data), registradoPorId: substitutoId }
+      });
+      await prisma.substituicao.create({ data: { ausenciaId: ausencia.id, substitutoId, status } });
+    }
+
+    it("lets an accepted substitute register that day, but not a pending one", async () => {
+      const { aula, alunos } = await setup();
+      const sub = await createUser({ email: "sub@att.com", roles: ["PROFESSOR"] });
+      await substitution(aula.id, sub.id, "PENDENTE");
+      setNow(QUARTA_0830);
+      const body = { aulaId: aula.id, entries: entriesOf(alunos) };
+      expect((await request(app).post("/attendance/mark").set(asTeacher(sub.id)).send(body)).status).toBe(403);
+
+      await prisma.substituicao.updateMany({ data: { status: "ACEITA" } });
+      expect((await request(app).post("/attendance/mark").set(asTeacher(sub.id)).send(body)).status).toBe(201);
+    });
+
+    it("does not let a substitute of another date register today", async () => {
+      const { aula, alunos } = await setup();
+      const sub = await createUser({ email: "sub2@att.com", roles: ["PROFESSOR"] });
+      await substitution(aula.id, sub.id, "ACEITA", "2026-10-21");
+      setNow(QUARTA_0830);
+      const res = await request(app).post("/attendance/mark").set(asTeacher(sub.id)).send({ aulaId: aula.id, entries: entriesOf(alunos) });
+      expect(res.status).toBe(403);
+    });
+
+    it("rejects a body date different from today with 400", async () => {
+      const { aula, prof, alunos } = await setup();
+      setNow(QUARTA_0830);
+      const res = await request(app)
+        .post("/attendance/mark")
+        .set(asTeacher(prof.id))
+        .send({ aulaId: aula.id, data: "2026-10-21", entries: entriesOf(alunos) });
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects students not enrolled in the class with 400", async () => {
+      const { aula, prof } = await setup();
+      const stranger = await prisma.aluno.create({ data: { nome: "Forasteiro" } });
+      setNow(QUARTA_0830);
+      const res = await request(app)
+        .post("/attendance/mark")
+        .set(asTeacher(prof.id))
+        .send({ aulaId: aula.id, entries: [{ alunoId: stranger.id, presente: true }] });
+      expect(res.status).toBe(400);
+    });
   });
 
-  it("computes an attendance report with the correct percentage", async () => {
-    const { aulaId } = await setupLesson();
-    const student = await request(app).post("/students").send({ nome: "Aluno Report" });
+  describe("consolidation", () => {
+    it("marks everyone present for a past lesson without records", async () => {
+      const { aula, alunos } = await setup();
+      setNow("2026-10-29T15:00:00Z"); // quinta; quarta 28/10 e 21/10 e 14/10 ... desde a criação (01/10)
 
-    await request(app).post("/attendance/mark").send({ aulaId, data: "2026-09-01", entries: [{ alunoId: student.body.id, presente: true }] });
-    await request(app).post("/attendance/mark").send({ aulaId, data: "2026-09-02", entries: [{ alunoId: student.body.id, presente: false }] });
+      const res = await request(app).get("/attendance");
+      expect(res.status).toBe(200);
+      // quartas desde 01/10: 7, 14, 21, 28
+      expect(res.body).toHaveLength(4 * alunos.length);
+      expect(res.body.every((p: { presente: boolean }) => p.presente)).toBe(true);
+      expect(await countPresencas(aula.id)).toBe(8);
+    });
 
-    const res = await request(app).get(`/attendance/report/${student.body.id}`);
+    it("does not alter a date that already has records and is idempotent", async () => {
+      const { aula, alunos } = await setup();
+      await prisma.presenca.create({ data: { alunoId: alunos[0].id, aulaId: aula.id, data: new Date("2026-10-21"), presente: false } });
+      setNow("2026-10-29T15:00:00Z");
 
-    expect(res.body.totalClasses).toBe(2);
-    expect(res.body.present).toBe(1);
-    expect(res.body.absent).toBe(1);
-    expect(res.body.percentage).toBe(50);
+      await request(app).get("/attendance");
+      await request(app).get("/attendance/summary");
+      expect(await countPresencas(aula.id)).toBe(1 + 3 * 2);
+      const kept = await prisma.presenca.findFirstOrThrow({ where: { alunoId: alunos[0].id, data: new Date("2026-10-21") } });
+      expect(kept.presente).toBe(false);
+      expect(await prisma.presenca.count({ where: { data: new Date("2026-10-21") } })).toBe(1);
+    });
+
+    it("respects the class grid period", async () => {
+      const { aula } = await setup({ gradeInicio: "2026-10-14", gradeFim: "2026-10-21" });
+      setNow("2026-10-29T15:00:00Z");
+      await request(app).get("/attendance");
+      const dates = (await prisma.presenca.findMany({ where: { aulaId: aula.id }, distinct: ["data"] })).map((p) => p.data.toISOString().slice(0, 10)).sort();
+      expect(dates).toEqual(["2026-10-14", "2026-10-21"]);
+    });
+
+    it("does not consolidate today before the end, and does after it (closing the window)", async () => {
+      const { aula, prof, alunos } = await setup();
+      await prisma.presenca.createMany({
+        data: ["2026-10-07", "2026-10-14", "2026-10-21"].map((d) => ({ alunoId: alunos[0].id, aulaId: aula.id, data: new Date(d), presente: true }))
+      });
+
+      setNow(QUARTA_1000);
+      await request(app).get("/attendance");
+      expect(await prisma.presenca.count({ where: { data: new Date("2026-10-28") } })).toBe(0);
+
+      setNow(QUARTA_1001);
+      await request(app).get("/attendance");
+      expect(await prisma.presenca.count({ where: { data: new Date("2026-10-28"), presente: true } })).toBe(2);
+
+      const mark = await request(app).post("/attendance/mark").set(asTeacher(prof.id)).send({ aulaId: aula.id, entries: entriesOf(alunos) });
+      expect(mark.status).toBe(409);
+    });
+
+    it("does not give attendance on past dates to students enrolled later", async () => {
+      const { turma, aula, alunos } = await setup({ gradeInicio: "2026-10-14", gradeFim: "2026-10-28" });
+      const tardio = await prisma.aluno.create({ data: { nome: "Tardio" } });
+      await prisma.matricula.create({ data: { alunoId: tardio.id, turmaId: turma.id, dataMatricula: new Date("2026-10-20T12:00:00Z") } });
+      setNow(QUARTA_1001);
+      await request(app).get("/attendance");
+      const datas = (await prisma.presenca.findMany({ where: { alunoId: tardio.id } })).map((p) => p.data.toISOString().slice(0, 10)).sort();
+      expect(datas).toEqual(["2026-10-21", "2026-10-28"]);
+      expect(await prisma.presenca.count({ where: { alunoId: alunos[0].id, aulaId: aula.id } })).toBe(3);
+    });
+
+    it("does not consolidate the day a lesson was created after its end time", async () => {
+      const { aula } = await setup({ gradeInicio: "2026-10-28", gradeFim: "2026-10-28" });
+      await prisma.aula.update({ where: { id: aula.id }, data: { createdAt: new Date("2026-10-28T14:00:00Z") } }); // 11:00 SP
+      setNow("2026-10-28T20:00:00Z");
+      await request(app).get("/attendance");
+      expect(await countPresencas(aula.id)).toBe(0);
+    });
+
+    it("also consolidates on a day the teacher was absent", async () => {
+      const { aula, prof, alunos } = await setup({ gradeInicio: "2026-10-21", gradeFim: "2026-10-21" });
+      await prisma.ausenciaAula.create({ data: { aulaId: aula.id, data: new Date("2026-10-21"), registradoPorId: prof.id } });
+      setNow(QUARTA_0830);
+      await request(app).get("/attendance/report/" + alunos[0].id);
+      expect(await prisma.presenca.count({ where: { aulaId: aula.id, data: new Date("2026-10-21"), presente: true } })).toBe(2);
+    });
   });
 
-  it("returns a zeroed report for a student with no attendance history", async () => {
-    const student = await request(app).post("/students").send({ nome: "Aluno Sem Historico" });
+  describe("GET /attendance/today", () => {
+    it("requires authentication", async () => {
+      expect((await request(app).get("/attendance/today")).status).toBe(401);
+    });
 
-    const res = await request(app).get(`/attendance/report/${student.body.id}`);
+    it("reports status and permissions for owner, gestao and substitute", async () => {
+      const { aula, prof, alunos } = await setup();
+      const sub = await createUser({ email: "sub3@att.com", roles: ["PROFESSOR"] });
+      const ausencia = await prisma.ausenciaAula.create({ data: { aulaId: aula.id, data: new Date("2026-10-28"), registradoPorId: prof.id } });
+      await prisma.substituicao.create({ data: { ausenciaId: ausencia.id, substitutoId: sub.id, status: "ACEITA" } });
+      await prisma.presenca.createMany({
+        data: ["2026-10-07", "2026-10-14", "2026-10-21"].map((d) => ({ alunoId: alunos[0].id, aulaId: aula.id, data: new Date(d), presente: true }))
+      });
 
-    expect(res.body).toEqual({ totalClasses: 0, present: 0, absent: 0, percentage: 0, history: [] });
+      setNow(QUARTA_0759);
+      const before = await request(app).get("/attendance/today").set(asTeacher(prof.id));
+      expect(before.body).toHaveLength(1);
+      expect(before.body[0]).toMatchObject({
+        aula: { id: aula.id, horarioInicio: "08:00", horarioFim: "10:00", turma: { nome: "Turma Att" }, professor: { id: prof.id } },
+        status: "AGUARDANDO",
+        responsavel: true,
+        podeRegistrar: false
+      });
+
+      setNow(QUARTA_0830);
+      const owner = (await request(app).get("/attendance/today").set(asTeacher(prof.id))).body[0];
+      expect(owner).toMatchObject({ status: "ABERTA", responsavel: true, podeRegistrar: true, registrada: false, total: 0 });
+      const gestao = (await request(app).get("/attendance/today").set(asGestao())).body[0];
+      expect(gestao).toMatchObject({ status: "ABERTA", responsavel: false, podeRegistrar: false });
+      const substitute = (await request(app).get("/attendance/today").set(asTeacher(sub.id))).body[0];
+      expect(substitute).toMatchObject({ status: "ABERTA", responsavel: true, podeRegistrar: true });
+
+      await request(app).post("/attendance/mark").set(asTeacher(prof.id)).send({ aulaId: aula.id, entries: [{ alunoId: alunos[0].id, presente: true }, { alunoId: alunos[1].id, presente: false }] });
+      setNow("2026-10-28T12:00:00Z");
+      const during = (await request(app).get("/attendance/today").set(asTeacher(prof.id))).body[0];
+      expect(during).toMatchObject({ registrada: true, presentes: 1, total: 2 });
+
+      setNow(QUARTA_1001);
+      const closed = (await request(app).get("/attendance/today").set(asTeacher(prof.id))).body[0];
+      expect(closed).toMatchObject({ status: "ENCERRADA", registrada: true, automatica: false, podeRegistrar: false, presentes: 1, total: 2 });
+    });
+
+    it("flags automatic attendance when the window closed without a registration", async () => {
+      const { aula, prof, alunos } = await setup();
+      await prisma.presenca.createMany({
+        data: ["2026-10-07", "2026-10-14", "2026-10-21"].map((d) => ({ alunoId: alunos[0].id, aulaId: aula.id, data: new Date(d), presente: true }))
+      });
+      setNow(QUARTA_1001);
+      const item = (await request(app).get("/attendance/today").set(asTeacher(prof.id))).body[0];
+      expect(item).toMatchObject({ status: "ENCERRADA", registrada: false, automatica: true, presentes: 2, total: 2 });
+    });
+
+    it("omits lessons of other weekdays and outside the grid period", async () => {
+      await setup({ gradeInicio: "2026-11-01" });
+      setNow(QUARTA_0830);
+      expect((await request(app).get("/attendance/today").set(asGestao())).body).toEqual([]);
+    });
+  });
+
+  describe("reports", () => {
+    it("computes a report with the correct percentage", async () => {
+      const { aula, alunos } = await setup({ gradeInicio: "2026-10-07", gradeFim: "2026-10-14" });
+      await prisma.presenca.create({ data: { alunoId: alunos[0].id, aulaId: aula.id, data: new Date("2026-10-07"), presente: true } });
+      await prisma.presenca.create({ data: { alunoId: alunos[0].id, aulaId: aula.id, data: new Date("2026-10-14"), presente: false } });
+      setNow(QUARTA_0830);
+
+      const res = await request(app).get(`/attendance/report/${alunos[0].id}`);
+      expect(res.body).toMatchObject({ totalClasses: 2, present: 1, absent: 1, percentage: 50 });
+    });
+
+    it("returns a zeroed report for a student with no attendance history", async () => {
+      const student = await prisma.aluno.create({ data: { nome: "Sem Historico" } });
+      const res = await request(app).get(`/attendance/report/${student.id}`);
+      expect(res.body).toEqual({ totalClasses: 0, present: 0, absent: 0, percentage: 0, history: [] });
+    });
   });
 });

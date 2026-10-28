@@ -1,6 +1,7 @@
 import { Router } from "express";
+import { getActor, requireAuth } from "../../shared/auth.js";
 import { asyncHandler } from "../../shared/http.js";
-import { attendanceSummaryQuerySchema, createPresencaSchema, markAttendanceSchema } from "./presenca.schemas.js";
+import { attendanceSummaryQuerySchema, markAttendanceSchema } from "./presenca.schemas.js";
 import type { PresencaService } from "./presenca.service.js";
 
 export class PresencaController {
@@ -16,6 +17,10 @@ export class PresencaController {
       res.json(await this.presencaService.summary(query));
     }));
 
+    this.router.get("/today", requireAuth, asyncHandler(async (req, res) => {
+      res.json(await this.presencaService.today(getActor(req)));
+    }));
+
     this.router.get("/by-class/:classId", asyncHandler(async (req, res) => {
       res.json(await this.presencaService.listByTurma(req.params.classId as string));
     }));
@@ -24,14 +29,9 @@ export class PresencaController {
       res.json(await this.presencaService.report(req.params.studentId as string));
     }));
 
-    this.router.post("/", asyncHandler(async (req, res) => {
-      const input = createPresencaSchema.parse(req.body);
-      res.status(201).json(await this.presencaService.create(input));
-    }));
-
-    this.router.post("/mark", asyncHandler(async (req, res) => {
+    this.router.post("/mark", requireAuth, asyncHandler(async (req, res) => {
       const input = markAttendanceSchema.parse(req.body);
-      res.status(201).json(await this.presencaService.markBulk(input));
+      res.status(201).json(await this.presencaService.markBulk(getActor(req), input));
     }));
   }
 }

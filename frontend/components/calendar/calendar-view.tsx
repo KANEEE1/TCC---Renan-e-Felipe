@@ -113,8 +113,8 @@ export function CalendarView() {
   const { schedules } = useSchedule();
   const now = useNow();
 
-  // A agenda sempre abre no dia de hoje.
-  const [viewMode, setViewMode] = useState<ViewMode>("day");
+  // A agenda sempre abre na semana de hoje.
+  const [viewMode, setViewMode] = useState<ViewMode>("week");
   const [cursor, setCursor] = useState<Date>(() => new Date());
   const [selectedTeacher, setSelectedTeacher] = useState<string>(searchParams.get("teacher") || "all");
   const [selectedEvent, setSelectedEvent] = useState<ScheduleItem | null>(null);

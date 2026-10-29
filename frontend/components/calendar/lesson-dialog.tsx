@@ -32,76 +32,15 @@ interface Props {
 
 const TYPE_LABELS: Record<ScheduleItem["type"], string> = { aula: "Aula", plantao: "Plantão", aulao: "Aulão" };
 
-type Scope = "occurrence" | "series";
-
-// Índice do dia na semana começando na segunda (0) para uma data "YYYY-MM-DD".
-function weekdayIndexOf(date: string) {
-  return (new Date(`${date}T00:00:00`).getDay() + 6) % 7;
-}
-
-// Como no Google Agenda: ao salvar ou excluir, pergunta se vale só para esta aula ou para todas as aulas da série.
-function ScopeDialog({
-  title,
-  busy,
-  onCancel,
-  onConfirm
-}: {
-  title: string;
-  busy: boolean;
-  onCancel: () => void;
-  onConfirm: (scope: Scope) => void;
-}) {
-  const [scope, setScope] = useState<Scope>("occurrence");
-  return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 px-4"
-      onClick={(e) => {
-        e.stopPropagation();
-        if (!busy) onCancel();
-      }}
-    >
-      <div role="dialog" aria-modal="true" aria-label={title} className="w-full max-w-xs rounded-3xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-lg text-slate-800">{title}</h3>
-        <div className="mt-4 space-y-3 text-sm text-slate-700">
-          {(
-            [
-              ["occurrence", "Esta aula"],
-              ["series", "Todas as aulas"]
-            ] as [Scope, string][]
-          ).map(([value, label]) => (
-            <label key={value} className="flex cursor-pointer items-center gap-3">
-              <input type="radio" name="scope" checked={scope === value} onChange={() => setScope(value)} className="h-4 w-4 accent-blue-600" />
-              {label}
-            </label>
-          ))}
-        </div>
-        <div className="mt-6 flex justify-end gap-2">
-          <button type="button" onClick={onCancel} disabled={busy} className="rounded-full px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 disabled:opacity-60">
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={() => onConfirm(scope)}
-            disabled={busy}
-            className="rounded-full bg-blue-600 px-5 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-60"
-          >
-            OK
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Na edição de uma aula a gestão muda a data, o horário e o professor, para esta ocorrência ou para toda a série;
-// disciplina, turma, sala e tipo aparecem apenas para consulta.
+// Na edição de uma aula a gestão muda a data, o horário e o professor só desta ocorrência (as demais semanas
+// não mudam); disciplina, turma, sala e tipo aparecem apenas para consulta.
 export function LessonDialog({ lesson, occurrence, onClose, onSaved }: Props) {
-  const { updateSchedule, removeSchedule, updateOccurrence, cancelOccurrence } = useSchedule();
+  const { updateOccurrence, cancelOccurrence } = useSchedule();
 
   const [date, setDate] = useState(occurrence.data);
   const [startTime, setStartTime] = useState(occurrence.startTime);
   const [endTime, setEndTime] = useState(occurrence.endTime);
   const [teacherId, setTeacherId] = useState(occurrence.teacherId);
-  const [asking, setAsking] = useState<"save" | "delete" | null>(null);
 
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [saving, setSaving] = useState(false);
@@ -130,8 +69,7 @@ export function LessonDialog({ lesson, occurrence, onClose, onSaved }: Props) {
     };
   }, [teachers, lesson.subjectId, teacherId]);
 
-  // Valida e abre a pergunta "Esta aula / Todas as aulas".
-  const handleSave = () => {
+  const handleSave = async () => {
     if (saving || deleting) return;
     if (!date) return setError("Informe a data da aula.");
     if (!teacherId) return setError("Selecione o professor.");
@@ -141,47 +79,28 @@ export function LessonDialog({ lesson, occurrence, onClose, onSaved }: Props) {
     if (date === occurrence.data && startTime === occurrence.startTime && endTime === occurrence.endTime && teacherId === occurrence.teacherId) {
       return onClose();
     }
-    setAsking("save");
-  };
-
-  const handleDelete = () => {
-    if (deleting || saving) return;
-    setError(null);
-    setAsking("delete");
-  };
-
-  const confirmSave = async (scope: Scope) => {
     setSaving(true);
     try {
-      if (scope === "occurrence") {
-        await updateOccurrence(lesson.id, occurrence.dataOriginal, { data: date, startTime, endTime, teacherId });
-      } else {
-        // Na série vão só os campos que o usuário mexeu; sem mudar a data, o dia da semana da série não muda.
-        const timeChanged = startTime !== occurrence.startTime || endTime !== occurrence.endTime;
-        await updateSchedule(lesson.id, {
-          day: date !== occurrence.data ? weekdayIndexOf(date) : undefined,
-          startTime: timeChanged ? startTime : undefined,
-          endTime: timeChanged ? endTime : undefined,
-          teacherId: teacherId !== occurrence.teacherId ? teacherId : undefined
-        });
-      }
+      await updateOccurrence(lesson.id, occurrence.dataOriginal, { data: date, startTime, endTime, teacherId });
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Não foi possível salvar a aula.");
-      setAsking(null);
       setSaving(false);
     }
   };
 
-  const confirmDelete = async (scope: Scope) => {
+  // Excluir cancela só a aula desta data; as demais semanas continuam.
+  const handleDelete = async () => {
+    if (deleting || saving) return;
+    const when = new Date(`${occurrence.data}T00:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+    if (!confirm(`Excluir a aula de ${when}? As outras semanas não mudam.`)) return;
+    setError(null);
     setDeleting(true);
     try {
-      if (scope === "occurrence") await cancelOccurrence(lesson.id, occurrence.dataOriginal);
-      else await removeSchedule(lesson.id);
+      await cancelOccurrence(lesson.id, occurrence.dataOriginal);
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Não foi possível excluir a aula.");
-      setAsking(null);
       setDeleting(false);
     }
   };
@@ -213,6 +132,7 @@ export function LessonDialog({ lesson, occurrence, onClose, onSaved }: Props) {
             <CalendarDays size={18} className="shrink-0 text-slate-400" />
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Data" className={inputClass} />
           </div>
+          <p className="-mt-3 pl-9 text-xs text-slate-400">A alteração vale só para esta aula; as outras semanas não mudam.</p>
 
           <div className="flex items-start gap-4">
             <Clock size={18} className="mt-2.5 shrink-0 text-slate-400" />
@@ -276,7 +196,7 @@ export function LessonDialog({ lesson, occurrence, onClose, onSaved }: Props) {
             disabled={deleting || saving}
             className="rounded-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-60"
           >
-            {deleting ? "Excluindo..." : "Excluir"}
+            {deleting ? "Excluindo..." : "Excluir esta aula"}
           </button>
           <div className="ml-auto flex gap-2">
             <button type="button" onClick={onClose} className="rounded-full px-4 py-2 text-sm text-slate-600 hover:bg-slate-100">
@@ -294,14 +214,6 @@ export function LessonDialog({ lesson, occurrence, onClose, onSaved }: Props) {
         </div>
       </div>
 
-      {asking && (
-        <ScopeDialog
-          title={asking === "save" ? "Editar aula recorrente" : "Excluir aula recorrente"}
-          busy={saving || deleting}
-          onCancel={() => setAsking(null)}
-          onConfirm={asking === "save" ? confirmSave : confirmDelete}
-        />
-      )}
     </div>
   );
 }

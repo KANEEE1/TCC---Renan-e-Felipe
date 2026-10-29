@@ -5,11 +5,6 @@ import { Clock, GraduationCap, MapPin, Tag, User, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { useSchedule, type ScheduleItem } from "@/components/schedule/schedule-context";
 
-interface Option {
-  id: string;
-  nome: string;
-}
-
 interface Teacher {
   id: string;
   name: string;
@@ -26,34 +21,24 @@ interface Props {
 
 const DAY_CHIPS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 const DAY_FULL = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"];
-const TYPES: { value: ScheduleItem["type"]; label: string }[] = [
-  { value: "aula", label: "Aula" },
-  { value: "plantao", label: "Plantão" },
-  { value: "aulao", label: "Aulão" }
-];
+const TYPE_LABELS: Record<ScheduleItem["type"], string> = { aula: "Aula", plantao: "Plantão", aulao: "Aulão" };
 
+// Na edição de uma aula a gestão muda só o dia da semana, o horário e o professor; disciplina, turma, sala e
+// tipo aparecem apenas para consulta.
 export function LessonDialog({ lesson, onClose, onSaved }: Props) {
-  const { schedules, updateSchedule, removeSchedule } = useSchedule();
+  const { updateSchedule, removeSchedule } = useSchedule();
 
-  const [subjectId, setSubjectId] = useState(lesson.subjectId);
   const [day, setDay] = useState(lesson.day);
   const [startTime, setStartTime] = useState(lesson.startTime);
   const [endTime, setEndTime] = useState(lesson.endTime);
   const [teacherId, setTeacherId] = useState(lesson.teacherId);
-  const [classId, setClassId] = useState(lesson.classId);
-  const [room, setRoom] = useState(lesson.room);
-  const [type, setType] = useState<ScheduleItem["type"]>(lesson.type);
 
-  const [subjects, setSubjects] = useState<Option[]>([]);
-  const [classes, setClasses] = useState<Option[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.get<Option[]>("/disciplinas").then(setSubjects).catch(() => setError("Não foi possível carregar as disciplinas."));
-    api.get<Option[]>("/classes").then(setClasses).catch(() => setError("Não foi possível carregar as turmas."));
     api.get<Teacher[]>("/teachers").then(setTeachers).catch(() => setError("Não foi possível carregar os professores."));
   }, []);
 
@@ -65,30 +50,25 @@ export function LessonDialog({ lesson, onClose, onSaved }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  // Cor da disciplina escolhida, reaproveitando a das demais aulas (a cor é por disciplina).
-  const subjectColor = schedules.find((s) => s.subjectId === subjectId)?.color ?? lesson.color;
-
   // Professores ativos que lecionam a disciplina primeiro; depois os demais (inclui o atual, mesmo inativo).
   const { teaching, others } = useMemo(() => {
-    const teachesSubject = (t: Teacher) => t.disciplinas.some((d) => d.id === subjectId);
+    const teachesSubject = (t: Teacher) => t.disciplinas.some((d) => d.id === lesson.subjectId);
     const usable = teachers.filter((t) => t.ativo || t.id === teacherId);
     return {
       teaching: usable.filter((t) => t.ativo && teachesSubject(t)),
       others: usable.filter((t) => !(t.ativo && teachesSubject(t)))
     };
-  }, [teachers, subjectId, teacherId]);
+  }, [teachers, lesson.subjectId, teacherId]);
 
   const handleSave = async () => {
     if (saving || deleting) return;
-    if (!subjectId) return setError("Selecione a disciplina.");
     if (!teacherId) return setError("Selecione o professor.");
-    if (!classId) return setError("Selecione a turma.");
     if (!startTime || !endTime || endTime <= startTime) return setError("O horário de término deve ser depois do início.");
 
     setError(null);
     setSaving(true);
     try {
-      await updateSchedule(lesson.id, { subjectId, day, startTime, endTime, teacherId, classId, room: room.trim(), type });
+      await updateSchedule(lesson.id, { day, startTime, endTime, teacherId });
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Não foi possível salvar a aula.");
@@ -131,22 +111,9 @@ export function LessonDialog({ lesson, onClose, onSaved }: Props) {
         </div>
 
         <div className="space-y-5 overflow-y-auto px-6 pb-4">
-          <div className="flex items-center gap-3 border-b border-slate-200 pb-2 focus-within:border-blue-500">
-            <span className={`h-4 w-4 shrink-0 rounded ${subjectColor}`} />
-            <select
-              value={subjectId}
-              onChange={(e) => setSubjectId(e.target.value)}
-              aria-label="Disciplina"
-              autoFocus
-              className="w-full border-0 bg-transparent text-2xl text-slate-800 focus:outline-none"
-            >
-              {!subjects.some((s) => s.id === subjectId) && <option value={subjectId}>{lesson.subject}</option>}
-              {subjects.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.nome}
-                </option>
-              ))}
-            </select>
+          <div className="flex items-center gap-3 border-b border-slate-200 pb-2">
+            <span className={`h-4 w-4 shrink-0 rounded ${lesson.color}`} />
+            <h2 className="text-2xl text-slate-800">{lesson.subject}</h2>
           </div>
 
           <div className="flex items-start gap-4">
@@ -160,7 +127,14 @@ export function LessonDialog({ lesson, onClose, onSaved }: Props) {
                 ))}
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} aria-label="Início" className={inputClass} />
+                <input
+                  type="time"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  aria-label="Início"
+                  autoFocus
+                  className={inputClass}
+                />
                 <span className="text-slate-400">–</span>
                 <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} aria-label="Fim" className={inputClass} />
               </div>
@@ -186,33 +160,22 @@ export function LessonDialog({ lesson, onClose, onSaved }: Props) {
             </select>
           </div>
 
-          <div className="flex items-center gap-4">
-            <GraduationCap size={18} className="shrink-0 text-slate-400" />
-            <select value={classId} onChange={(e) => setClassId(e.target.value)} aria-label="Turma" className={`${inputClass} flex-1`}>
-              {!classes.some((c) => c.id === classId) && <option value={classId}>{lesson.class}</option>}
-              {classes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nome}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <MapPin size={18} className="shrink-0 text-slate-400" />
-            <input type="text" value={room} onChange={(e) => setRoom(e.target.value)} placeholder="Adicionar sala" className={`${inputClass} flex-1`} />
-          </div>
-
-          <div className="flex items-center gap-4">
-            <Tag size={18} className="shrink-0 text-slate-400" />
-            <div className="flex flex-wrap gap-1.5">
-              {TYPES.map((t) => (
-                <button key={t.value} type="button" onClick={() => setType(t.value)} className={chipClass(type === t.value)}>
-                  {t.label}
-                </button>
-              ))}
-            </div>
-          </div>
+          <ul className="space-y-3 border-t border-slate-100 pt-4 text-sm text-slate-600">
+            <li className="flex items-center gap-4">
+              <GraduationCap size={18} className="shrink-0 text-slate-400" />
+              {lesson.class}
+            </li>
+            {lesson.room && (
+              <li className="flex items-center gap-4">
+                <MapPin size={18} className="shrink-0 text-slate-400" />
+                {lesson.room}
+              </li>
+            )}
+            <li className="flex items-center gap-4">
+              <Tag size={18} className="shrink-0 text-slate-400" />
+              {TYPE_LABELS[lesson.type] ?? lesson.type}
+            </li>
+          </ul>
 
           {error && <p className="text-sm text-red-600">{error}</p>}
         </div>

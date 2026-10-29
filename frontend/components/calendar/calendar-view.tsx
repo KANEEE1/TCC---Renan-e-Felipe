@@ -7,6 +7,7 @@ import { useSchedule, type ScheduleItem } from "@/components/schedule/schedule-c
 import { api } from "@/lib/api";
 import { getSessionUser } from "@/lib/auth";
 import { EventDialog } from "@/components/calendar/event-dialog";
+import { LessonDialog } from "@/components/calendar/lesson-dialog";
 import { eventTypeOf, STATUS_COLORS, STATUS_LABELS, toHHMM, type MeetingDTO } from "@/components/meetings/meeting-types";
 
 type ViewMode = "day" | "week" | "month";
@@ -178,6 +179,7 @@ export function CalendarView() {
   // A aula aberta no painel é uma ocorrência (aula + data), para saber se é futura e se foi marcada.
   const [selected, setSelected] = useState<{ event: ScheduleItem; date: Date } | null>(null);
   const [confirmingDecline, setConfirmingDecline] = useState(false);
+  const [editingLesson, setEditingLesson] = useState<ScheduleItem | null>(null);
   const selectedEvent = selected?.event ?? null;
   const setSelectedEvent = (value: null) => {
     setSelected(value);
@@ -805,6 +807,17 @@ export function CalendarView() {
         </div>
       )}
 
+      {editingLesson && (
+        <LessonDialog
+          lesson={editingLesson}
+          onClose={() => setEditingLesson(null)}
+          onSaved={() => {
+            setEditingLesson(null);
+            setSelectedEvent(null);
+          }}
+        />
+      )}
+
       {selected && selectedEvent && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center" onClick={() => setSelectedEvent(null)}>
           <div
@@ -875,7 +888,7 @@ export function CalendarView() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => router.push(`/schedule/edit/${selectedEvent.id}`)}
+                      onClick={() => setEditingLesson(selectedEvent)}
                       className="rounded-full bg-blue-600 px-5 py-2 text-sm text-white hover:bg-blue-700"
                     >
                       Editar

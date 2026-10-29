@@ -96,6 +96,12 @@ describe("schedule", () => {
     expect(updated.status).toBe(200);
     expect(updated.body.sala).toBe("305");
 
+    const kept = await request(app).put(`/schedule/${created.body.id}`).send({ horarioFim: "09:30" });
+    expect(kept.body.sala).toBe("305");
+    const cleared = await request(app).put(`/schedule/${created.body.id}`).send({ sala: null });
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.sala).toBeNull();
+
     const deleted = await request(app).delete(`/schedule/${created.body.id}`);
     expect(deleted.status).toBe(204);
 

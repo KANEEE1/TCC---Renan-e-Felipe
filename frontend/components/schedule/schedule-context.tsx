@@ -147,7 +147,8 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
       diaSemana: patch.day !== undefined ? INDEX_TO_DAY[patch.day] : undefined,
       horarioInicio: patch.startTime,
       horarioFim: patch.endTime,
-      sala: patch.room,
+      // Campo de sala esvaziado remove a sala; undefined mantém a atual.
+      sala: patch.room === undefined ? undefined : patch.room || null,
       tipo: patch.type ? patch.type.toUpperCase() : undefined
     });
     await refresh();

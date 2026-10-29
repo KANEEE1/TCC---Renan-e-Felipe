@@ -47,7 +47,8 @@ export const replaceScheduleSchema = z.object({
     .min(1)
 });
 
-export const updateAulaSchema = createAulaSchema.partial();
+// Na edição, sala: null remove a sala (omitir o campo mantém a atual).
+export const updateAulaSchema = createAulaSchema.partial().extend({ sala: z.string().min(1).nullable().optional() });
 
 export type CreateAulaInput = z.infer<typeof createAulaSchema>;
 export type UpdateAulaInput = z.infer<typeof updateAulaSchema>;

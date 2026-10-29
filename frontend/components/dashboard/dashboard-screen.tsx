@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { BookOpen, ChevronRight, LogOut, Plus, User, Users, Video, Zap } from "lucide-react";
+import { Bell, BookOpen, ChevronRight, LogOut, Plus, User, Users, Video, Zap } from "lucide-react";
 import { api } from "@/lib/api";
 import { clearSession } from "@/lib/auth";
+import { eventTypeOf, toHHMM, type MeetingDTO } from "@/components/meetings/meeting-types";
 
 interface DashboardSummary {
   stats: { turmas: number; aulasHoje: number; auloesHoje: number };
@@ -43,9 +44,11 @@ export function DashboardScreen() {
   const [userName, setUserName] = useState("Usuário");
   // Vazio até /auth/me responder, para professores não verem por um instante as ferramentas do gestor.
   const [userRole, setUserRole] = useState("");
+  const [events, setEvents] = useState<MeetingDTO[]>([]);
 
   useEffect(() => {
     api.get<DashboardSummary>("/dashboard/summary").then(setSummary).catch(() => setSummary(null));
+    api.get<MeetingDTO[]>("/meetings").then(setEvents).catch(() => setEvents([]));
     api
       .get<{ name: string; roles: ("GESTAO" | "PROFESSOR")[] }>("/auth/me")
       .then((me) => {
@@ -60,6 +63,17 @@ export function DashboardScreen() {
     clearSession();
     router.push("/");
   };
+
+  // Avisos: eventos futuros em que o usuário foi incluído e ainda não respondeu. Somem ao responder Vou/Não vou.
+  const now = new Date();
+  const invites = events
+    .filter((event) => {
+      if (event.meuStatus !== "PENDENTE") return false;
+      const startsAt = new Date(`${event.data.slice(0, 10)}T${toHHMM(event.horarioInicio)}:00`);
+      return startsAt > now;
+    })
+    .sort((a, b) => a.data.localeCompare(b.data) || a.horarioInicio.localeCompare(b.horarioInicio));
+  const showNotices = userRole === "professor" || invites.length > 0;
 
   const stats = [
     { icon: BookOpen, value: String(summary?.stats.aulasHoje ?? 0), label: "Aulas Hoje" },
@@ -138,6 +152,62 @@ export function DashboardScreen() {
       )}
 
       <div className="space-y-5 px-4 pb-6">
+        {showNotices && (
+          <section>
+            <div className="mb-3 flex items-center gap-2">
+              <div className="h-5 w-1 rounded-full bg-amber-500" />
+              <h2 className="text-slate-700">Avisos</h2>
+              {invites.length > 0 && (
+                <span className="rounded-full bg-amber-500 px-2 py-0.5 text-xs text-white">{invites.length}</span>
+              )}
+            </div>
+
+            {invites.length === 0 ? (
+              <p className="rounded-2xl border border-dashed border-slate-200 bg-white p-4 text-center text-sm text-slate-400">
+                Nenhum aviso no momento.
+              </p>
+            ) : (
+              <div className="space-y-2.5">
+                {invites.map((event) => {
+                  const type = eventTypeOf(event.tipo);
+                  const date = new Date(`${event.data.slice(0, 10)}T00:00:00`).toLocaleDateString("pt-BR", {
+                    weekday: "long",
+                    day: "2-digit",
+                    month: "2-digit"
+                  });
+                  return (
+                    <div key={event.id} className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+                      <div className="flex items-start gap-3">
+                        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white">
+                          <Bell size={18} />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm text-slate-800">
+                            Novo evento com a sua participação: <strong>{event.titulo}</strong>
+                          </p>
+                          <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-slate-600">
+                            <span className={`inline-block h-2 w-2 rounded-full ${type.dot}`} />
+                            {type.label} · <span className="capitalize">{date}</span>, das {toHHMM(event.horarioInicio)} às{" "}
+                            {toHHMM(event.horarioFim)}
+                            {event.local ? ` · ${event.local}` : ""}
+                          </p>
+                          <p className="mt-1.5 text-xs text-slate-600">Confirme se vai participar para a coordenação se organizar.</p>
+                        </div>
+                      </div>
+                      <Link
+                        href={`/calendar?event=${event.id}`}
+                        className="mt-3 flex w-full items-center justify-center gap-1 rounded-xl bg-amber-500 py-2.5 text-sm text-white transition-colors hover:bg-amber-600"
+                      >
+                        Responder na agenda <ChevronRight size={15} />
+                      </Link>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        )}
+
         <section>
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-2">

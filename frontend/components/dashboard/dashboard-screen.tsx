@@ -3,24 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import {
-  BookOpen,
-  BookMarked,
-  CalendarClock,
-  CalendarDays,
-  UserX,
-  ChevronRight,
-  LogOut,
-  Plus,
-  Repeat,
-  Trophy,
-  User,
-  UserPlus,
-  Users,
-  Video,
-  Zap
-} from "lucide-react";
-import { isPastDate } from "@/lib/date";
+import { BookOpen, ChevronRight, LogOut, Plus, User, Users, Video, Zap } from "lucide-react";
 import { api } from "@/lib/api";
 import { clearSession } from "@/lib/auth";
 
@@ -58,22 +41,16 @@ export function DashboardScreen() {
   const router = useRouter();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [userName, setUserName] = useState("Usuário");
-  const [pendingSubstitutions, setPendingSubstitutions] = useState(0);
-  const [userRole, setUserRole] = useState("gestão");
-  const [takesAttendance, setTakesAttendance] = useState(false);
+  // Vazio até /auth/me responder, para professores não verem por um instante as ferramentas do gestor.
+  const [userRole, setUserRole] = useState("");
 
   useEffect(() => {
     api.get<DashboardSummary>("/dashboard/summary").then(setSummary).catch(() => setSummary(null));
-    api
-      .get<{ ausencia: { data: string } }[]>("/substitutions/mine?status=PENDENTE")
-      .then((list) => setPendingSubstitutions(list.filter((item) => !isPastDate(item.ausencia.data)).length))
-      .catch(() => setPendingSubstitutions(0));
     api
       .get<{ name: string; roles: ("GESTAO" | "PROFESSOR")[] }>("/auth/me")
       .then((me) => {
         setUserName(me.name);
         setUserRole(me.roles.includes("GESTAO") ? "gestão" : "professor");
-        setTakesAttendance(me.roles.includes("PROFESSOR"));
       })
       .catch(() => {});
   }, []);
@@ -129,118 +106,34 @@ export function DashboardScreen() {
         </div>
       </div>
 
-      <div className="-mt-4 mb-5 px-4">
-        <div className="grid grid-cols-2 gap-3">
-          <Link
-            href="/schedule/create"
-            className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-md transition-shadow hover:shadow-lg"
-          >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600">
-              <Plus size={20} className="text-white" />
-            </div>
-            <span className="text-sm leading-tight text-slate-700">Criar Agendamento</span>
-          </Link>
-          {takesAttendance && (
+      {userRole === "gestão" && (
+        <div className="mb-5 px-4">
+          <div className="mb-2 flex items-center gap-2">
+            <div className="h-4 w-1 rounded-full bg-violet-400" />
+            <span className="text-xs text-slate-500">Ferramentas do gestor</span>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
             <Link
-              href="/attendance"
-              className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-md transition-shadow hover:shadow-lg"
+              href="/schedule/smart-builder"
+              className="flex items-center gap-3 rounded-2xl bg-gradient-to-br from-violet-600 to-purple-700 p-4 text-left shadow-md transition-shadow hover:shadow-lg"
             >
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600">
-                <BookOpen size={20} className="text-white" />
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/20">
+                <Zap size={20} className="text-white" />
               </div>
-              <span className="text-sm leading-tight text-slate-700">Marcar Presença</span>
+              <span className="text-sm leading-tight text-white">Grade Inteligente</span>
             </Link>
-          )}
-          <Link
-            href="/calendar"
-            className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-md transition-shadow hover:shadow-lg"
-          >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-600">
-              <CalendarDays size={20} className="text-white" />
-            </div>
-            <span className="text-sm leading-tight text-slate-700">Ver agenda</span>
-          </Link>
-          <Link
-            href="/teachers/register"
-            className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-md transition-shadow hover:shadow-lg"
-          >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-600">
-              <UserPlus size={20} className="text-white" />
-            </div>
-            <span className="text-sm leading-tight text-slate-700">Cadastrar Professor</span>
-          </Link>
-          <Link
-            href="/meetings"
-            className="col-span-2 flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-md transition-shadow hover:shadow-lg"
-          >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-purple-600">
-              <CalendarClock size={20} className="text-white" />
-            </div>
-            <span className="text-sm leading-tight text-slate-700">Reuniões e Eventos</span>
-          </Link>
-          <Link
-            href="/absences"
-            className="col-span-2 flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-md transition-shadow hover:shadow-lg"
-          >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-600">
-              <UserX size={20} className="text-white" />
-            </div>
-            <span className="text-sm leading-tight text-slate-700">Faltas de professores</span>
-          </Link>
-          <Link
-            href="/substitutions"
-            className={`col-span-2 flex items-center gap-3 rounded-2xl border p-4 text-left shadow-md transition-shadow hover:shadow-lg ${
-              pendingSubstitutions > 0 ? "border-amber-300 bg-amber-50" : "border-slate-200 bg-white"
-            }`}
-          >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500">
-              <Repeat size={20} className="text-white" />
-            </div>
-            <span className="flex-1 text-sm leading-tight text-slate-700">Minhas substituições</span>
-            {pendingSubstitutions > 0 && (
-              <span className="rounded-full bg-amber-500 px-2.5 py-0.5 text-xs text-white">
-                {pendingSubstitutions} {pendingSubstitutions === 1 ? "pendente" : "pendentes"}
-              </span>
-            )}
-          </Link>
+            <Link
+              href="/schedule/create"
+              className="flex items-center gap-3 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 p-4 text-left shadow-md transition-shadow hover:shadow-lg"
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/20">
+                <Plus size={20} className="text-white" />
+              </div>
+              <span className="text-sm leading-tight text-white">Criar agendamento</span>
+            </Link>
+          </div>
         </div>
-      </div>
-
-      <div className="mb-5 px-4">
-        <div className="mb-2 flex items-center gap-2">
-          <div className="h-4 w-1 rounded-full bg-violet-400" />
-          <span className="text-xs text-slate-500">Ferramentas do gestor</span>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <Link
-            href="/schedule/smart-builder"
-            className="flex items-center gap-3 rounded-2xl bg-gradient-to-br from-violet-600 to-purple-700 p-4 text-left shadow-md transition-shadow hover:shadow-lg"
-          >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/20">
-              <Zap size={20} className="text-white" />
-            </div>
-            <span className="text-sm leading-tight text-white">Grade Inteligente</span>
-          </Link>
-          <Link
-            href="/disciplinas"
-            className="flex items-center gap-3 rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-600 p-4 text-left shadow-md transition-shadow hover:shadow-lg"
-          >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/20">
-              <BookMarked size={20} className="text-white" />
-            </div>
-            <span className="text-sm leading-tight text-white">Disciplinas</span>
-          </Link>
-          <Link
-            href="/simulados"
-            className="flex items-center gap-3 rounded-2xl bg-gradient-to-br from-orange-500 to-rose-500 p-4 text-left shadow-md transition-shadow hover:shadow-lg"
-          >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/20">
-              <Trophy size={20} className="text-white" />
-            </div>
-            <span className="text-sm leading-tight text-white">Simulados</span>
-          </Link>
-        </div>
-      </div>
+      )}
 
       <div className="space-y-5 px-4 pb-6">
         <section>

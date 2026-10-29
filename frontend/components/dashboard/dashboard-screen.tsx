@@ -30,7 +30,6 @@ const STATUS_STYLE: Record<string, string> = {
 };
 
 const ACTIVITY_COLORS = ["bg-blue-500", "bg-emerald-500", "bg-purple-500", "bg-orange-500", "bg-rose-500"];
-const UPCOMING_COLORS = ["bg-red-500", "bg-blue-500", "bg-purple-500", "bg-emerald-500"];
 
 function formatTime(iso: string) {
   return new Date(iso).toISOString().slice(11, 16);
@@ -66,11 +65,29 @@ export function DashboardScreen() {
 
   // Avisos: eventos futuros em que o usuário foi incluído e ainda não respondeu. Somem ao responder Vou/Não vou.
   const now = new Date();
+  const startOf = (event: MeetingDTO) => new Date(`${event.data.slice(0, 10)}T${toHHMM(event.horarioInicio)}:00`);
+
+  // Próximas atividades: eventos (exceto "Aula comum") que ainda vão começar nesta semana, de segunda a domingo,
+  // em ordem de horário. A gestão vê todos; o professor, só os que confirmou presença.
+  const endOfWeek = new Date(now);
+  endOfWeek.setDate(endOfWeek.getDate() + (6 - ((endOfWeek.getDay() + 6) % 7)));
+  endOfWeek.setHours(23, 59, 59, 999);
+  const upcoming = events
+    .filter((event) => {
+      const startsAt = startOf(event);
+      return (
+        event.tipo !== "AULA" &&
+        startsAt > now &&
+        startsAt <= endOfWeek &&
+        (userRole === "gestão" || event.meuStatus === "CONFIRMADO")
+      );
+    })
+    .sort((a, b) => startOf(a).getTime() - startOf(b).getTime());
+
   const invites = events
     .filter((event) => {
       if (event.meuStatus !== "PENDENTE") return false;
-      const startsAt = new Date(`${event.data.slice(0, 10)}T${toHHMM(event.horarioInicio)}:00`);
-      return startsAt > now;
+      return startOf(event) > now;
     })
     .sort((a, b) => a.data.localeCompare(b.data) || a.horarioInicio.localeCompare(b.horarioInicio));
 
@@ -256,24 +273,34 @@ export function DashboardScreen() {
           </div>
 
           <div className="space-y-2.5">
-            {(summary?.upcomingSimulados ?? []).length === 0 && (
+            {upcoming.length === 0 && (
               <p className="rounded-2xl border border-dashed border-slate-200 bg-white p-4 text-center text-sm text-slate-400">
-                Nenhum simulado agendado.
+                Nenhuma atividade prevista para esta semana.
               </p>
             )}
-            {(summary?.upcomingSimulados ?? []).map((simulado, index) => {
-              const date = new Date(simulado.data);
+            {upcoming.map((event) => {
+              const type = eventTypeOf(event.tipo);
+              const date = startOf(event);
               return (
-                <div key={simulado.id} className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm">
-                  <div className={`flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-xl ${UPCOMING_COLORS[index % UPCOMING_COLORS.length]}`}>
-                    <span className="text-[15px] font-bold leading-none text-white">{String(date.getUTCDate()).padStart(2, "0")}</span>
-                    <span className="mt-0.5 text-[9px] leading-none text-white/80">{MONTHS[date.getUTCMonth()]}</span>
+                <Link
+                  key={event.id}
+                  href={`/calendar?event=${event.id}`}
+                  className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm transition-shadow hover:shadow-md"
+                >
+                  <div className={`flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-xl ${type.dot}`}>
+                    <span className="text-[15px] font-bold leading-none text-white">{String(date.getDate()).padStart(2, "0")}</span>
+                    <span className="mt-0.5 text-[9px] leading-none text-white/80">{MONTHS[date.getMonth()]}</span>
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm text-slate-800">{simulado.nome}</p>
+                    <p className="truncate text-sm text-slate-800">{event.titulo}</p>
+                    <p className="truncate text-xs text-slate-400">
+                      {type.label} · <span className="capitalize">{date.toLocaleDateString("pt-BR", { weekday: "short" })}</span>{" "}
+                      {toHHMM(event.horarioInicio)}–{toHHMM(event.horarioFim)}
+                      {event.local ? ` · ${event.local}` : ""}
+                    </p>
                   </div>
                   <ChevronRight size={16} className="shrink-0 text-slate-300" />
-                </div>
+                </Link>
               );
             })}
           </div>

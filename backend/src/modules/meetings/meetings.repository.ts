@@ -48,8 +48,9 @@ export class MeetingsRepository {
         horarioInicio: parseTimeToDate(data.horarioInicio),
         horarioFim: parseTimeToDate(data.horarioFim),
         criadoPorId,
+        // Quem cria e se inclui no evento já fica confirmado; os demais começam pendentes.
         participacoes: {
-          create: convidadoIds.map((userId) => ({ userId }))
+          create: convidadoIds.map((userId) => ({ userId, status: userId === criadoPorId ? "CONFIRMADO" : "PENDENTE" }))
         },
         turmas: { connect: turmaIds.map((id) => ({ id })) }
       },
@@ -57,12 +58,18 @@ export class MeetingsRepository {
     });
   }
 
-  update(id: string, data: MeetingFields<UpdateMeetingInput>, participanteIds?: string[], turmaIds?: string[]) {
+  update(id: string, data: MeetingFields<UpdateMeetingInput>, editorId: string, participanteIds?: string[], turmaIds?: string[]) {
     return this.prisma.$transaction(async (tx) => {
       if (participanteIds) {
         await tx.participacaoReuniao.deleteMany({ where: { reuniaoId: id, userId: { notIn: participanteIds } } });
+        // Só cria as participações novas (skipDuplicates preserva o status das existentes); quem edita e se
+        // inclui fica confirmado.
         await tx.participacaoReuniao.createMany({
-          data: participanteIds.map((userId) => ({ reuniaoId: id, userId })),
+          data: participanteIds.map((userId) => ({
+            reuniaoId: id,
+            userId,
+            status: userId === editorId ? ("CONFIRMADO" as const) : ("PENDENTE" as const)
+          })),
           skipDuplicates: true
         });
       }

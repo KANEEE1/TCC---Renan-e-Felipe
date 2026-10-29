@@ -57,7 +57,7 @@ export class MeetingsService {
     const turmas = turmaIds ? [...new Set(turmaIds)] : undefined;
     if (turmas) await this.assertTurmas(turmas);
 
-    return this.toResponse(await this.meetingsRepository.update(id, fields, syncedIds, turmas), actor);
+    return this.toResponse(await this.meetingsRepository.update(id, fields, actor.id, syncedIds, turmas), actor);
   }
 
   async respond(id: string, input: RsvpInput, actor: Actor) {

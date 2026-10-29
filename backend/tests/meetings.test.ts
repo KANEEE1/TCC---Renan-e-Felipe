@@ -132,6 +132,33 @@ describe("meetings (eventos)", () => {
       expect(res.body.meuStatus).toBeNull();
     });
 
+    it("confirms the creator who includes themselves; they can change it later", async () => {
+      const { gestor, p1, tokens } = await setup();
+      const res = await request(app).post("/meetings").set(auth(tokens.gestor)).send({ ...payload, participanteIds: [gestor.id, p1.id] });
+      expect(res.status).toBe(201);
+      expect(statusOf(res.body, gestor.id)).toBe("CONFIRMADO");
+      expect(statusOf(res.body, p1.id)).toBe("PENDENTE");
+      expect(res.body.meuStatus).toBe("CONFIRMADO");
+
+      const changed = await request(app).put(`/meetings/${res.body.id}/rsvp`).set(auth(tokens.gestor)).send({ status: "RECUSADO" });
+      expect(changed.status).toBe(200);
+      expect(statusOf(changed.body, gestor.id)).toBe("RECUSADO");
+    });
+
+    it("confirms the editor who adds themselves, keeping everyone else's status", async () => {
+      const { gestor, p1, tokens } = await setup();
+      const created = await request(app).post("/meetings").set(auth(tokens.gestor)).send({ ...payload, participanteIds: [p1.id] });
+      await request(app).put(`/meetings/${created.body.id}/rsvp`).set(auth(tokens.p1)).send({ status: "RECUSADO" });
+
+      const res = await request(app)
+        .put(`/meetings/${created.body.id}`)
+        .set(auth(tokens.gestor))
+        .send({ participanteIds: [p1.id, gestor.id] });
+      expect(res.status).toBe(200);
+      expect(statusOf(res.body, gestor.id)).toBe("CONFIRMADO");
+      expect(statusOf(res.body, p1.id)).toBe("RECUSADO");
+    });
+
     it("update with participanteIds adds/removes and preserves status; without keeps", async () => {
       const { p1, p2, tokens } = await setup();
       const { body } = await request(app).post("/meetings").set(auth(tokens.gestor)).send({ ...payload, participanteIds: [p2.id] });

@@ -31,35 +31,33 @@ export class MeetingsService {
   async create(input: CreateMeetingInput, actor: Actor) {
     assertValidRange(input.horarioInicio, input.horarioFim);
 
-    const { participanteIds, ...fields } = input;
-    const convidadoIds = [...new Set(participanteIds ?? [])].filter((id) => id !== actor.id);
+    const { participanteIds, turmaIds, ...fields } = input;
+    const convidadoIds = [...new Set(participanteIds ?? [])];
+    const turmas = [...new Set(turmaIds ?? [])];
     await this.assertActiveUsers(convidadoIds);
+    await this.assertTurmas(turmas);
 
-    return this.toResponse(await this.meetingsRepository.create(fields, actor.id, convidadoIds), actor);
+    return this.toResponse(await this.meetingsRepository.create(fields, actor.id, convidadoIds, turmas), actor);
   }
 
   async update(id: string, input: UpdateMeetingInput, actor: Actor) {
     const current = await this.findOrThrow(id);
 
-    if (!this.canManage(current, actor)) {
-      throw new HttpError(403, "Only the meeting creator or management can modify this meeting");
-    }
-
     assertValidRange(input.horarioInicio ?? formatTimeHHMM(current.horarioInicio), input.horarioFim ?? formatTimeHHMM(current.horarioFim));
 
-    const { participanteIds, ...fields } = input;
+    const { participanteIds, turmaIds, ...fields } = input;
     let syncedIds: string[] | undefined;
 
     if (participanteIds) {
       syncedIds = [...new Set(participanteIds)];
-      if (current.criadoPorId && !syncedIds.includes(current.criadoPorId)) {
-        syncedIds.push(current.criadoPorId);
-      }
       const atuais = new Set(current.participacoes.map((participacao) => participacao.userId));
       await this.assertActiveUsers(syncedIds.filter((userId) => !atuais.has(userId)));
     }
 
-    return this.toResponse(await this.meetingsRepository.update(id, fields, syncedIds), actor);
+    const turmas = turmaIds ? [...new Set(turmaIds)] : undefined;
+    if (turmas) await this.assertTurmas(turmas);
+
+    return this.toResponse(await this.meetingsRepository.update(id, fields, syncedIds, turmas), actor);
   }
 
   async respond(id: string, input: RsvpInput, actor: Actor) {
@@ -74,12 +72,8 @@ export class MeetingsService {
     return this.toResponse(await this.findOrThrow(id), actor);
   }
 
-  async remove(id: string, actor: Actor) {
-    const current = await this.findOrThrow(id);
-
-    if (!this.canManage(current, actor)) {
-      throw new HttpError(403, "Only the meeting creator or management can modify this meeting");
-    }
+  async remove(id: string) {
+    await this.findOrThrow(id);
 
     await this.meetingsRepository.remove(id);
   }
@@ -104,13 +98,17 @@ export class MeetingsService {
     }
   }
 
-  private canManage(meeting: { criadoPorId: string | null }, actor: Actor) {
-    return hasRole(actor, "GESTAO") || (meeting.criadoPorId !== null && meeting.criadoPorId === actor.id);
+  private async assertTurmas(ids: string[]) {
+    if (ids.length === 0) return;
+
+    if ((await this.meetingsRepository.countTurmas(ids)) !== ids.length) {
+      throw new HttpError(400, "One or more classes do not exist");
+    }
   }
 
   private toResponse(meeting: MeetingWithParticipants, actor: Actor) {
     const { participacoes, ...rest } = meeting;
-    const canManage = this.canManage(meeting, actor);
+    const canManage = hasRole(actor, "GESTAO");
     const minha = participacoes.find((participacao) => participacao.userId === actor.id);
 
     const participantes = participacoes

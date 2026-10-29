@@ -2,10 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { AlertTriangle, BookOpen, ChevronLeft, ChevronRight, Clock, MapPin, Plus, Tag, User, UserX, Users, X } from "lucide-react";
+import { AlertTriangle, BookOpen, ChevronLeft, ChevronRight, Clock, GraduationCap, MapPin, Plus, Tag, User, UserX, Users, X } from "lucide-react";
 import { useSchedule, type ScheduleItem } from "@/components/schedule/schedule-context";
 import { api } from "@/lib/api";
 import { getSessionUser } from "@/lib/auth";
+import { EventDialog } from "@/components/calendar/event-dialog";
+import { eventTypeOf, STATUS_COLORS, STATUS_LABELS, toHHMM, type MeetingDTO } from "@/components/meetings/meeting-types";
 
 type ViewMode = "day" | "week" | "month";
 
@@ -82,9 +84,9 @@ function monthGrid(year: number, month: number) {
 }
 
 // Aulas que se sobrepõem no mesmo dia ficam lado a lado, como no Google Agenda.
-function layoutDay(events: ScheduleItem[]) {
+function layoutDay<T extends { startTime: string; endTime: string }>(events: T[]) {
   const sorted = [...events].sort((a, b) => minutesOf(a.startTime) - minutesOf(b.startTime) || minutesOf(b.endTime) - minutesOf(a.endTime));
-  const placed: { event: ScheduleItem; column: number; columns: number }[] = [];
+  const placed: { event: T; column: number; columns: number }[] = [];
   let cluster: typeof placed = [];
   let clusterEnd = -1;
   let columnEnds: number[] = [];
@@ -114,6 +116,11 @@ function layoutDay(events: ScheduleItem[]) {
   closeCluster();
   return placed;
 }
+
+// O que a agenda desenha: aulas semanais e eventos pontuais, com o mesmo layout de sobreposição.
+type Entry =
+  | { kind: "lesson"; id: string; startTime: string; endTime: string; lesson: ScheduleItem }
+  | { kind: "meeting"; id: string; startTime: string; endTime: string; meeting: MeetingDTO };
 
 function initials(name: string) {
   return name
@@ -178,9 +185,36 @@ export function CalendarView() {
   };
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Eventos pontuais (reuniões, simulados, aulões...). O painel guarda só o id para refletir recargas (ex.: RSVP).
+  const [meetings, setMeetings] = useState<MeetingDTO[]>([]);
+  const [selectedMeetingId, setSelectedMeetingId] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<{ event: MeetingDTO | null } | null>(null);
+  const [meetingError, setMeetingError] = useState<string | null>(null);
+  const [responding, setResponding] = useState(false);
+  const selectedMeeting = meetings.find((m) => m.id === selectedMeetingId) ?? null;
+
+  const [loadError, setLoadError] = useState(false);
+  const loadMeetings = () =>
+    api
+      .get<MeetingDTO[]>("/meetings")
+      .then((list) => {
+        setMeetings(list);
+        setLoadError(false);
+      })
+      .catch(() => setLoadError(true));
+  useEffect(() => {
+    loadMeetings();
+  }, []);
+
   const classes = useMemo(
-    () => [...new Map(schedules.map((s) => [s.classId, s.class]))].sort((a, b) => a[1].localeCompare(b[1], "pt-BR")),
-    [schedules]
+    () =>
+      [
+        ...new Map([
+          ...schedules.map((s) => [s.classId, s.class] as [string, string]),
+          ...meetings.flatMap((m) => m.turmas.map((t) => [t.id, t.nome] as [string, string]))
+        ])
+      ].sort((a, b) => a[1].localeCompare(b[1], "pt-BR")),
+    [schedules, meetings]
   );
   const ofClass = useMemo(
     () => (selectedClass === "all" ? schedules : schedules.filter((s) => s.classId === selectedClass)),
@@ -189,18 +223,31 @@ export function CalendarView() {
   // Com uma turma escolhida, só aparecem os professores que dão aula nela.
   // Nome do professor vindo pela URL (ex.: botão "Agenda" na lista de professores) que ainda não tem aulas.
   const [extraTeacher, setExtraTeacher] = useState<[string, string] | null>(null);
+  const meetingsOfClass = useMemo(
+    () => (selectedClass === "all" ? meetings : meetings.filter((m) => m.turmas.some((t) => t.id === selectedClass))),
+    [meetings, selectedClass]
+  );
   const teachers = useMemo(() => {
-    const list = [...new Map(ofClass.map((s) => [s.teacherId, s.teacher]))];
+    const list = [
+      ...new Map([
+        ...ofClass.map((s) => [s.teacherId, s.teacher] as [string, string]),
+        ...meetingsOfClass.flatMap((m) => m.participantes.map((p) => [p.userId, p.name] as [string, string]))
+      ])
+    ];
     if (extraTeacher && !list.some(([id]) => id === extraTeacher[0])) list.push(extraTeacher);
     return list.sort((a, b) => a[1].localeCompare(b[1], "pt-BR"));
-  }, [ofClass, extraTeacher]);
+  }, [ofClass, meetingsOfClass, extraTeacher]);
   const filtered = useMemo(
     () => (selectedTeacher === "all" ? ofClass : ofClass.filter((s) => s.teacherId === selectedTeacher)),
     [ofClass, selectedTeacher]
   );
+  const filteredMeetings = useMemo(
+    () => (selectedTeacher === "all" ? meetingsOfClass : meetingsOfClass.filter((m) => m.participantes.some((p) => p.userId === selectedTeacher))),
+    [meetingsOfClass, selectedTeacher]
+  );
 
   useEffect(() => {
-    if (selectedTeacher === "all" || schedules.some((s) => s.teacherId === selectedTeacher)) return;
+    if (selectedTeacher === "all" || schedules.some((s) => s.teacherId === selectedTeacher) || teachers.some(([id]) => id === selectedTeacher)) return;
     let cancelled = false;
     api
       .get<{ id: string; name: string }>(`/teachers/${selectedTeacher}`)
@@ -209,16 +256,26 @@ export function CalendarView() {
     return () => {
       cancelled = true;
     };
-  }, [selectedTeacher, schedules]);
+  }, [selectedTeacher, schedules, teachers]);
 
   const selectedTeacherName = teachers.find(([id]) => id === selectedTeacher)?.[1];
-  const teacherWithoutLessons = selectedTeacher !== "all" && !!selectedTeacherName && filtered.length === 0;
+  const teacherWithoutLessons = selectedTeacher !== "all" && !!selectedTeacherName && filtered.length === 0 && filteredMeetings.length === 0;
   // A aula se repete toda semana, mas só dentro do período da grade da turma.
   const eventsOn = (date: Date) => {
     const key = dateKey(date);
     return filtered.filter(
       (s) => s.day === weekdayIndex(date) && (!s.periodStart || s.periodStart <= key) && (!s.periodEnd || s.periodEnd >= key)
     );
+  };
+
+  const entriesOn = (date: Date): Entry[] => {
+    const key = dateKey(date);
+    return [
+      ...eventsOn(date).map((lesson): Entry => ({ kind: "lesson", id: lesson.id, startTime: lesson.startTime, endTime: lesson.endTime, lesson })),
+      ...filteredMeetings
+        .filter((m) => m.data.slice(0, 10) === key)
+        .map((meeting): Entry => ({ kind: "meeting", id: `m-${meeting.id}`, startTime: toHHMM(meeting.horarioInicio), endTime: toHHMM(meeting.horarioFim), meeting }))
+    ];
   };
 
   const weekStart = startOfWeek(cursor);
@@ -243,7 +300,10 @@ export function CalendarView() {
   const handleClassSelect = (classId: string) => {
     // Mantém o professor só se ele também dá aula na nova turma.
     const keepsTeacher =
-      selectedTeacher === "all" || classId === "all" || schedules.some((s) => s.classId === classId && s.teacherId === selectedTeacher);
+      selectedTeacher === "all" ||
+      classId === "all" ||
+      schedules.some((s) => s.classId === classId && s.teacherId === selectedTeacher) ||
+      meetings.some((m) => m.turmas.some((t) => t.id === classId) && m.participantes.some((p) => p.userId === selectedTeacher));
     applyFilters(classId, keepsTeacher ? selectedTeacher : "all");
   };
 
@@ -324,10 +384,36 @@ export function CalendarView() {
                   <div key={h} className="absolute inset-x-0 border-t border-slate-100" style={{ top: h * HOUR_HEIGHT }} />
                 ))}
 
-                {layoutDay(eventsOn(day)).map(({ event, column, columns }) => {
-                  const start = minutesOf(event.startTime);
-                  const end = Math.max(minutesOf(event.endTime), start + 15);
+                {layoutDay(entriesOn(day)).map(({ event: entry, column, columns }) => {
+                  const start = minutesOf(entry.startTime);
+                  const end = Math.max(minutesOf(entry.endTime), start + 15);
                   const height = ((end - start) / 60) * HOUR_HEIGHT;
+                  const position = {
+                    top: (start / 60) * HOUR_HEIGHT + 1,
+                    height: height - 2,
+                    left: `calc(${(column / columns) * 100}% + 2px)`,
+                    width: `calc(${100 / columns}% - 4px)`
+                  };
+                  if (entry.kind === "meeting") {
+                    const type = eventTypeOf(entry.meeting.tipo);
+                    return (
+                      <button
+                        key={entry.id}
+                        type="button"
+                        onClick={() => setSelectedMeetingId(entry.meeting.id)}
+                        className={`absolute overflow-hidden rounded-md border-l-4 px-1.5 py-0.5 text-left shadow-sm transition hover:brightness-95 ${type.block}`}
+                        style={position}
+                      >
+                        <span className="block truncate text-[11px] font-semibold leading-tight">{entry.meeting.titulo}</span>
+                        {height >= 34 && (
+                          <span className="block truncate text-[10px] leading-tight opacity-80">
+                            {type.label} · {entry.startTime} – {entry.endTime}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  }
+                  const event = entry.lesson;
                   return (
                     <button
                       key={event.id}
@@ -384,7 +470,7 @@ export function CalendarView() {
         {monthGrid(cursor.getFullYear(), cursor.getMonth()).map((date) => {
           const inMonth = date.getMonth() === cursor.getMonth();
           const today = isSameDay(date, now);
-          const events = eventsOn(date).sort((a, b) => a.startTime.localeCompare(b.startTime));
+          const events = entriesOn(date).sort((a, b) => a.startTime.localeCompare(b.startTime));
           return (
             <button
               key={date.toDateString()}
@@ -400,14 +486,23 @@ export function CalendarView() {
                 {date.getDate()}
               </span>
               <span className="block space-y-0.5">
-                {events.slice(0, 3).map((event) => (
-                  <span
-                    key={event.id}
-                    className={`block truncate rounded px-1 text-[10px] leading-4 text-white ${colorOf(event, date)} ${inMonth ? "" : "opacity-50"}`}
-                  >
-                    {event.startTime} {event.subject}
-                  </span>
-                ))}
+                {events.slice(0, 3).map((entry) =>
+                  entry.kind === "meeting" ? (
+                    <span
+                      key={entry.id}
+                      className={`block truncate rounded border-l-2 px-1 text-[10px] leading-4 ${eventTypeOf(entry.meeting.tipo).block} ${inMonth ? "" : "opacity-50"}`}
+                    >
+                      {entry.startTime} {entry.meeting.titulo}
+                    </span>
+                  ) : (
+                    <span
+                      key={entry.id}
+                      className={`block truncate rounded px-1 text-[10px] leading-4 text-white ${colorOf(entry.lesson, date)} ${inMonth ? "" : "opacity-50"}`}
+                    >
+                      {entry.startTime} {entry.lesson.subject}
+                    </span>
+                  )
+                )}
                 {events.length > 3 && <span className="block px-1 text-[10px] text-slate-500">+{events.length - 3} mais</span>}
               </span>
             </button>
@@ -528,6 +623,8 @@ export function CalendarView() {
           </div>
         )}
 
+        {loadError && <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">Não foi possível carregar os eventos.</p>}
+
         {teacherWithoutLessons && (
           <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
             {selectedTeacherName} ainda não tem aulas{selectedClass !== "all" ? " nesta turma" : " na grade"}.
@@ -537,14 +634,163 @@ export function CalendarView() {
 
       {viewMode === "month" ? monthView : timeGrid}
 
-      <button
-        type="button"
-        onClick={() => router.push("/schedule/create")}
-        aria-label="Nova aula"
-        className="absolute bottom-5 right-4 z-20 flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-blue-600 shadow-lg ring-1 ring-slate-200 transition hover:shadow-xl"
-      >
-        <Plus size={28} />
-      </button>
+      {session?.isManagement && (
+        <button
+          type="button"
+          onClick={() => setDialog({ event: null })}
+          aria-label="Novo evento"
+          className="absolute bottom-5 right-4 z-20 flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-blue-600 shadow-lg ring-1 ring-slate-200 transition hover:shadow-xl"
+        >
+          <Plus size={28} />
+        </button>
+      )}
+
+      {dialog && (
+        <EventDialog
+          event={dialog.event}
+          defaultDate={cursor}
+          onClose={() => setDialog(null)}
+          onSaved={() => {
+            setDialog(null);
+            setSelectedMeetingId(null);
+            loadMeetings();
+          }}
+        />
+      )}
+
+      {selectedMeeting && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center" onClick={() => setSelectedMeetingId(null)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white pb-6 shadow-2xl sm:rounded-3xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex justify-end px-3 pt-3">
+              <button
+                type="button"
+                onClick={() => setSelectedMeetingId(null)}
+                aria-label="Fechar"
+                className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="flex gap-4 px-6">
+              <span className={`mt-1.5 h-4 w-4 shrink-0 rounded ${eventTypeOf(selectedMeeting.tipo).dot}`} />
+              <div className="min-w-0">
+                <h2 className="break-words text-xl text-slate-800">{selectedMeeting.titulo}</h2>
+                <p className="mt-0.5 text-sm text-slate-500">
+                  {new Date(`${selectedMeeting.data.slice(0, 10)}T00:00:00`).toLocaleDateString("pt-BR", {
+                    weekday: "long",
+                    day: "2-digit",
+                    month: "2-digit"
+                  })}{" "}
+                  · {toHHMM(selectedMeeting.horarioInicio)} – {toHHMM(selectedMeeting.horarioFim)}
+                </p>
+              </div>
+            </div>
+            <ul className="mt-4 space-y-3 px-6 text-sm text-slate-700">
+              <li className="flex items-center gap-4">
+                <Tag size={18} className="shrink-0 text-slate-400" />
+                {eventTypeOf(selectedMeeting.tipo).label}
+              </li>
+              {selectedMeeting.local && (
+                <li className="flex items-center gap-4">
+                  <MapPin size={18} className="shrink-0 text-slate-400" />
+                  {selectedMeeting.local}
+                </li>
+              )}
+              {selectedMeeting.turmas.length > 0 && (
+                <li className="flex items-center gap-4">
+                  <GraduationCap size={18} className="shrink-0 text-slate-400" />
+                  {selectedMeeting.turmas.map((t) => t.nome).join(", ")}
+                </li>
+              )}
+              {selectedMeeting.participantes.length > 0 && (
+                <li className="flex items-start gap-4">
+                  <Users size={18} className="mt-0.5 shrink-0 text-slate-400" />
+                  <ul className="min-w-0 flex-1 space-y-1.5">
+                    {selectedMeeting.participantes.map((p) => (
+                      <li key={p.userId} className="flex items-center justify-between gap-2">
+                        <span className="truncate">{p.name}</span>
+                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${STATUS_COLORS[p.status]}`}>{STATUS_LABELS[p.status]}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              )}
+            </ul>
+            {meetingError && <p className="mx-6 mt-4 text-sm text-red-600">{meetingError}</p>}
+            {selectedMeeting.permissoes.editar && (
+              <div className="mt-6 flex justify-end gap-2 px-6">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!confirm("Tem certeza que deseja excluir este evento?")) return;
+                    setMeetingError(null);
+                    try {
+                      await api.delete(`/meetings/${selectedMeeting.id}`);
+                      setSelectedMeetingId(null);
+                      loadMeetings();
+                    } catch {
+                      setMeetingError("Não foi possível excluir o evento.");
+                    }
+                  }}
+                  className="rounded-full px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                >
+                  Excluir
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDialog({ event: selectedMeeting })}
+                  className="rounded-full bg-blue-600 px-5 py-2 text-sm text-white hover:bg-blue-700"
+                >
+                  Editar
+                </button>
+              </div>
+            )}
+            {selectedMeeting.permissoes.responder && (
+              <div className="mt-6 grid grid-cols-2 gap-2 px-6">
+                {(["CONFIRMADO", "RECUSADO"] as const).map((status) => {
+                  const active = selectedMeeting.meuStatus === status;
+                  const yes = status === "CONFIRMADO";
+                  return (
+                    <button
+                      key={status}
+                      type="button"
+                      disabled={responding}
+                      onClick={async () => {
+                        setResponding(true);
+                        setMeetingError(null);
+                        try {
+                          await api.put(`/meetings/${selectedMeeting.id}/rsvp`, { status });
+                          await loadMeetings();
+                        } catch {
+                          setMeetingError("Não foi possível registrar sua resposta.");
+                        } finally {
+                          setResponding(false);
+                        }
+                      }}
+                      className={`rounded-full py-2.5 text-sm transition-colors disabled:opacity-60 ${
+                        active
+                          ? yes
+                            ? "bg-green-600 text-white"
+                            : "bg-red-600 text-white"
+                          : yes
+                            ? "bg-green-50 text-green-700 hover:bg-green-100"
+                            : "bg-red-50 text-red-700 hover:bg-red-100"
+                      }`}
+                    >
+                      {yes ? "Vou" : "Não vou"}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {selected && selectedEvent && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center" onClick={() => setSelectedEvent(null)}>

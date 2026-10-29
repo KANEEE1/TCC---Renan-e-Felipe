@@ -19,9 +19,10 @@ enum TipoAula {
 }
 
 enum TipoReuniao {
-  AULAO
+  REUNIAO
   SIMULADO
-  REVISAO
+  AULAO
+  AULA
 }
 
 model Reuniao {
@@ -39,6 +40,7 @@ model Reuniao {
   updatedAt     DateTime    @updatedAt
 
   participacoes ParticipacaoReuniao[]
+  turmas        Turma[]               @relation("EventoTurmas")
 }
 
 enum StatusParticipacao {
@@ -117,6 +119,7 @@ model Turma {
   updatedAt   DateTime @updatedAt
 
   aulas      Aula[]
+  eventos    Reuniao[] @relation("EventoTurmas")
   matriculas Matricula[]
   cargas     CargaDisciplinaTurma[]
   janelas    JanelaTurma[]

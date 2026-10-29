@@ -1,6 +1,7 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { parseTimeToDate } from "../../shared/time.js";
 import type { CreateAulaInput, UpdateAulaInput } from "./grade-horaria.schemas.js";
+import { aulaOcorrivelSelect, carregarExcecoesDasAulas, carregarFontesDoDia, excecaoSelect } from "./ocorrencias.db.js";
 
 const aulaInclude = {
   turma: true,
@@ -12,6 +13,11 @@ const aulaInclude = {
     }
   }
 };
+
+const aulaComExcecoesInclude = {
+  ...aulaInclude,
+  excecoes: { select: excecaoSelect, orderBy: { dataOriginal: "asc" } }
+} satisfies Prisma.AulaInclude;
 
 export class GradeHorariaRepository {
   constructor(
@@ -86,7 +92,7 @@ export class GradeHorariaRepository {
   list() {
     return this.prisma.aula.findMany({
       orderBy: [{ diaSemana: "asc" }, { horarioInicio: "asc" }],
-      include: aulaInclude
+      include: aulaComExcecoesInclude
     });
   }
 
@@ -98,7 +104,7 @@ export class GradeHorariaRepository {
     return this.prisma.aula.findMany({
       where: { turmaId },
       orderBy: [{ diaSemana: "asc" }, { horarioInicio: "asc" }],
-      include: aulaInclude
+      include: aulaComExcecoesInclude
     });
   }
 
@@ -162,5 +168,81 @@ export class GradeHorariaRepository {
 
   remove(id: string) {
     return this.prisma.aula.delete({ where: { id } });
+  }
+
+  // --- Ocorrências (exceções de uma única data da série) ---
+
+  findAulaParaOcorrencia(id: string) {
+    return this.db.aula.findUnique({ where: { id }, select: aulaOcorrivelSelect });
+  }
+
+  findExcecao(aulaId: string, dataOriginal: Date) {
+    return this.db.aulaExcecao.findUnique({
+      where: { aulaId_dataOriginal: { aulaId, dataOriginal } },
+      select: excecaoSelect
+    });
+  }
+
+  findProfessor(id: string) {
+    return this.db.user.findUnique({ where: { id }, select: { id: true, name: true, ativo: true, roles: true } });
+  }
+
+  carregarFontesDoDia(data: string) {
+    return carregarFontesDoDia(this.db, data);
+  }
+
+  carregarExcecoesDasAulas(aulaIds: string[], de: string, ate: string) {
+    return carregarExcecoesDasAulas(this.db, aulaIds, de, ate);
+  }
+
+  countPresencasManuais(aulaId: string, data: Date) {
+    return this.db.presenca.count({ where: { aulaId, data, automatica: false } });
+  }
+
+  countPresencas(aulaId: string, data: Date) {
+    return this.db.presenca.count({ where: { aulaId, data } });
+  }
+
+  countAusencias(aulaId: string, data: Date) {
+    return this.db.ausenciaAula.count({ where: { aulaId, data } });
+  }
+
+  countSubstituicoesAceitas(aulaId: string, data: Date) {
+    return this.db.substituicao.count({ where: { status: "ACEITA", ausencia: { aulaId, data } } });
+  }
+
+  // Exceções não canceladas de OUTRAS aulas, com data efetiva a partir de `desde`, do professor ou da turma.
+  listExcecoesDeOutrasAulas(aulaId: string, professorId: string, turmaId: string, desde: Date) {
+    return this.db.aulaExcecao.findMany({
+      where: {
+        aulaId: { not: aulaId },
+        cancelada: false,
+        data: { gte: desde },
+        OR: [{ professorId }, { aula: { turmaId } }]
+      },
+      select: { data: true, horarioInicio: true, horarioFim: true, professorId: true, aula: { select: { turmaId: true } } }
+    });
+  }
+
+  upsertExcecao(
+    aulaId: string,
+    dataOriginal: Date,
+    data: { cancelada: boolean; data: Date | null; horarioInicio: Date | null; horarioFim: Date | null; professorId: string | null }
+  ) {
+    return this.db.aulaExcecao.upsert({
+      where: { aulaId_dataOriginal: { aulaId, dataOriginal } },
+      create: { aulaId, dataOriginal, ...data },
+      update: data,
+      select: excecaoSelect
+    });
+  }
+
+  // Cancelar uma ocorrência: some o que dependia dela (presença automática, falta e substituições daquela data).
+  async limparRegistrosDaOcorrencia(aulaId: string, data: Date) {
+    await this.db.presenca.deleteMany({ where: { aulaId, data, automatica: true } });
+    const ausencias = await this.db.ausenciaAula.findMany({ where: { aulaId, data }, select: { id: true } });
+    const ids = ausencias.map((a) => a.id);
+    await this.db.substituicao.deleteMany({ where: { ausenciaId: { in: ids } } });
+    await this.db.ausenciaAula.deleteMany({ where: { id: { in: ids } } });
   }
 }

@@ -3,6 +3,18 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { api } from "@/lib/api";
 
+// Alteração de uma única data da aula semanal: cancelada, ou movida/alterada (data, horário e professor efetivos).
+export interface ScheduleException {
+  // Data original da ocorrência (o dia da série) e data efetiva; ambas "YYYY-MM-DD".
+  dataOriginal: string;
+  cancelada: boolean;
+  data: string | null;
+  startTime: string | null;
+  endTime: string | null;
+  teacherId: string | null;
+  teacher: string | null;
+}
+
 export interface ScheduleItem {
   id: string;
   day: number;
@@ -21,6 +33,16 @@ export interface ScheduleItem {
   // Período da grade da turma ("YYYY-MM-DD"); a aula só acontece entre essas datas. Ausente = sem restrição.
   periodStart?: string | null;
   periodEnd?: string | null;
+  excecoes: ScheduleException[];
+}
+
+interface ExcecaoDTO {
+  dataOriginal: string;
+  cancelada: boolean;
+  data: string | null;
+  horarioInicio: string | null;
+  horarioFim: string | null;
+  professor: { id: string; name: string } | null;
 }
 
 interface AulaDTO {
@@ -33,6 +55,7 @@ interface AulaDTO {
   turma: { id: string; nome: string; gradeInicio?: string | null; gradeFim?: string | null };
   disciplina: { id: string; nome: string };
   professor: { id: string; name: string };
+  excecoes?: ExcecaoDTO[];
 }
 
 // Índice do dia na semana começando na segunda (0) até o domingo (6).
@@ -91,7 +114,16 @@ function fromAula(aula: AulaDTO, color: string): ScheduleItem {
     color,
     periodStart: aula.turma.gradeInicio?.slice(0, 10) ?? null,
     periodEnd: aula.turma.gradeFim?.slice(0, 10) ?? null,
-    type: aula.tipo.toLowerCase() as ScheduleItem["type"]
+    type: aula.tipo.toLowerCase() as ScheduleItem["type"],
+    excecoes: (aula.excecoes ?? []).map((e) => ({
+      dataOriginal: e.dataOriginal.slice(0, 10),
+      cancelada: e.cancelada,
+      data: e.data?.slice(0, 10) ?? null,
+      startTime: e.horarioInicio,
+      endTime: e.horarioFim,
+      teacherId: e.professor?.id ?? null,
+      teacher: e.professor?.name ?? null
+    }))
   };
 }
 
@@ -99,9 +131,12 @@ interface ScheduleContextType {
   schedules: ScheduleItem[];
   loading: boolean;
   refresh: () => Promise<void>;
-  addSchedule: (item: Omit<ScheduleItem, "id" | "duration" | "color">) => Promise<void>;
-  updateSchedule: (id: string, patch: Partial<Omit<ScheduleItem, "id">>) => Promise<void>;
+  addSchedule: (item: Omit<ScheduleItem, "id" | "duration" | "color" | "excecoes">) => Promise<void>;
+  updateSchedule: (id: string, patch: Partial<Omit<ScheduleItem, "id" | "excecoes">>) => Promise<void>;
   removeSchedule: (id: string) => Promise<void>;
+  // Altera ou cancela só uma data da aula ("Esta aula"); dataOriginal é o dia da série ("YYYY-MM-DD").
+  updateOccurrence: (id: string, dataOriginal: string, patch: { data: string; startTime: string; endTime: string; teacherId: string }) => Promise<void>;
+  cancelOccurrence: (id: string, dataOriginal: string) => Promise<void>;
 }
 
 const ScheduleContext = createContext<ScheduleContextType | null>(null);
@@ -125,7 +160,7 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
     refresh();
   }, []);
 
-  const addSchedule = async (item: Omit<ScheduleItem, "id" | "duration" | "color">) => {
+  const addSchedule = async (item: Omit<ScheduleItem, "id" | "duration" | "color" | "excecoes">) => {
     await api.post("/schedule", {
       turmaId: item.classId,
       disciplinaId: item.subjectId,
@@ -139,7 +174,7 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
     await refresh();
   };
 
-  const updateSchedule = async (id: string, patch: Partial<Omit<ScheduleItem, "id">>) => {
+  const updateSchedule = async (id: string, patch: Partial<Omit<ScheduleItem, "id" | "excecoes">>) => {
     await api.put(`/schedule/${id}`, {
       turmaId: patch.classId,
       disciplinaId: patch.subjectId,
@@ -159,8 +194,25 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
     setSchedules((prev) => prev.filter((s) => s.id !== id));
   };
 
+  const updateOccurrence: ScheduleContextType["updateOccurrence"] = async (id, dataOriginal, patch) => {
+    await api.put(`/schedule/${id}/ocorrencias/${dataOriginal}`, {
+      data: patch.data,
+      horarioInicio: patch.startTime,
+      horarioFim: patch.endTime,
+      professorId: patch.teacherId
+    });
+    await refresh();
+  };
+
+  const cancelOccurrence = async (id: string, dataOriginal: string) => {
+    await api.delete(`/schedule/${id}/ocorrencias/${dataOriginal}`);
+    await refresh();
+  };
+
   return (
-    <ScheduleContext.Provider value={{ schedules, loading, refresh, addSchedule, updateSchedule, removeSchedule }}>
+    <ScheduleContext.Provider
+      value={{ schedules, loading, refresh, addSchedule, updateSchedule, removeSchedule, updateOccurrence, cancelOccurrence }}
+    >
       {children}
     </ScheduleContext.Provider>
   );

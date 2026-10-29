@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient, type StatusSubstituicao } from "@prisma/client";
+import { carregarFontesDoDia } from "../grade-horaria/ocorrencias.db.js";
 
 const substituicaoInclude = {
   substituto: { select: { id: true, name: true } }
@@ -23,6 +24,20 @@ const minhaInclude = {
   }
 } as const;
 
+const excecaoDaAulaSelect = {
+  dataOriginal: true,
+  cancelada: true,
+  data: true,
+  horarioInicio: true,
+  horarioFim: true,
+  professorId: true
+} as const;
+
+const ausenciaComAulaSelect = {
+  data: true,
+  aula: { select: { professorId: true, horarioInicio: true, horarioFim: true, excecoes: { select: excecaoDaAulaSelect } } }
+} as const;
+
 const ATIVAS: StatusSubstituicao[] = ["PENDENTE", "ACEITA"];
 
 type Db = PrismaClient | Prisma.TransactionClient;
@@ -45,7 +60,16 @@ export class SubstituicoesRepository {
       select: {
         id: true,
         data: true,
-        aula: { select: { professorId: true, disciplinaId: true, diaSemana: true, horarioInicio: true, horarioFim: true } }
+        aula: {
+          select: {
+            professorId: true,
+            disciplinaId: true,
+            diaSemana: true,
+            horarioInicio: true,
+            horarioFim: true,
+            excecoes: { select: excecaoDaAulaSelect }
+          }
+        }
       }
     });
   }
@@ -65,17 +89,15 @@ export class SubstituicoesRepository {
     });
   }
 
-  findAulasOfProfessorNoDia(professorId: string, diaSemana: string) {
-    return this.db.aula.findMany({
-      where: { professorId, diaSemana },
-      select: { horarioInicio: true, horarioFim: true }
-    });
+  // Aulas e exceções que tocam a data (para gerar as ocorrências efetivas do dia).
+  carregarFontesDoDia(data: string) {
+    return carregarFontesDoDia(this.db, data);
   }
 
-  findAtivasDoSubstitutoNaData(substitutoId: string, data: Date, ignorarId?: string) {
+  findAtivasDoSubstituto(substitutoId: string, ignorarId?: string) {
     return this.db.substituicao.findMany({
-      where: { substitutoId, status: { in: ATIVAS }, ausencia: { data }, ...(ignorarId && { id: { not: ignorarId } }) },
-      select: { ausencia: { select: { aula: { select: { horarioInicio: true, horarioFim: true } } } } }
+      where: { substitutoId, status: { in: ATIVAS }, ...(ignorarId && { id: { not: ignorarId } }) },
+      select: { ausencia: { select: ausenciaComAulaSelect } }
     });
   }
 
@@ -100,13 +122,10 @@ export class SubstituicoesRepository {
     });
   }
 
-  findAtivasDosSubstitutosNoPeriodo(substitutoIds: string[], inicio: Date, fim: Date) {
+  findAtivasDosSubstitutos(substitutoIds: string[]) {
     return this.db.substituicao.findMany({
-      where: { substitutoId: { in: substitutoIds }, status: { in: ATIVAS }, ausencia: { data: { gte: inicio, lt: fim } } },
-      select: {
-        substitutoId: true,
-        ausencia: { select: { data: true, aula: { select: { horarioInicio: true, horarioFim: true } } } }
-      }
+      where: { substitutoId: { in: substitutoIds }, status: { in: ATIVAS } },
+      select: { substitutoId: true, ausencia: { select: ausenciaComAulaSelect } }
     });
   }
 

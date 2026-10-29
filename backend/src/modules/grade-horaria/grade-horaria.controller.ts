@@ -5,9 +5,11 @@ import {
   confirmScheduleSchema,
   createAulaSchema,
   generateScheduleSchema,
+  ocorrenciaParamsSchema,
   replaceScheduleSchema,
   suggestScheduleSchema,
-  updateAulaSchema
+  updateAulaSchema,
+  updateOcorrenciaSchema
 } from "./grade-horaria.schemas.js";
 import type { GradeHorariaService } from "./grade-horaria.service.js";
 
@@ -55,6 +57,18 @@ export class GradeHorariaController {
     this.router.put("/:id", asyncHandler(async (req, res) => {
       const input = updateAulaSchema.parse(req.body);
       res.json(await this.gradeHorariaService.update(req.params.id as string, input));
+    }));
+
+    this.router.put("/:id/ocorrencias/:dataOriginal", requireAuth, requireRole("GESTAO"), asyncHandler(async (req, res) => {
+      const { id, dataOriginal } = ocorrenciaParamsSchema.parse(req.params);
+      const input = updateOcorrenciaSchema.parse(req.body);
+      res.json(await this.gradeHorariaService.editarOcorrencia(id, dataOriginal, input));
+    }));
+
+    this.router.delete("/:id/ocorrencias/:dataOriginal", requireAuth, requireRole("GESTAO"), asyncHandler(async (req, res) => {
+      const { id, dataOriginal } = ocorrenciaParamsSchema.parse(req.params);
+      await this.gradeHorariaService.cancelarOcorrencia(id, dataOriginal);
+      res.status(204).end();
     }));
 
     this.router.delete("/:id", asyncHandler(async (req, res) => {

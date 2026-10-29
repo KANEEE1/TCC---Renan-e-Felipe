@@ -206,6 +206,19 @@ export function CalendarView() {
     loadMeetings();
   }, []);
 
+  // Link direto para um evento (?event=<id>, ex.: aviso de convite no início): abre a agenda na data dele
+  // com o painel do evento aberto, uma única vez.
+  const eventParam = searchParams.get("event");
+  const openedFromLink = useRef(false);
+  useEffect(() => {
+    if (!eventParam || openedFromLink.current) return;
+    const meeting = meetings.find((m) => m.id === eventParam);
+    if (!meeting) return;
+    openedFromLink.current = true;
+    setCursor(new Date(`${meeting.data.slice(0, 10)}T00:00:00`));
+    setSelectedMeetingId(meeting.id);
+  }, [meetings, eventParam]);
+
   const classes = useMemo(
     () =>
       [

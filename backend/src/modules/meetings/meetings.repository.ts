@@ -4,10 +4,11 @@ import type { CreateMeetingInput, UpdateMeetingInput } from "./meetings.schemas.
 
 const meetingInclude = {
   criadoPor: { select: { id: true, name: true } },
-  participacoes: { include: { user: { select: { id: true, name: true } } } }
+  participacoes: { include: { user: { select: { id: true, name: true } } } },
+  turmas: { select: { id: true, nome: true }, orderBy: { nome: "asc" } }
 } as const;
 
-type MeetingFields<T extends { participanteIds?: string[] }> = Omit<T, "participanteIds">;
+type MeetingFields<T extends { participanteIds?: string[]; turmaIds?: string[] }> = Omit<T, "participanteIds" | "turmaIds">;
 
 export class MeetingsRepository {
   constructor(private readonly prisma: PrismaClient) {}
@@ -36,7 +37,11 @@ export class MeetingsRepository {
     return users.map((user) => user.id);
   }
 
-  create(data: MeetingFields<CreateMeetingInput>, criadoPorId: string, convidadoIds: string[]) {
+  async countTurmas(ids: string[]) {
+    return this.prisma.turma.count({ where: { id: { in: ids } } });
+  }
+
+  create(data: MeetingFields<CreateMeetingInput>, criadoPorId: string, convidadoIds: string[], turmaIds: string[]) {
     return this.prisma.reuniao.create({
       data: {
         ...data,
@@ -44,17 +49,15 @@ export class MeetingsRepository {
         horarioFim: parseTimeToDate(data.horarioFim),
         criadoPorId,
         participacoes: {
-          create: [
-            { userId: criadoPorId, status: "CONFIRMADO" },
-            ...convidadoIds.map((userId) => ({ userId }))
-          ]
-        }
+          create: convidadoIds.map((userId) => ({ userId }))
+        },
+        turmas: { connect: turmaIds.map((id) => ({ id })) }
       },
       include: meetingInclude
     });
   }
 
-  update(id: string, data: MeetingFields<UpdateMeetingInput>, participanteIds?: string[]) {
+  update(id: string, data: MeetingFields<UpdateMeetingInput>, participanteIds?: string[], turmaIds?: string[]) {
     return this.prisma.$transaction(async (tx) => {
       if (participanteIds) {
         await tx.participacaoReuniao.deleteMany({ where: { reuniaoId: id, userId: { notIn: participanteIds } } });
@@ -69,7 +72,8 @@ export class MeetingsRepository {
         data: {
           ...data,
           horarioInicio: data.horarioInicio ? parseTimeToDate(data.horarioInicio) : undefined,
-          horarioFim: data.horarioFim ? parseTimeToDate(data.horarioFim) : undefined
+          horarioFim: data.horarioFim ? parseTimeToDate(data.horarioFim) : undefined,
+          turmas: turmaIds ? { set: turmaIds.map((turmaId) => ({ id: turmaId })) } : undefined
         },
         include: meetingInclude
       });

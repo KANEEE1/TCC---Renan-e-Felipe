@@ -1,5 +1,5 @@
-import { MeetingForm } from "@/components/meetings/meeting-form";
+import { MeetingList } from "@/components/meetings/meeting-list";
 
 export default function MeetingAddPage() {
-  return <MeetingForm />;
+  return <MeetingList initialMode="add" />;
 }

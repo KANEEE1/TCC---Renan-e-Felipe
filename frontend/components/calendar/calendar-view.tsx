@@ -7,6 +7,7 @@ import { useSchedule, type ScheduleItem } from "@/components/schedule/schedule-c
 import { api } from "@/lib/api";
 import { getSessionUser } from "@/lib/auth";
 import { EventDialog } from "@/components/calendar/event-dialog";
+import { LessonDialog, type LessonOccurrence } from "@/components/calendar/lesson-dialog";
 import { eventTypeOf, STATUS_COLORS, STATUS_LABELS, toHHMM, type MeetingDTO } from "@/components/meetings/meeting-types";
 
 type ViewMode = "day" | "week" | "month";
@@ -117,10 +118,33 @@ function layoutDay<T extends { startTime: string; endTime: string }>(events: T[]
   return placed;
 }
 
+// Uma aula numa data: `event` já traz data, horário e professor efetivos (com a exceção aplicada); `series` é a aula
+// semanal original. `dataOriginal` (dia da série) identifica a ocorrência, mesmo se ela foi movida de dia.
+interface Occurrence {
+  key: string;
+  event: ScheduleItem;
+  series: ScheduleItem;
+  dataOriginal: string;
+  date: Date;
+  alterada: boolean;
+}
+
 // O que a agenda desenha: aulas semanais e eventos pontuais, com o mesmo layout de sobreposição.
 type Entry =
-  | { kind: "lesson"; id: string; startTime: string; endTime: string; lesson: ScheduleItem }
+  | { kind: "lesson"; id: string; startTime: string; endTime: string; occurrence: Occurrence }
   | { kind: "meeting"; id: string; startTime: string; endTime: string; meeting: MeetingDTO };
+
+function lessonOccurrenceOf(occurrence: Occurrence): LessonOccurrence {
+  const { event } = occurrence;
+  return {
+    dataOriginal: occurrence.dataOriginal,
+    data: dateKey(occurrence.date),
+    startTime: event.startTime,
+    endTime: event.endTime,
+    teacherId: event.teacherId,
+    teacher: event.teacher
+  };
+}
 
 function initials(name: string) {
   return name
@@ -171,13 +195,13 @@ export function CalendarView() {
     if (user) setSession({ id: user.id, isManagement: user.roles.includes("GESTAO") });
     setDeclined(loadDeclined());
   }, []);
-  const occurrenceKey = (event: ScheduleItem, date: Date) => `${event.id}|${dateKey(date)}`;
-  const isDeclined = (event: ScheduleItem, date: Date) => declined.has(occurrenceKey(event, date));
-  const colorOf = (event: ScheduleItem, date: Date) => (isDeclined(event, date) ? DECLINED_COLOR : event.color);
+  const isDeclined = (occurrence: Occurrence) => declined.has(occurrence.key);
+  const colorOf = (occurrence: Occurrence) => (isDeclined(occurrence) ? DECLINED_COLOR : occurrence.event.color);
 
   // A aula aberta no painel é uma ocorrência (aula + data), para saber se é futura e se foi marcada.
-  const [selected, setSelected] = useState<{ event: ScheduleItem; date: Date } | null>(null);
+  const [selected, setSelected] = useState<Occurrence | null>(null);
   const [confirmingDecline, setConfirmingDecline] = useState(false);
+  const [editingLesson, setEditingLesson] = useState<Occurrence | null>(null);
   const selectedEvent = selected?.event ?? null;
   const setSelectedEvent = (value: null) => {
     setSelected(value);
@@ -243,7 +267,10 @@ export function CalendarView() {
   const teachers = useMemo(() => {
     const list = [
       ...new Map([
-        ...ofClass.map((s) => [s.teacherId, s.teacher] as [string, string]),
+        ...ofClass.flatMap((s) => [
+          [s.teacherId, s.teacher] as [string, string],
+          ...s.excecoes.flatMap((e) => (e.teacherId && e.teacher ? [[e.teacherId, e.teacher] as [string, string]] : []))
+        ]),
         ...meetingsOfClass.flatMap((m) => m.participantes.map((p) => [p.userId, p.name] as [string, string]))
       ])
     ];
@@ -251,7 +278,10 @@ export function CalendarView() {
     return list.sort((a, b) => a[1].localeCompare(b[1], "pt-BR"));
   }, [ofClass, meetingsOfClass, extraTeacher]);
   const filtered = useMemo(
-    () => (selectedTeacher === "all" ? ofClass : ofClass.filter((s) => s.teacherId === selectedTeacher)),
+    () =>
+      selectedTeacher === "all"
+        ? ofClass
+        : ofClass.filter((s) => s.teacherId === selectedTeacher || s.excecoes.some((e) => !e.cancelada && e.teacherId === selectedTeacher)),
     [ofClass, selectedTeacher]
   );
   const filteredMeetings = useMemo(
@@ -273,18 +303,49 @@ export function CalendarView() {
 
   const selectedTeacherName = teachers.find(([id]) => id === selectedTeacher)?.[1];
   const teacherWithoutLessons = selectedTeacher !== "all" && !!selectedTeacherName && filtered.length === 0 && filteredMeetings.length === 0;
-  // A aula se repete toda semana, mas só dentro do período da grade da turma.
-  const eventsOn = (date: Date) => {
+  // A aula se repete toda semana, mas só dentro do período da grade da turma (verificado na data original).
+  // Exceções: ocorrência cancelada some; ocorrência movida aparece na data efetiva, com horário e professor efetivos.
+  const eventsOn = (date: Date): Occurrence[] => {
     const key = dateKey(date);
-    return filtered.filter(
-      (s) => s.day === weekdayIndex(date) && (!s.periodStart || s.periodStart <= key) && (!s.periodEnd || s.periodEnd >= key)
-    );
+    const out: Occurrence[] = [];
+    for (const series of filtered) {
+      const originals = new Set(series.excecoes.filter((e) => e.dataOriginal === key || e.data === key).map((e) => e.dataOriginal));
+      if (series.day === weekdayIndex(date)) originals.add(key);
+      for (const dataOriginal of originals) {
+        if ((series.periodStart && dataOriginal < series.periodStart) || (series.periodEnd && dataOriginal > series.periodEnd)) continue;
+        const exception = series.excecoes.find((e) => e.dataOriginal === dataOriginal);
+        if (exception?.cancelada || (exception?.data ?? dataOriginal) !== key) continue;
+        const startTime = exception?.startTime ?? series.startTime;
+        const endTime = exception?.endTime ?? series.endTime;
+        const teacherId = exception?.teacherId ?? series.teacherId;
+        if (selectedTeacher !== "all" && teacherId !== selectedTeacher) continue;
+        out.push({
+          key: `${series.id}|${dataOriginal}`,
+          series,
+          dataOriginal,
+          date,
+          alterada: exception !== undefined,
+          event: {
+            ...series,
+            day: weekdayIndex(date),
+            startTime,
+            endTime,
+            duration: (minutesOf(endTime) - minutesOf(startTime)) / 60,
+            teacherId,
+            teacher: exception?.teacher ?? series.teacher
+          }
+        });
+      }
+    }
+    return out;
   };
 
   const entriesOn = (date: Date): Entry[] => {
     const key = dateKey(date);
     return [
-      ...eventsOn(date).map((lesson): Entry => ({ kind: "lesson", id: lesson.id, startTime: lesson.startTime, endTime: lesson.endTime, lesson })),
+      ...eventsOn(date).map(
+        (occurrence): Entry => ({ kind: "lesson", id: occurrence.key, startTime: occurrence.event.startTime, endTime: occurrence.event.endTime, occurrence })
+      ),
       ...filteredMeetings
         .filter((m) => m.data.slice(0, 10) === key)
         .map((meeting): Entry => ({ kind: "meeting", id: `m-${meeting.id}`, startTime: toHHMM(meeting.horarioInicio), endTime: toHHMM(meeting.horarioFim), meeting }))
@@ -426,13 +487,13 @@ export function CalendarView() {
                       </button>
                     );
                   }
-                  const event = entry.lesson;
+                  const event = entry.occurrence.event;
                   return (
                     <button
-                      key={event.id}
+                      key={entry.id}
                       type="button"
-                      onClick={() => setSelected({ event, date: day })}
-                      className={`absolute overflow-hidden rounded-md border border-white px-1.5 py-0.5 text-left text-white shadow-sm transition hover:brightness-110 ${colorOf(event, day)}`}
+                      onClick={() => setSelected(entry.occurrence)}
+                      className={`absolute overflow-hidden rounded-md border border-white px-1.5 py-0.5 text-left text-white shadow-sm transition hover:brightness-110 ${colorOf(entry.occurrence)}`}
                       style={{
                         top: (start / 60) * HOUR_HEIGHT + 1,
                         height: height - 2,
@@ -510,9 +571,9 @@ export function CalendarView() {
                   ) : (
                     <span
                       key={entry.id}
-                      className={`block truncate rounded px-1 text-[10px] leading-4 text-white ${colorOf(entry.lesson, date)} ${inMonth ? "" : "opacity-50"}`}
+                      className={`block truncate rounded px-1 text-[10px] leading-4 text-white ${colorOf(entry.occurrence)} ${inMonth ? "" : "opacity-50"}`}
                     >
-                      {entry.startTime} {entry.lesson.subject}
+                      {entry.startTime} {entry.occurrence.event.subject}
                     </span>
                   )
                 )}
@@ -805,6 +866,18 @@ export function CalendarView() {
         </div>
       )}
 
+      {editingLesson && (
+        <LessonDialog
+          lesson={editingLesson.series}
+          occurrence={lessonOccurrenceOf(editingLesson)}
+          onClose={() => setEditingLesson(null)}
+          onSaved={() => {
+            setEditingLesson(null);
+            setSelectedEvent(null);
+          }}
+        />
+      )}
+
       {selected && selectedEvent && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center" onClick={() => setSelectedEvent(null)}>
           <div
@@ -824,7 +897,7 @@ export function CalendarView() {
               </button>
             </div>
             <div className="flex gap-4 px-6">
-              <span className={`mt-1.5 h-4 w-4 shrink-0 rounded ${colorOf(selectedEvent, selected.date)}`} />
+              <span className={`mt-1.5 h-4 w-4 shrink-0 rounded ${colorOf(selected)}`} />
               <div className="min-w-0">
                 <h2 className="text-xl text-slate-800">{selectedEvent.subject}</h2>
                 <p className="mt-0.5 text-sm text-slate-500">
@@ -832,7 +905,10 @@ export function CalendarView() {
                   {selected.date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })} · {selectedEvent.startTime} –{" "}
                   {selectedEvent.endTime}
                 </p>
-                <p className="text-xs text-slate-400">Repete toda {DAY_FULL[selectedEvent.day]}</p>
+                <p className="text-xs text-slate-400">Repete toda {DAY_FULL[selected.series.day]}</p>
+                {selected.alterada && (
+                  <span className="mt-1.5 inline-block rounded-full bg-amber-50 px-2.5 py-0.5 text-xs text-amber-700">Alterada nesta data</span>
+                )}
               </div>
             </div>
             <ul className="mt-4 space-y-3 px-6 text-sm text-slate-700">
@@ -875,7 +951,7 @@ export function CalendarView() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => router.push(`/schedule/edit/${selectedEvent.id}`)}
+                      onClick={() => setEditingLesson(selected)}
                       className="rounded-full bg-blue-600 px-5 py-2 text-sm text-white hover:bg-blue-700"
                     >
                       Editar
@@ -887,7 +963,7 @@ export function CalendarView() {
               const isOwn = session?.id === selectedEvent.teacherId;
               if (!isOwn) return null;
 
-              if (isDeclined(selectedEvent, selected.date)) {
+              if (isDeclined(selected)) {
                 return (
                   <p className="mx-6 mt-6 flex items-center gap-2 rounded-xl bg-slate-100 px-4 py-3 text-sm text-slate-600">
                     <UserX size={16} className="shrink-0" /> Você informou que não vai conseguir participar desta aula.
@@ -925,7 +1001,7 @@ export function CalendarView() {
                         type="button"
                         onClick={() => {
                           const next = new Set(declined);
-                          next.add(occurrenceKey(selectedEvent, selected.date));
+                          next.add(selected.key);
                           setDeclined(next);
                           saveDeclined(next);
                           setConfirmingDecline(false);

@@ -59,6 +59,8 @@ export class PresencaRepository {
       where: { id: aulaId },
       select: {
         id: true,
+        turmaId: true,
+        disciplinaId: true,
         professorId: true,
         diaSemana: true,
         horarioInicio: true,
@@ -78,13 +80,18 @@ export class PresencaRepository {
     return found !== null;
   }
 
-  listAcceptedSubstitutionAulaIds(substitutoId: string, data: Date) {
-    return this.prisma.substituicao
-      .findMany({
-        where: { substitutoId, status: "ACEITA", ausencia: { data } },
-        select: { ausencia: { select: { aulaId: true } } }
-      })
-      .then((rows) => new Set(rows.map((r) => r.ausencia.aulaId)));
+  // Substituições aceitas do usuário nas ocorrências dadas (chave "aulaId|YYYY-MM-DD" da data original).
+  async listAcceptedSubstitutionKeys(substitutoId: string, ocorrencias: { aulaId: string; dataOriginal: Date }[]) {
+    if (ocorrencias.length === 0) return new Set<string>();
+    const rows = await this.prisma.substituicao.findMany({
+      where: {
+        substitutoId,
+        status: "ACEITA",
+        ausencia: { OR: ocorrencias.map(({ aulaId, dataOriginal }) => ({ aulaId, data: dataOriginal })) }
+      },
+      select: { ausencia: { select: { aulaId: true, data: true } } }
+    });
+    return new Set(rows.map((r) => `${r.ausencia.aulaId}|${r.ausencia.data.toISOString().slice(0, 10)}`));
   }
 
   async listTurmaIdsOfAluno(alunoId: string) {
@@ -97,7 +104,11 @@ export class PresencaRepository {
       where: turmaIds ? { turmaId: { in: turmaIds } } : undefined,
       select: {
         id: true,
+        turmaId: true,
+        disciplinaId: true,
+        professorId: true,
         diaSemana: true,
+        horarioInicio: true,
         horarioFim: true,
         createdAt: true,
         turma: {
@@ -119,27 +130,11 @@ export class PresencaRepository {
     return this.prisma.presenca.createMany({ data: rows, skipDuplicates: true });
   }
 
-  listAulasDoDia(diaSemana: string) {
-    return this.prisma.aula.findMany({
-      where: { diaSemana },
-      orderBy: { horarioInicio: "asc" },
-      select: {
-        id: true,
-        professorId: true,
-        diaSemana: true,
-        horarioInicio: true,
-        horarioFim: true,
-        disciplina: { select: { id: true, nome: true } },
-        turma: { select: { id: true, nome: true, gradeInicio: true, gradeFim: true } },
-        professor: { select: { id: true, name: true } }
-      }
-    });
-  }
-
-  listPresencasDoDia(aulaIds: string[], data: Date) {
+  listPresencasDasOcorrencias(ocorrencias: { aulaId: string; dataOriginal: Date }[]) {
+    if (ocorrencias.length === 0) return Promise.resolve([]);
     return this.prisma.presenca.findMany({
-      where: { aulaId: { in: aulaIds }, data },
-      select: { aulaId: true, presente: true, automatica: true }
+      where: { OR: ocorrencias.map(({ aulaId, dataOriginal }) => ({ aulaId, data: dataOriginal })) },
+      select: { aulaId: true, data: true, presente: true, automatica: true }
     });
   }
 

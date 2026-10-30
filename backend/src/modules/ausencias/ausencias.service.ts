@@ -1,6 +1,7 @@
 import { hasRole, type Actor } from "../../shared/auth.js";
 import { HttpError } from "../../shared/http.js";
-import { diaSemanaOfDateOnly, todayInSaoPaulo } from "../../shared/time.js";
+import { diaSemanaOfDateOnly, parseDateOnly, todayInSaoPaulo } from "../../shared/time.js";
+import { isoDate } from "../grade-horaria/ocorrencias.js";
 import type { AusenciasRepository } from "./ausencias.repository.js";
 import type { CreateAusenciaInput, ListAusenciasQuery } from "./ausencias.schemas.js";
 
@@ -23,21 +24,30 @@ export class AusenciasService {
   }
 
   async create(input: CreateAusenciaInput, actor: Actor) {
-    const aula = await this.ausenciasRepository.findAulaById(input.aulaId);
+    const aula = await this.ausenciasRepository.findAulaById(input.aulaId, input.data);
 
     if (!aula) {
       throw new HttpError(404, "Aula not found");
     }
 
-    if (aula.professorId !== actor.id) {
+    // A falta é da ocorrência (data original): vale o professor e a data efetivos dela, e ela não pode estar cancelada.
+    const excecao = aula.excecoes[0];
+    const efetiva = { professorId: excecao?.professorId ?? aula.professorId, data: excecao?.data ?? parseDateOnly(input.data) };
+
+    if (excecao?.cancelada) {
+      throw new HttpError(409, "The lesson was cancelled on this date");
+    }
+
+    if (efetiva.professorId !== actor.id) {
       throw new HttpError(403, "Only the lesson's teacher can register an absence");
     }
 
-    if (input.data < todayInSaoPaulo()) {
+    if (isoDate(efetiva.data) < todayInSaoPaulo()) {
       throw new HttpError(400, "Absence date cannot be in the past");
     }
 
-    if (diaSemanaOfDateOnly(input.data) !== aula.diaSemana) {
+    // Ocorrência alterada (snapshot) pode ter origem num dia que a série já não usa.
+    if (aula.excecoes.length === 0 && diaSemanaOfDateOnly(input.data) !== aula.diaSemana) {
       throw new HttpError(400, "Date does not match the lesson's weekday");
     }
 

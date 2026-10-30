@@ -20,8 +20,20 @@ const ausenciaInclude = {
 export class AusenciasRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
-  findAulaById(id: string) {
-    return this.prisma.aula.findUnique({ where: { id }, select: { id: true, professorId: true, diaSemana: true } });
+  // `excecoes` traz só a exceção da ocorrência (data original) em que a falta será registrada.
+  findAulaById(id: string, dataOriginal: string) {
+    return this.prisma.aula.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        professorId: true,
+        diaSemana: true,
+        excecoes: {
+          where: { dataOriginal: parseDateOnly(dataOriginal) },
+          select: { dataOriginal: true, cancelada: true, data: true, horarioInicio: true, horarioFim: true, professorId: true }
+        }
+      }
+    });
   }
 
   async list(filters: { de?: string; ate?: string; registradoPorId?: string }) {

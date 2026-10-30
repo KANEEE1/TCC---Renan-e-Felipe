@@ -86,6 +86,8 @@ model User {
 
   substituicoesRecebidas  Substituicao[] @relation("SubstituicoesRecebidas")
   substituicoesDesignadas Substituicao[] @relation("SubstituicoesDesignadas")
+
+  excecoesAula AulaExcecao[] @relation("ProfessorExcecoes")
 }
 
 model Aluno {
@@ -199,11 +201,34 @@ model Aula {
   disciplina Disciplina     @relation(fields: [disciplinaId], references: [id])
   presencas  Presenca[]
   ausencias  AusenciaAula[]
+  excecoes   AulaExcecao[]
   professor  User           @relation("ProfessorAulas", fields: [professorId], references: [id])
   turma      Turma          @relation(fields: [turmaId], references: [id])
 
   @@unique([turmaId, diaSemana, horarioInicio])
   @@unique([professorId, diaSemana, horarioInicio])
+}
+
+// Alteração de uma única ocorrência de uma Aula semanal (estilo Google Agenda). Identificada pela data original
+// (o dia da série); quando não cancelada guarda um snapshot completo da ocorrência (data, horário e professor),
+// de modo que editar a série depois não a altera.
+model AulaExcecao {
+  id            String    @id @default(cuid())
+  aulaId        String
+  dataOriginal  DateTime  @db.Date
+  cancelada     Boolean   @default(false)
+  data          DateTime? @db.Date
+  horarioInicio DateTime? @db.Time(0)
+  horarioFim    DateTime? @db.Time(0)
+  professorId   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  aula      Aula  @relation(fields: [aulaId], references: [id], onDelete: Cascade)
+  professor User? @relation("ProfessorExcecoes", fields: [professorId], references: [id])
+
+  @@unique([aulaId, dataOriginal])
+  @@index([data])
 }
 
 model Matricula {

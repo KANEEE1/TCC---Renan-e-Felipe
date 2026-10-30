@@ -1,14 +1,8 @@
-import { currentDiaSemana, currentTimeOfDay, todayInSaoPaulo } from "../../shared/time.js";
+import { currentTimeOfDay, parseTimeToDate, todayInSaoPaulo } from "../../shared/time.js";
 import type { GradeHorariaRepository } from "../grade-horaria/grade-horaria.repository.js";
+import { gerarOcorrencias } from "../grade-horaria/ocorrencias.js";
 import type { SimuladosRepository } from "../simulados/simulados.repository.js";
 import type { TurmasRepository } from "../turmas/turmas.repository.js";
-
-// A aula só acontece dentro do período da grade da turma; turma sem período não restringe.
-function emVigencia(turma: { gradeInicio: Date | null; gradeFim: Date | null }, hoje: string) {
-  const inicio = turma.gradeInicio?.toISOString().slice(0, 10);
-  const fim = turma.gradeFim?.toISOString().slice(0, 10);
-  return (!inicio || inicio <= hoje) && (!fim || fim >= hoje);
-}
 
 function statusFor(horarioInicio: Date, horarioFim: Date, now: Date) {
   if (now < horarioInicio) return "agendada";
@@ -30,22 +24,30 @@ export class DashboardService {
       this.simuladosRepository.list()
     ]);
 
-    const today = currentDiaSemana();
     const now = currentTimeOfDay();
     const hoje = todayInSaoPaulo();
 
-    const todayActivities = aulas
-      .filter((aula) => aula.diaSemana === today && emVigencia(aula.turma, hoje))
-      .map((aula) => ({
-        id: aula.id,
-        subject: aula.disciplina.nome,
-        class: aula.turma.nome,
-        teacher: aula.professor.name,
-        tipo: aula.tipo,
-        time: aula.horarioInicio,
-        endTime: aula.horarioFim,
-        status: statusFor(aula.horarioInicio, aula.horarioFim, now)
-      }))
+    // Ocorrências efetivas de hoje (respeitam período da grade, aulas movidas e canceladas).
+    const aulaPorId = new Map(aulas.map((aula) => [aula.id, aula]));
+    const professores = new Map(
+      aulas.flatMap((aula) => [aula.professor, ...aula.excecoes.flatMap((e) => (e.professor ? [e.professor] : []))]).map((p) => [p.id, p.name])
+    );
+    const todayActivities = gerarOcorrencias(aulas, aulas.flatMap((aula) => aula.excecoes), hoje, hoje)
+      .map((oc) => {
+        const aula = aulaPorId.get(oc.aulaId)!;
+        const time = parseTimeToDate(oc.horarioInicio);
+        const endTime = parseTimeToDate(oc.horarioFim);
+        return {
+          id: aula.id,
+          subject: aula.disciplina.nome,
+          class: aula.turma.nome,
+          teacher: professores.get(oc.professorId) ?? aula.professor.name,
+          tipo: aula.tipo,
+          time,
+          endTime,
+          status: statusFor(time, endTime, now)
+        };
+      })
       .sort((a, b) => a.time.getTime() - b.time.getTime());
 
     const upcomingSimulados = simulados

@@ -1,6 +1,7 @@
 import { createHash, randomInt } from "node:crypto";
 import { HttpError } from "../../shared/http.js";
-import { formatTimeHHMM } from "../../shared/time.js";
+import { agora } from "../../shared/clock.js";
+import { diaSemanaOfDateOnly, formatTimeHHMM, parseDateOnly, parseTimeToDate, timeOfDayInSaoPaulo, todayInSaoPaulo } from "../../shared/time.js";
 import type { DisponibilidadeService } from "../disponibilidade/disponibilidade.service.js";
 import { allocate, overlaps } from "./grade-horaria.allocator.js";
 import { allocateTurma, criarAleatorio, type PropostaTurma } from "./grade-horaria.turma-allocator.js";
@@ -24,9 +25,11 @@ import type {
   GenerateScheduleInput,
   ReplaceScheduleInput,
   SuggestScheduleInput,
-  UpdateAulaInput
+  UpdateAulaInput,
+  UpdateOcorrenciaInput
 } from "./grade-horaria.schemas.js";
 import type { GradeHorariaRepository } from "./grade-horaria.repository.js";
+import { dataDaSerie, dataNoPeriodo, gerarOcorrencias, isoDate, resolverOcorrencia, type AulaOcorrivel, type ExcecaoOcorrencia } from "./ocorrencias.js";
 
 interface ExistingAula {
   id: string;
@@ -52,14 +55,33 @@ function assertValidRange(horarioInicio: string, horarioFim: string) {
   }
 }
 
+interface ExcecaoComProfessor extends ExcecaoOcorrencia {
+  professor: { id: string; name: string } | null;
+}
+
+function toExcecaoResponse(excecao: ExcecaoComProfessor) {
+  return {
+    dataOriginal: isoDate(excecao.dataOriginal),
+    cancelada: excecao.cancelada,
+    data: excecao.data ? isoDate(excecao.data) : null,
+    horarioInicio: excecao.horarioInicio ? formatTimeHHMM(excecao.horarioInicio) : null,
+    horarioFim: excecao.horarioFim ? formatTimeHHMM(excecao.horarioFim) : null,
+    professor: excecao.professor
+  };
+}
+
 export class GradeHorariaService {
   constructor(
     private readonly gradeHorariaRepository: GradeHorariaRepository,
     private readonly disponibilidadeService: DisponibilidadeService
   ) {}
 
-  list() {
-    return this.gradeHorariaRepository.list();
+  private withExcecoes<T extends { excecoes: ExcecaoComProfessor[] }>(aulas: T[]) {
+    return aulas.map((aula) => ({ ...aula, excecoes: aula.excecoes.map(toExcecaoResponse) }));
+  }
+
+  async list() {
+    return this.withExcecoes(await this.gradeHorariaRepository.list());
   }
 
   async getById(id: string) {
@@ -72,8 +94,8 @@ export class GradeHorariaService {
     return aula;
   }
 
-  listByTurma(turmaId: string) {
-    return this.gradeHorariaRepository.listByTurma(turmaId);
+  async listByTurma(turmaId: string) {
+    return this.withExcecoes(await this.gradeHorariaRepository.listByTurma(turmaId));
   }
 
   listByProfessor(professorId: string) {
@@ -104,6 +126,9 @@ export class GradeHorariaService {
     };
     assertValidRange(merged.horarioInicio, merged.horarioFim);
     await this.assertNoConflicts([merged], id);
+    if (input.turmaId || input.professorId || input.diaSemana || input.horarioInicio || input.horarioFim) {
+      await this.assertSemConflitoComOcorrenciasMovidas(merged, id);
+    }
 
     return this.gradeHorariaRepository.update(id, input);
   }
@@ -111,6 +136,115 @@ export class GradeHorariaService {
   async remove(id: string) {
     await this.getById(id);
     await this.gradeHorariaRepository.remove(id);
+  }
+
+  // Altera uma única ocorrência da série (data, horário e/ou professor). Grava um snapshot completo.
+  editarOcorrencia(id: string, dataOriginal: string, input: UpdateOcorrenciaInput) {
+    return this.gradeHorariaRepository.transaction(async (repository) => {
+      const aula = await repository.findAulaParaOcorrencia(id);
+      if (!aula) throw new HttpError(404, "Class schedule entry not found");
+
+      const excecao = await repository.findExcecao(id, parseDateOnly(dataOriginal));
+      this.assertOcorrenciaDaSerie(aula, excecao, dataOriginal);
+      if (excecao?.cancelada) throw new HttpError(409, "A ocorrência está cancelada");
+
+      const atual = resolverOcorrencia(aula, excecao ?? undefined, dataOriginal)!;
+      this.assertNaoComecou(atual);
+      const original = parseDateOnly(dataOriginal);
+      if ((await repository.countPresencas(id, original)) > 0) {
+        throw new HttpError(409, "A ocorrência já tem presença registrada e não pode ser alterada");
+      }
+      if ((await repository.countAusencias(id, original)) > 0) {
+        throw new HttpError(409, "A ocorrência tem uma falta registrada e não pode ser alterada; cancele a falta antes");
+      }
+      const data = input.data ?? atual.data;
+      const horarioInicio = input.horarioInicio ?? atual.horarioInicio;
+      const horarioFim = input.horarioFim ?? atual.horarioFim;
+      const professorId = input.professorId ?? atual.professorId;
+
+      assertValidRange(horarioInicio, horarioFim);
+      if (!dataNoPeriodo(aula.turma, data)) throw new HttpError(400, "A data está fora do período da grade");
+
+      const professor = await repository.findProfessor(professorId);
+      if (input.professorId && (!professor || !professor.ativo || !professor.roles.includes("PROFESSOR"))) {
+        throw new HttpError(400, "Professor must be an active teacher");
+      }
+
+      // Conflitos com as demais ocorrências efetivas da data (do professor ou da turma).
+      const fontes = await repository.carregarFontesDoDia(data);
+      const outras = gerarOcorrencias(fontes.aulas, fontes.excecoes, data, data).filter(
+        (oc) => !(oc.aulaId === id && oc.dataOriginal === dataOriginal)
+      );
+      if (outras.some((oc) => oc.aulaId === id)) {
+        throw new HttpError(409, "Já existe outra ocorrência desta aula nesta data");
+      }
+      const conflitos = outras
+        .filter((oc) => overlaps(horarioInicio, horarioFim, oc.horarioInicio, oc.horarioFim))
+        .flatMap((oc) => [
+          ...(oc.professorId === professorId ? [{ recurso: "PROFESSOR" as const, data, horarioInicio: oc.horarioInicio, horarioFim: oc.horarioFim }] : []),
+          ...(oc.turmaId === aula.turmaId ? [{ recurso: "TURMA" as const, data, horarioInicio: oc.horarioInicio, horarioFim: oc.horarioFim }] : [])
+        ]);
+      if (conflitos.length > 0) {
+        throw new HttpError(409, "Schedule conflicts with existing classes", { conflitos });
+      }
+
+      const salva = await repository.upsertExcecao(id, parseDateOnly(dataOriginal), {
+        cancelada: false,
+        data: parseDateOnly(data),
+        horarioInicio: parseTimeToDate(horarioInicio),
+        horarioFim: parseTimeToDate(horarioFim),
+        professorId
+      });
+      const efetiva = resolverOcorrencia(aula, salva, dataOriginal)!;
+      return {
+        aulaId: efetiva.aulaId,
+        dataOriginal: efetiva.dataOriginal,
+        data: efetiva.data,
+        horarioInicio: efetiva.horarioInicio,
+        horarioFim: efetiva.horarioFim,
+        professor: salva.professor,
+        alterada: true
+      };
+    });
+  }
+
+  // Cancela uma única ocorrência da série (ex.: feriado). Presença registrada pelo professor impede.
+  cancelarOcorrencia(id: string, dataOriginal: string) {
+    return this.gradeHorariaRepository.transaction(async (repository) => {
+      const aula = await repository.findAulaParaOcorrencia(id);
+      if (!aula) throw new HttpError(404, "Class schedule entry not found");
+
+      const data = parseDateOnly(dataOriginal);
+      const excecao = await repository.findExcecao(id, data);
+      this.assertOcorrenciaDaSerie(aula, excecao, dataOriginal);
+      if (excecao?.cancelada) return;
+      this.assertNaoComecou(resolverOcorrencia(aula, excecao ?? undefined, dataOriginal)!);
+
+      if ((await repository.countSubstituicoesAceitas(id, data)) > 0) {
+        throw new HttpError(409, "Há um substituto confirmado para esta aula; cancele a substituição antes");
+      }
+      if ((await repository.countPresencasManuais(id, data)) > 0) {
+        throw new HttpError(409, "A ocorrência já tem presença registrada pelo professor e não pode ser cancelada");
+      }
+
+      await repository.limparRegistrosDaOcorrencia(id, data);
+      await repository.upsertExcecao(id, data, { cancelada: true, data: null, horarioInicio: null, horarioFim: null, professorId: null });
+    });
+  }
+
+  private assertNaoComecou(ocorrencia: { data: string; horarioInicio: string }) {
+    const now = agora();
+    const hoje = todayInSaoPaulo(now);
+    if (ocorrencia.data < hoje || (ocorrencia.data === hoje && ocorrencia.horarioInicio <= timeOfDayInSaoPaulo(now))) {
+      throw new HttpError(409, "Não é possível alterar uma aula que já aconteceu");
+    }
+  }
+
+  // A data original precisa ser um dia da série (dia da semana + período) ou já ter exceção (série reeditada depois).
+  private assertOcorrenciaDaSerie(aula: AulaOcorrivel, excecao: unknown, dataOriginal: string) {
+    if (!excecao && !dataDaSerie(aula, dataOriginal)) {
+      throw new HttpError(400, "A data não é uma ocorrência desta aula");
+    }
   }
 
   async suggest(input: SuggestScheduleInput) {
@@ -338,6 +472,29 @@ export class GradeHorariaService {
 
     if (conflitos.length > 0) {
       throw new HttpError(409, "Schedule conflicts with existing classes", { conflitos });
+    }
+  }
+
+  // A série passa a cair em datas futuras onde uma ocorrência de outra aula foi movida para o mesmo professor/turma.
+  private async assertSemConflitoComOcorrenciasMovidas(aula: CreateAulaInput, ignoreId: string) {
+    const [turma, movidas] = await Promise.all([
+      this.gradeHorariaRepository.findTurma(aula.turmaId),
+      this.gradeHorariaRepository.listExcecoesDeOutrasAulas(ignoreId, aula.professorId, aula.turmaId, parseDateOnly(todayInSaoPaulo(agora())))
+    ]);
+    const conflitos = movidas.flatMap((excecao) => {
+      const data = excecao.data!.toISOString().slice(0, 10);
+      const inicio = formatTimeHHMM(excecao.horarioInicio!);
+      const fim = formatTimeHHMM(excecao.horarioFim!);
+      if (diaSemanaOfDateOnly(data) !== aula.diaSemana || !overlaps(aula.horarioInicio, aula.horarioFim, inicio, fim)) return [];
+      if (turma && !dataNoPeriodo(turma, data)) return [];
+      const base = { origem: "OCORRENCIA_MOVIDA", data, horarioInicio: inicio, horarioFim: fim };
+      return [
+        ...(excecao.professorId === aula.professorId ? [{ ...base, recurso: "PROFESSOR" }] : []),
+        ...(excecao.aula.turmaId === aula.turmaId ? [{ ...base, recurso: "TURMA" }] : [])
+      ];
+    });
+    if (conflitos.length > 0) {
+      throw new HttpError(409, "Schedule conflicts with moved classes", { conflitos });
     }
   }
 

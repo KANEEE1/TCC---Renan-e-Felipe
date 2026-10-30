@@ -13,6 +13,7 @@ export async function resetDb() {
     prisma.matricula.deleteMany(),
     prisma.substituicao.deleteMany(),
     prisma.ausenciaAula.deleteMany(),
+    prisma.aulaExcecao.deleteMany(),
     prisma.aula.deleteMany(),
     prisma.disponibilidade.deleteMany(),
     prisma.simulado.deleteMany(),

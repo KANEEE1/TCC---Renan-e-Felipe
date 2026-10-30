@@ -1,14 +1,34 @@
 import { hasRole, type Actor } from "../../shared/auth.js";
 import { HttpError } from "../../shared/http.js";
 import type { StatusSubstituicao } from "@prisma/client";
-import { formatTimeHHMM, todayInSaoPaulo } from "../../shared/time.js";
+import { diaSemanaOfDateOnly, formatTimeHHMM, parseTimeToDate, todayInSaoPaulo } from "../../shared/time.js";
 import { overlaps } from "../grade-horaria/grade-horaria.allocator.js";
+import { gerarOcorrencias, isoDate, valoresEfetivos, type ExcecaoOcorrencia } from "../grade-horaria/ocorrencias.js";
 import { rankCandidatos, type Candidato } from "./substituicoes.ranking.js";
 import type { SubstituicoesRepository } from "./substituicoes.repository.js";
 import type { CreateSubstituicaoInput, RespondSubstituicaoInput } from "./substituicoes.schemas.js";
 
 type Horario = { horarioInicio: Date; horarioFim: Date };
-type Ausencia = { id: string; data: Date; aula: Horario & { professorId: string; disciplinaId: string; diaSemana: string } };
+type ExcecaoDaAula = Pick<ExcecaoOcorrencia, "dataOriginal" | "cancelada" | "data" | "horarioInicio" | "horarioFim" | "professorId">;
+type AusenciaBruta = { id: string; data: Date; aula: Horario & { professorId: string; disciplinaId: string; excecoes: ExcecaoDaAula[] } };
+// Falta vista pela ocorrência efetiva: data, horário e professor já com a exceção aplicada (data = data efetiva).
+type Ausencia = Horario & { id: string; data: Date; professorId: string; disciplinaId: string };
+
+function efetivar(ausencia: AusenciaBruta): Ausencia {
+  const { aula } = ausencia;
+  return { id: ausencia.id, disciplinaId: aula.disciplinaId, ...valoresEfetivos(aula, aula.excecoes, ausencia.data) };
+}
+
+// Compromissos em que a falta registrada tem data efetiva igual a `data` (substituições ativas do professor).
+function comprometidosNaData(
+  ativas: { ausencia: { data: Date; aula: Horario & { professorId: string; excecoes: ExcecaoDaAula[] } } }[],
+  data: Date
+): Horario[] {
+  return ativas
+    .map((item) => valoresEfetivos(item.ausencia.aula, item.ausencia.aula.excecoes, item.ausencia.data))
+    .filter((efetiva) => !efetiva.cancelada && efetiva.data.getTime() === data.getTime());
+}
+
 type Substituto = { id: string; ativo: boolean; roles: string[] };
 
 export class SubstituicoesService {
@@ -16,13 +36,15 @@ export class SubstituicoesService {
 
   create(input: CreateSubstituicaoInput, designadoPorId: string) {
     return this.substituicoesRepository.transaction(async (repository) => {
-      const ausencia = await repository.findAusenciaById(input.ausenciaId);
+      const bruta = await repository.findAusenciaById(input.ausenciaId);
 
-      if (!ausencia) {
+      if (!bruta) {
         throw new HttpError(404, "Absence not found");
       }
 
-      if (ausencia.data.toISOString().slice(0, 10) < todayInSaoPaulo()) {
+      const ausencia = efetivar(bruta);
+
+      if (isoDate(ausencia.data) < todayInSaoPaulo()) {
         throw new HttpError(400, "Cannot assign a substitute to a past absence");
       }
 
@@ -58,16 +80,15 @@ export class SubstituicoesService {
         throw new HttpError(409, "Substitution already answered");
       }
 
-      if (substituicao.ausencia.data.toISOString().slice(0, 10) < todayInSaoPaulo()) {
+      const ausencia = efetivar((await repository.findAusenciaById(substituicao.ausenciaId))!);
+
+      if (isoDate(ausencia.data) < todayInSaoPaulo()) {
         throw new HttpError(400, "Cannot respond to a past absence");
       }
 
       if (input.status === "ACEITA") {
-        const [ausencia, substituto] = await Promise.all([
-          repository.findAusenciaById(substituicao.ausenciaId),
-          repository.findUserById(substituicao.substitutoId)
-        ]);
-        const motivo = await this.verificarElegibilidade(repository, ausencia!, substituto, substituicao.id);
+        const substituto = await repository.findUserById(substituicao.substitutoId);
+        const motivo = await this.verificarElegibilidade(repository, ausencia, substituto, substituicao.id);
 
         if (motivo) {
           throw motivo;
@@ -80,13 +101,16 @@ export class SubstituicoesService {
 
   async findCandidates(ausenciaId: string) {
     const repository = this.substituicoesRepository;
-    const ausencia = await repository.findAusenciaById(ausenciaId);
+    const bruta = await repository.findAusenciaById(ausenciaId);
 
-    if (!ausencia) {
+    if (!bruta) {
       throw new HttpError(404, "Absence not found");
     }
 
-    if (ausencia.data.toISOString().slice(0, 10) < todayInSaoPaulo()) {
+    const ausencia = efetivar(bruta);
+    const dataEfetiva = isoDate(ausencia.data);
+
+    if (dataEfetiva < todayInSaoPaulo()) {
       throw new HttpError(400, "Cannot list substitutes for a past absence");
     }
 
@@ -99,16 +123,19 @@ export class SubstituicoesService {
     const inicioMes = new Date(Date.UTC(ausencia.data.getUTCFullYear(), ausencia.data.getUTCMonth(), 1));
     const fimMes = new Date(Date.UTC(ausencia.data.getUTCFullYear(), ausencia.data.getUTCMonth() + 1, 1));
 
-    const [disponibilidades, aulas, substituicoesMes, recusadas] = await Promise.all([
-      repository.findDisponibilidades(ids, ausencia.aula.diaSemana),
+    const [disponibilidades, aulas, ativas, recusadas, fontes] = await Promise.all([
+      repository.findDisponibilidades(ids, diaSemanaOfDateOnly(dataEfetiva)),
       repository.findAulasDosProfessores(ids),
-      repository.findAtivasDosSubstitutosNoPeriodo(ids, inicioMes, fimMes),
-      repository.findRecusadasByAusencia(ausencia.id)
+      repository.findAtivasDosSubstitutos(ids),
+      repository.findRecusadasByAusencia(ausencia.id),
+      repository.carregarFontesDoDia(dataEfetiva)
     ]);
 
+    // Aulas efetivas na data da falta (considera aulas movidas/canceladas) como compromissos dos professores.
+    const aulasNaData = gerarOcorrencias(fontes.aulas, fontes.excecoes, dataEfetiva, dataEfetiva);
     const recusaram = new Set(recusadas.map((item) => item.substitutoId));
-    const inicio = formatTimeHHMM(ausencia.aula.horarioInicio);
-    const fim = formatTimeHHMM(ausencia.aula.horarioFim);
+    const inicio = formatTimeHHMM(ausencia.horarioInicio);
+    const fim = formatTimeHHMM(ausencia.horarioFim);
 
     const candidatos: Candidato[] = [];
 
@@ -116,10 +143,16 @@ export class SubstituicoesService {
       if (recusaram.has(professor.id)) continue;
 
       const aulasDoProfessor = aulas.filter((aula) => aula.professorId === professor.id);
-      const substituicoesDoProfessor = substituicoesMes.filter((item) => item.substitutoId === professor.id);
+      const substituicoesDoProfessor = ativas.filter((item) => item.substitutoId === professor.id);
+      const substituicoesMes = substituicoesDoProfessor.filter((item) => {
+        const { data } = valoresEfetivos(item.ausencia.aula, item.ausencia.aula.excecoes, item.ausencia.data);
+        return data >= inicioMes && data < fimMes;
+      });
       const compromissos = [
-        ...aulasDoProfessor.filter((aula) => aula.diaSemana === ausencia.aula.diaSemana),
-        ...substituicoesDoProfessor.filter((item) => item.ausencia.data.getTime() === ausencia.data.getTime()).map((item) => item.ausencia.aula)
+        ...aulasNaData
+          .filter((oc) => oc.professorId === professor.id)
+          .map((oc) => ({ horarioInicio: parseTimeToDate(oc.horarioInicio), horarioFim: parseTimeToDate(oc.horarioFim) })),
+        ...comprometidosNaData(substituicoesDoProfessor, ausencia.data)
       ];
 
       const motivo =
@@ -130,14 +163,14 @@ export class SubstituicoesService {
       candidatos.push({
         id: professor.id,
         name: professor.name,
-        lecionaDisciplina: professor.disciplinas.some((disciplina) => disciplina.id === ausencia.aula.disciplinaId),
+        lecionaDisciplina: professor.disciplinas.some((disciplina) => disciplina.id === ausencia.disciplinaId),
         disponivel: disponibilidades.some(
           (item) =>
             item.professorId === professor.id &&
             formatTimeHHMM(item.horarioInicio) <= inicio &&
             formatTimeHHMM(item.horarioFim) >= fim
         ),
-        carga: { aulasSemanais: aulasDoProfessor.length, substituicoesMes: substituicoesDoProfessor.length }
+        carga: { aulasSemanais: aulasDoProfessor.length, substituicoesMes: substituicoesMes.length }
       });
     }
 
@@ -169,10 +202,12 @@ export class SubstituicoesService {
       return new HttpError(409, "Absence already has a substitute");
     }
 
-    const aulasDoSubstituto = await repository.findAulasOfProfessorNoDia(substituto!.id, ausencia.aula.diaSemana);
-    const substituicoesNaData = (await repository.findAtivasDoSubstitutoNaData(substituto!.id, ausencia.data, ignorarId)).map(
-      (item) => item.ausencia.aula
-    );
+    const dataEfetiva = isoDate(ausencia.data);
+    const fontes = await repository.carregarFontesDoDia(dataEfetiva);
+    const aulasDoSubstituto = gerarOcorrencias(fontes.aulas, fontes.excecoes, dataEfetiva, dataEfetiva)
+      .filter((oc) => oc.professorId === substituto!.id)
+      .map((oc) => ({ horarioInicio: parseTimeToDate(oc.horarioInicio), horarioFim: parseTimeToDate(oc.horarioFim) }));
+    const substituicoesNaData = comprometidosNaData(await repository.findAtivasDoSubstituto(substituto!.id, ignorarId), ausencia.data);
 
     return this.verificarConflito(ausencia, [...aulasDoSubstituto, ...substituicoesNaData]);
   }
@@ -182,7 +217,7 @@ export class SubstituicoesService {
       return new HttpError(400, "Substitute must be an active teacher");
     }
 
-    if (substituto.id === ausencia.aula.professorId) {
+    if (substituto.id === ausencia.professorId) {
       return new HttpError(400, "Substitute cannot be the lesson's own teacher");
     }
 
@@ -190,7 +225,7 @@ export class SubstituicoesService {
   }
 
   private verificarConflito(ausencia: Ausencia, compromissos: Horario[]) {
-    if (compromissos.some((horario) => this.conflita(horario, ausencia.aula))) {
+    if (compromissos.some((horario) => this.conflita(horario, ausencia))) {
       return new HttpError(409, "Substitute has a conflicting commitment at this time");
     }
 

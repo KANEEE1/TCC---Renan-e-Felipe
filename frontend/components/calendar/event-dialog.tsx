@@ -64,6 +64,14 @@ export function EventDialog({ event, defaultDate, onClose, onSaved }: Props) {
 
   const toggleClass = (id: string) => setClassIds((prev) => (prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]));
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   const handleSave = async () => {
     if (saving) return;
     if (!title.trim()) return setError("Informe um título.");

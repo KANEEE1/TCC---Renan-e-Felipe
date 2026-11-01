@@ -13,8 +13,10 @@ import { eventTypeOf, STATUS_COLORS, STATUS_LABELS, toHHMM, type MeetingDTO } fr
 type ViewMode = "day" | "week" | "month";
 
 const MONTH_NAMES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
-// Semana começando na segunda, como os índices de ScheduleItem.day (0 = segunda ... 6 = domingo).
+// Rótulos por índice de ScheduleItem.day (0 = segunda ... 6 = domingo).
 const DAY_SHORT = ["SEG", "TER", "QUA", "QUI", "SEX", "SÁB", "DOM"];
+// A agenda exibe a semana de domingo a sábado (só a ordem das colunas; o dia de cada aula vem da própria data).
+const WEEK_HEADER = ["DOM", "SEG", "TER", "QUA", "QUI", "SEX", "SÁB"];
 const DAY_FULL = ["segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo"];
 const VIEW_LABELS: Record<ViewMode, string> = { day: "Dia", week: "Semana", month: "Mês" };
 const TYPE_LABELS: Record<string, string> = { aula: "Aula", plantao: "Plantão", aulao: "Aulão" };
@@ -51,9 +53,10 @@ function weekdayIndex(date: Date) {
   return (date.getDay() + 6) % 7;
 }
 
+// Domingo da semana da data (a agenda mostra domingo a sábado).
 function startOfWeek(date: Date) {
   const d = new Date(date);
-  d.setDate(d.getDate() - weekdayIndex(d));
+  d.setDate(d.getDate() - d.getDay());
   d.setHours(0, 0, 0, 0);
   return d;
 }
@@ -73,11 +76,11 @@ function isSameDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-// Semanas completas (segunda a domingo) que cobrem o mês inteiro.
+// Semanas completas (domingo a sábado) que cobrem o mês inteiro.
 function monthGrid(year: number, month: number) {
   const first = new Date(year, month, 1);
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const weeks = Math.ceil((weekdayIndex(first) + daysInMonth) / 7);
+  const weeks = Math.ceil((first.getDay() + daysInMonth) / 7);
   const start = startOfWeek(first);
   return Array.from({ length: weeks * 7 }, (_, i) => addDays(start, i));
 }
@@ -574,7 +577,7 @@ export function CalendarView() {
   const monthView = (
     <div className="min-h-0 flex-1 overflow-y-auto bg-white">
       <div className="grid grid-cols-7 border-b border-slate-200">
-        {DAY_SHORT.map((label) => (
+        {WEEK_HEADER.map((label) => (
           <div key={label} className="py-2 text-center text-[11px] font-medium text-slate-500">
             {label}
           </div>

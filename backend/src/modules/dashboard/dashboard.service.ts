@@ -5,8 +5,6 @@ import { formatTimeHHMM, parseDateOnly, timeOfDayInSaoPaulo, todayInSaoPaulo } f
 import type { GradeHorariaRepository } from "../grade-horaria/grade-horaria.repository.js";
 import { gerarOcorrencias, indisponibilidadeVigente, isoDate } from "../grade-horaria/ocorrencias.js";
 import type { MeetingsRepository } from "../meetings/meetings.repository.js";
-import type { SimuladosRepository } from "../simulados/simulados.repository.js";
-import type { TurmasRepository } from "../turmas/turmas.repository.js";
 
 function statusFor(inicio: string, fim: string, agoraHHMM: string) {
   if (agoraHHMM < inicio) return "agendada";
@@ -34,18 +32,14 @@ interface ResumoItem {
 
 export class DashboardService {
   constructor(
-    private readonly turmasRepository: TurmasRepository,
     private readonly gradeHorariaRepository: GradeHorariaRepository,
-    private readonly simuladosRepository: SimuladosRepository,
     private readonly meetingsRepository: MeetingsRepository
   ) {}
 
   async summary(actor: Actor) {
     const hoje = todayInSaoPaulo(agora());
-    const [turmas, aulas, simulados, eventos] = await Promise.all([
-      this.turmasRepository.list(),
+    const [aulas, eventos] = await Promise.all([
       this.gradeHorariaRepository.list(),
-      this.simuladosRepository.list(),
       this.meetingsRepository.listByDate(parseDateOnly(hoje))
     ]);
 
@@ -116,18 +110,6 @@ export class DashboardService {
       (a, b) => a.horarioInicio.localeCompare(b.horarioInicio) || a.horarioFim.localeCompare(b.horarioFim)
     );
 
-    const upcomingSimulados = simulados
-      .filter((simulado) => simulado.data >= new Date(new Date().toDateString()))
-      .slice(0, 5);
-
-    return {
-      stats: {
-        turmas: turmas.length,
-        aulasHoje: itensAula.length,
-        auloesHoje: todayActivities.filter((a) => a.tipo === "AULAO").length
-      },
-      todayActivities,
-      upcomingSimulados
-    };
+    return { todayActivities };
   }
 }

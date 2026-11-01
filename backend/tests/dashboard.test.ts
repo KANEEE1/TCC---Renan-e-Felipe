@@ -114,7 +114,8 @@ describe("dashboard summary", () => {
         horarioInicio: "08:00", horarioFim: "09:00", participo: true, aulaId: ctx.aulaA.id, dataOriginal: "2026-10-28"
       });
       expect(body.todayActivities[1]).toMatchObject({ kind: "EVENTO", local: "Auditório", eventoId: expect.any(String), participo: true });
-      expect(body.stats).toMatchObject({ turmas: 1, aulasHoje: 1, auloesHoje: 0 });
+      expect(body.todayActivities.filter((item: { kind: string }) => item.kind === "AULA")).toHaveLength(1);
+      expect(body.stats).toBeUndefined();
     });
 
     it("professor does not see a lesson with a standing unavailability", async () => {
@@ -137,7 +138,8 @@ describe("dashboard summary", () => {
       expect(titulos(body)).toEqual(["Matemática", "Física", "Reunião gestão", "Aulão"]);
       expect(body.todayActivities.map((a: any) => a.participo)).toEqual([false, false, true, false]);
       expect(body.todayActivities[2].professores).toEqual(["Gestor"]);
-      expect(body.stats).toMatchObject({ aulasHoje: 2, auloesHoje: 1 });
+      expect(body.todayActivities.filter((item: { kind: string }) => item.kind === "AULA")).toHaveLength(2);
+      expect(body.todayActivities.filter((item: { tipo: string }) => item.tipo === "AULAO")).toHaveLength(1);
     });
 
     it("respects moved and cancelled occurrences", async () => {

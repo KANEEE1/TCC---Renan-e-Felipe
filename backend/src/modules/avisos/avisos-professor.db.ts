@@ -4,7 +4,7 @@ type Db = PrismaClient | Prisma.TransactionClient;
 
 export interface AvisoRetiradaInput {
   userId: string;
-  tipo: "RETIRADO_AULA" | "RETIRADO_EVENTO";
+  tipo: "RETIRADO_AULA" | "RETIRADO_EVENTO" | "CANCELADO_AULA" | "CANCELADO_EVENTO";
   titulo: string;
   turma: string | null;
   data: Date;
@@ -15,7 +15,7 @@ export interface AvisoRetiradaInput {
   reuniaoId?: string;
 }
 
-// Cria o aviso de retirada. Substitui um aviso anterior (ainda sem ciente) do mesmo professor para a mesma
+// Cria o aviso de retirada ou de cancelamento. Substitui um aviso anterior (ainda sem ciente) do mesmo professor para a mesma
 // ocorrência/evento, para não acumular avisos repetidos.
 export async function criarAvisoRetirada(db: Db, aviso: AvisoRetiradaInput) {
   await removerAvisosRetirada(db, [aviso.userId], aviso);

@@ -44,7 +44,7 @@ export class MeetingsController {
     }));
 
     this.router.delete("/:id", requireRole("GESTAO"), asyncHandler(async (req, res) => {
-      await this.meetingsService.remove(req.params.id as string);
+      await this.meetingsService.remove(req.params.id as string, getActor(req));
       res.status(204).end();
     }));
   }

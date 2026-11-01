@@ -108,10 +108,24 @@ export class MeetingsService {
     return this.toResponse(await this.findOrThrow(id), actor);
   }
 
-  async remove(id: string) {
-    await this.findOrThrow(id);
+  async remove(id: string, actor: Actor) {
+    const current = await this.findOrThrow(id);
 
-    await this.meetingsRepository.remove(id);
+    // Evento que ainda não começou: todos os participantes (qualquer status), menos quem excluiu, são avisados do cancelamento.
+    const avisos = jaComecou({ data: isoDate(current.data), horarioInicio: formatTimeHHMM(current.horarioInicio) }, agora())
+      ? []
+      : current.participacoes
+          .filter((participacao) => participacao.userId !== actor.id)
+          .map((participacao) => ({
+            userId: participacao.userId,
+            titulo: current.titulo,
+            turma: current.turmas.length > 0 ? current.turmas.map((turma) => turma.nome).join(", ") : null,
+            data: current.data,
+            horarioInicio: current.horarioInicio,
+            horarioFim: current.horarioFim
+          }));
+
+    await this.meetingsRepository.remove(id, avisos);
   }
 
   private async findOrThrow(id: string) {

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Bell, CalendarClock, ChevronRight, LogOut, Plus, User, UserMinus, UserX, Zap } from "lucide-react";
+import { Bell, CalendarClock, CalendarX, ChevronRight, LogOut, Plus, User, UserMinus, UserX, Zap } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { clearSession } from "@/lib/auth";
 import { eventTypeOf, toHHMM, type EventType, type MeetingDTO } from "@/components/meetings/meeting-types";
@@ -57,7 +57,7 @@ interface ConvocacaoNotice {
 
 interface RetiradaNotice {
   id: string;
-  tipo: "RETIRADO_AULA" | "RETIRADO_EVENTO";
+  tipo: "RETIRADO_AULA" | "RETIRADO_EVENTO" | "CANCELADO_AULA" | "CANCELADO_EVENTO";
   titulo: string;
   turma: string | null;
   data: string;
@@ -357,17 +357,30 @@ export function DashboardScreen() {
                   </Link>
                 </div>
               ))}
-              {myNotices.retiradas.map((retirada) => (
-                <div key={retirada.id} className="rounded-2xl border border-slate-200 bg-slate-100 p-4 shadow-sm">
+              {myNotices.retiradas.map((retirada) => {
+                const cancelado = retirada.tipo.startsWith("CANCELADO");
+                return (
+                <div
+                  key={retirada.id}
+                  className={`rounded-2xl border p-4 shadow-sm ${cancelado ? "border-rose-200 bg-rose-50" : "border-slate-200 bg-slate-100"}`}
+                >
                   <div className="flex items-start gap-3">
-                    <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-500 text-white">
-                      <UserMinus size={18} />
+                    <span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${cancelado ? "bg-rose-500" : "bg-slate-500"} text-white`}>
+                      {cancelado ? <CalendarX size={18} /> : <UserMinus size={18} />}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm text-slate-800">
-                        <strong>Você não está mais em</strong>: {retirada.titulo}
+                      <p className={`text-sm ${cancelado ? "text-rose-900" : "text-slate-800"}`}>
+                        {cancelado ? (
+                          <>
+                            <strong>{retirada.tipo === "CANCELADO_AULA" ? "Aula cancelada" : "Evento cancelado"}:</strong> {retirada.titulo}
+                          </>
+                        ) : (
+                          <>
+                            <strong>Você não está mais em</strong>: {retirada.titulo}
+                          </>
+                        )}
                       </p>
-                      <p className="mt-0.5 text-xs text-slate-600">
+                      <p className={`mt-0.5 text-xs ${cancelado ? "text-rose-700" : "text-slate-600"}`}>
                         {retirada.turma ? `${retirada.turma} · ` : ""}
                         <span className="capitalize">{formatNoticeDate(retirada.data)}</span>, das {retirada.horarioInicio} às{" "}
                         {retirada.horarioFim}
@@ -377,12 +390,15 @@ export function DashboardScreen() {
                   <button
                     type="button"
                     onClick={() => dismissRetirada(retirada)}
-                    className="mt-3 w-full rounded-xl border border-slate-300 bg-white py-2.5 text-sm text-slate-700 transition-colors hover:bg-slate-200"
+                    className={`mt-3 w-full rounded-xl border bg-white py-2.5 text-sm transition-colors ${
+                      cancelado ? "border-rose-300 text-rose-700 hover:bg-rose-100" : "border-slate-300 text-slate-700 hover:bg-slate-200"
+                    }`}
                   >
                     Ciente
                   </button>
                 </div>
-              ))}
+                );
+              })}
               {invites.map((event) => {
                 const type = eventTypeOf(event.tipo);
                 const date = new Date(`${event.data.slice(0, 10)}T00:00:00`).toLocaleDateString("pt-BR", {

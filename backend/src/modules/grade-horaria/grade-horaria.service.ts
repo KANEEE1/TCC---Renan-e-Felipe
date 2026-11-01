@@ -248,7 +248,7 @@ export class GradeHorariaService {
   }
 
   // Cancela uma única ocorrência da série (ex.: feriado). Presença registrada pelo professor impede.
-  cancelarOcorrencia(id: string, dataOriginal: string) {
+  cancelarOcorrencia(id: string, dataOriginal: string, actor: Actor) {
     return this.gradeHorariaRepository.transaction(async (repository) => {
       const aula = await repository.findAulaParaOcorrencia(id);
       if (!aula) throw new HttpError(404, "Class schedule entry not found");
@@ -257,7 +257,8 @@ export class GradeHorariaService {
       const excecao = await repository.findExcecao(id, data);
       this.assertOcorrenciaDaSerie(aula, excecao, dataOriginal);
       if (excecao?.cancelada) return;
-      this.assertNaoComecou(resolverOcorrencia(aula, excecao ?? undefined, dataOriginal)!);
+      const efetiva = resolverOcorrencia(aula, excecao ?? undefined, dataOriginal)!;
+      this.assertNaoComecou(efetiva);
 
       if ((await repository.countSubstituicoesAceitas(id, data)) > 0) {
         throw new HttpError(409, "Há um substituto confirmado para esta aula; cancele a substituição antes");
@@ -268,6 +269,21 @@ export class GradeHorariaService {
 
       await repository.limparRegistrosDaOcorrencia(id, data);
       await repository.upsertExcecao(id, data, { cancelada: true, data: null, horarioInicio: null, horarioFim: null, professorId: null });
+
+      // O professor efetivo (se não foi quem cancelou) é avisado; convocações pendentes da ocorrência deixam de valer.
+      await repository.removerConvocacoes(id, data);
+      if (efetiva.professorId !== actor.id) {
+        await repository.avisarCancelamento({
+          userId: efetiva.professorId,
+          titulo: aula.disciplina.nome,
+          turma: aula.turma.nome,
+          data: parseDateOnly(efetiva.data),
+          horarioInicio: parseTimeToDate(efetiva.horarioInicio),
+          horarioFim: parseTimeToDate(efetiva.horarioFim),
+          aulaId: id,
+          dataOriginal: data
+        });
+      }
     });
   }
 

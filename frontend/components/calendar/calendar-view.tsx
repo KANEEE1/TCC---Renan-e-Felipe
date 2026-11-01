@@ -242,9 +242,9 @@ export function CalendarView() {
     if (!meeting) return;
     openedFromLink.current = true;
     setCursor(new Date(`${meeting.data.slice(0, 10)}T00:00:00`));
-    setSelectedMeetingId(meeting.id);
-    // ?edit=1 (aviso da gestão): abre direto o pop-up de edição.
+    // ?edit=1 (aviso da gestão): abre direto o pop-up de edição, sem o painel de detalhes por baixo.
     if (editParam && getSessionUser()?.roles.includes("GESTAO")) setDialog({ event: meeting });
+    else setSelectedMeetingId(meeting.id);
   }, [meetings, eventParam]);
 
   const classes = useMemo(
@@ -862,7 +862,11 @@ export function CalendarView() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setDialog({ event: selectedMeeting })}
+                  onClick={() => {
+                    // Fecha o painel de detalhes e abre o pop-up de edição (como na edição de aula).
+                    setSelectedMeetingId(null);
+                    setDialog({ event: selectedMeeting });
+                  }}
                   className="rounded-full bg-blue-600 px-5 py-2 text-sm text-white hover:bg-blue-700"
                 >
                   Editar

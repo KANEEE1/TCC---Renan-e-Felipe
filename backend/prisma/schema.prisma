@@ -41,11 +41,14 @@ model Reuniao {
   disciplina    Disciplina? @relation("EventoDisciplina", fields: [disciplinaId], references: [id])
   // A gestão marcou que o evento não precisa de professores (sem isso, exige ao menos um).
   semProfessores Boolean    @default(false)
+  // Aula comum (tipo AULA) cuja presença é registrada pelo professor do evento, como numa aula da grade.
+  exigePresenca Boolean     @default(false)
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
   participacoes ParticipacaoReuniao[]
   turmas        Turma[]               @relation("EventoTurmas")
+  presencas     Presenca[]
 }
 
 enum StatusParticipacao {
@@ -136,6 +139,7 @@ model Turma {
 
   aulas      Aula[]
   eventos    Reuniao[] @relation("EventoTurmas")
+  presencasDeEventos Presenca[]
   matriculas Matricula[]
   cargas     CargaDisciplinaTurma[]
   janelas    JanelaTurma[]
@@ -321,7 +325,11 @@ model Matricula {
 model Presenca {
   id        String   @id @default(cuid())
   alunoId   String
-  aulaId    String
+  // Presença de aula da grade (aulaId) OU de evento "Aula comum" com presença (reuniaoId); exatamente um dos dois.
+  aulaId    String?
+  reuniaoId String?
+  // Turma do aluno naquele evento (os relatórios por turma); só nas presenças de evento.
+  turmaId   String?
   presente  Boolean
   automatica Boolean @default(false)
   data      DateTime @db.Date
@@ -329,9 +337,13 @@ model Presenca {
   updatedAt DateTime @updatedAt
 
   aluno Aluno @relation(fields: [alunoId], references: [id])
-  aula  Aula  @relation(fields: [aulaId], references: [id])
+  aula  Aula? @relation(fields: [aulaId], references: [id])
+  // Restrict: evento com presença registrada não pode ser excluído (o histórico de frequência é preservado).
+  reuniao Reuniao? @relation(fields: [reuniaoId], references: [id], onDelete: Restrict)
+  turma Turma? @relation(fields: [turmaId], references: [id])
 
   @@unique([alunoId, aulaId, data])
+  @@unique([alunoId, reuniaoId])
 }
 
 model Simulado {

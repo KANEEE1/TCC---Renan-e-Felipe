@@ -52,6 +52,10 @@ export class MeetingsRepository {
     return users.map((user) => user.id);
   }
 
+  countPresencas(reuniaoId: string) {
+    return this.prisma.presenca.count({ where: { reuniaoId } });
+  }
+
   async disciplinaExiste(id: string) {
     return (await this.prisma.disciplina.count({ where: { id } })) > 0;
   }

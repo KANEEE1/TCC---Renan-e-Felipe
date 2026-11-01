@@ -7,8 +7,14 @@ const presencaInclude = {
       turma: true,
       disciplina: true
     }
-  }
+  },
+  // Presença de evento (aula comum com presença): no lugar de `aula`.
+  reuniao: { select: { id: true, titulo: true, disciplina: { select: { id: true, nome: true } } } },
+  turma: { select: { id: true, nome: true } }
 };
+
+// Presenças das turmas dadas: as da grade (pela turma da aula) e as de evento (pela turma gravada).
+const dasTurmas = (turmaIds: string[]) => ({ OR: [{ aula: { turmaId: { in: turmaIds } } }, { turmaId: { in: turmaIds } }] });
 
 export class PresencaRepository {
   constructor(private readonly prisma: PrismaClient) {}
@@ -22,7 +28,7 @@ export class PresencaRepository {
 
   listByTurma(turmaId: string) {
     return this.prisma.presenca.findMany({
-      where: { aula: { turmaId } },
+      where: dasTurmas([turmaId]),
       orderBy: { data: "desc" },
       include: presencaInclude
     });
@@ -49,7 +55,7 @@ export class PresencaRepository {
 
   listPresencasForSummary(turmaIds?: string[]) {
     return this.prisma.presenca.findMany({
-      where: turmaIds ? { aula: { turmaId: { in: turmaIds } } } : undefined,
+      where: turmaIds ? dasTurmas(turmaIds) : undefined,
       select: { alunoId: true, presente: true }
     });
   }
@@ -118,6 +124,59 @@ export class PresencaRepository {
     });
   }
 
+  // Eventos com presença entre `de` e `ate` (datas) que ainda não têm nenhum registro, com os matriculados das turmas.
+  listEventosForConsolidation(de: Date, ate: Date, turmaIds?: string[]) {
+    return this.prisma.reuniao.findMany({
+      where: { exigePresenca: true, data: { gte: de, lte: ate }, presencas: { none: {} }, ...(turmaIds ? { turmas: { some: { id: { in: turmaIds } } } } : {}) },
+      select: {
+        id: true,
+        data: true,
+        horarioInicio: true,
+        horarioFim: true,
+        createdAt: true,
+        turmas: {
+          select: { id: true, matriculas: { select: { alunoId: true, dataMatricula: true, createdAt: true } } },
+          orderBy: { nome: "asc" }
+        }
+      }
+    });
+  }
+
+  findEventoForMark(id: string) {
+    return this.prisma.reuniao.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        exigePresenca: true,
+        data: true,
+        horarioInicio: true,
+        horarioFim: true,
+        participacoes: { select: { userId: true } },
+        turmas: {
+          select: { id: true, matriculas: { select: { alunoId: true, dataMatricula: true, createdAt: true } } },
+          orderBy: { nome: "asc" }
+        }
+      }
+    });
+  }
+
+  listEventosDoDia(data: Date) {
+    return this.prisma.reuniao.findMany({
+      where: { exigePresenca: true, data },
+      orderBy: { horarioInicio: "asc" },
+      select: {
+        id: true,
+        titulo: true,
+        horarioInicio: true,
+        horarioFim: true,
+        disciplina: { select: { id: true, nome: true } },
+        turmas: { select: { id: true, nome: true }, orderBy: { nome: "asc" } },
+        participacoes: { select: { user: { select: { id: true, name: true } } } },
+        presencas: { select: { presente: true, automatica: true } }
+      }
+    });
+  }
+
   listExistingPairs(aulaIds: string[], minData: Date) {
     return this.prisma.presenca.findMany({
       where: { aulaId: { in: aulaIds }, data: { gte: minData } },
@@ -126,7 +185,9 @@ export class PresencaRepository {
     });
   }
 
-  createManyPresencas(rows: { alunoId: string; aulaId: string; data: Date; presente: boolean; automatica: boolean }[]) {
+  createManyPresencas(
+    rows: { alunoId: string; aulaId?: string; reuniaoId?: string; turmaId?: string; data: Date; presente: boolean; automatica: boolean }[]
+  ) {
     return this.prisma.presenca.createMany({ data: rows, skipDuplicates: true });
   }
 
@@ -144,6 +205,19 @@ export class PresencaRepository {
         this.prisma.presenca.upsert({
           where: { alunoId_aulaId_data: { alunoId: entry.alunoId, aulaId, data } },
           create: { alunoId: entry.alunoId, aulaId, data, presente: entry.presente, automatica: false },
+          update: { presente: entry.presente, automatica: false },
+          include: presencaInclude
+        })
+      )
+    );
+  }
+
+  markEventoBulk(reuniaoId: string, data: Date, entries: { alunoId: string; turmaId: string; presente: boolean }[]) {
+    return this.prisma.$transaction(
+      entries.map((entry) =>
+        this.prisma.presenca.upsert({
+          where: { alunoId_reuniaoId: { alunoId: entry.alunoId, reuniaoId } },
+          create: { alunoId: entry.alunoId, reuniaoId, turmaId: entry.turmaId, data, presente: entry.presente, automatica: false },
           update: { presente: entry.presente, automatica: false },
           include: presencaInclude
         })

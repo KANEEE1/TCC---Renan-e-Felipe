@@ -1,8 +1,11 @@
 import { boundedNumberQuery } from "../../shared/query.js";
 import { z } from "zod";
 
-export const markAttendanceSchema = z.object({
-  aulaId: z.string().cuid(),
+export const markAttendanceSchema = z
+  .object({
+  // Aula da grade (aulaId) ou evento "Aula comum" com presença (eventoId); exatamente um dos dois.
+  aulaId: z.string().cuid().optional(),
+  eventoId: z.string().cuid().optional(),
   // Opcional: o servidor sempre usa "hoje"; se vier, precisa ser a data de hoje.
   data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   entries: z
@@ -13,7 +16,10 @@ export const markAttendanceSchema = z.object({
       })
     )
     .min(1)
-});
+  })
+  .refine((input) => (input.aulaId === undefined) !== (input.eventoId === undefined), {
+    message: "Informe aulaId ou eventoId (apenas um)"
+  });
 
 export const attendanceSummaryQuerySchema = z.object({
   turmaId: z.string().min(1).optional(),

@@ -6,12 +6,16 @@ import { CheckCircle } from "lucide-react";
 import { api } from "@/lib/api";
 
 export interface TodayItem {
+  // "AULA": aula da grade; "EVENTO": aula comum (evento) que exige presença. Em EVENTO, aula.id é o id do evento.
+  kind: "AULA" | "EVENTO";
+  eventoId?: string;
+  titulo?: string;
   aula: {
     id: string;
     horarioInicio: string;
     horarioFim: string;
     disciplina: { id: string; nome: string };
-    turma: { id: string; nome: string };
+    turmas: { id: string; nome: string }[];
     professor: { id: string; name: string };
   };
   status: "AGUARDANDO" | "ABERTA" | "ENCERRADA";
@@ -24,11 +28,18 @@ export interface TodayItem {
 }
 
 interface PresencaDTO {
-  aulaId: string;
+  aulaId: string | null;
+  reuniaoId: string | null;
   data: string;
   presente: boolean;
-  aula: { disciplina: { nome: string }; turma: { nome: string } };
+  aula: { disciplina: { nome: string }; turma: { nome: string } } | null;
+  reuniao: { disciplina: { nome: string } | null } | null;
+  turma: { nome: string } | null;
 }
+
+// Rota de registro: a aula da grade usa o id da aula; a aula comum com presença usa "evento-<id>".
+export const markHref = (item: Pick<TodayItem, "kind" | "eventoId" | "aula">) =>
+  `/attendance/mark/${item.kind === "EVENTO" ? `evento-${item.eventoId}` : item.aula.id}`;
 
 const COLORS = ["bg-blue-500", "bg-emerald-500", "bg-orange-400", "bg-purple-500", "bg-teal-500"];
 
@@ -44,12 +55,21 @@ export function AttendanceList() {
   const todayDateStr = new Date().toISOString().slice(0, 10);
 
   const recentClasses = useMemo(() => {
-    const groups = new Map<string, { subject: string; class: string; date: string; present: number; total: number }>();
+    const groups = new Map<string, { subject: string; classes: Set<string>; date: string; present: number; total: number }>();
     for (const p of allPresences) {
       const date = p.data.slice(0, 10);
       if (date === todayDateStr) continue;
-      const key = `${p.aulaId}-${date}`;
-      const g = groups.get(key) ?? { subject: p.aula.disciplina.nome, class: p.aula.turma.nome, date, present: 0, total: 0 };
+      const key = `${p.aulaId ?? p.reuniaoId}-${date}`;
+      const g = groups.get(key) ?? {
+        subject: (p.aula?.disciplina ?? p.reuniao?.disciplina)?.nome ?? "Aula",
+        classes: new Set<string>(),
+        date,
+        present: 0,
+        total: 0
+      };
+      // Aula comum pode ter várias turmas.
+      const turma = (p.aula?.turma ?? p.turma)?.nome;
+      if (turma) g.classes.add(turma);
       g.total += 1;
       if (p.presente) g.present += 1;
       groups.set(key, g);
@@ -57,7 +77,7 @@ export function AttendanceList() {
     return Array.from(groups.entries())
       .sort((a, b) => b[1].date.localeCompare(a[1].date))
       .slice(0, 5)
-      .map(([key, value]) => ({ id: key, ...value }));
+      .map(([key, { classes, ...value }]) => ({ id: key, class: Array.from(classes).join(", "), ...value }));
   }, [allPresences, todayDateStr]);
 
 
@@ -88,16 +108,21 @@ export function AttendanceList() {
           {todayClasses.length === 0 && <p className="text-sm text-slate-400">Nenhuma aula hoje.</p>}
 
           <div className="space-y-2.5">
-            {todayClasses.map(({ aula, status, registrada, automatica, responsavel, podeRegistrar, presentes, total }, idx) => (
-              <div key={aula.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            {todayClasses.map((item, idx) => {
+              const { aula, status, registrada, automatica, responsavel, podeRegistrar, presentes, total } = item;
+              return (
+              <div key={`${item.kind}-${aula.id}`} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <div className="flex">
                   <div className={`w-1.5 shrink-0 rounded-l-2xl ${COLORS[idx % COLORS.length]}`} />
                   <div className="flex-1 p-4">
                     <div className="mb-3 flex items-start justify-between gap-2">
                       <div>
-                        <p className="text-sm text-slate-800">{aula.disciplina.nome}</p>
+                        <p className="text-sm text-slate-800">
+                          {aula.disciplina.nome}
+                          {item.kind === "EVENTO" && item.titulo ? ` · ${item.titulo}` : ""}
+                        </p>
                         <p className="mt-0.5 text-xs text-slate-400">
-                          {aula.turma.nome} · {aula.horarioInicio} – {aula.horarioFim}
+                          {aula.turmas.map((t) => t.nome).join(", ")} · {aula.horarioInicio} – {aula.horarioFim}
                         </p>
                         <p className="text-xs text-slate-400">{aula.professor.name}</p>
                       </div>
@@ -109,7 +134,7 @@ export function AttendanceList() {
                     {status === "ABERTA" &&
                       (podeRegistrar ? (
                         <Link
-                          href={`/attendance/mark/${aula.id}`}
+                          href={markHref(item)}
                           className="block w-full rounded-xl bg-emerald-600 py-2.5 text-center text-sm text-white transition-colors hover:bg-emerald-700"
                         >
                           Registrar presença
@@ -136,7 +161,8 @@ export function AttendanceList() {
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </section>
 

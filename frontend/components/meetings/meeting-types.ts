@@ -75,6 +75,8 @@ export interface MeetingDTO {
   // Matéria da aula/aulão (definida na criação e imutável); null nos demais tipos.
   disciplina: { id: string; nome: string } | null;
   semProfessores: boolean;
+  // Aula comum cuja presença é registrada pelo professor do evento (como numa aula da grade).
+  exigePresenca: boolean;
   participantes: { userId: string; name: string; status: ParticipationStatus }[];
   meuStatus: ParticipationStatus | null;
   // O evento foi remarcado (data ou horário) e o usuário ainda não respondeu de novo.

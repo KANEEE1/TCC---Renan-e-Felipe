@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { BookOpen, Clock, GraduationCap, MapPin, Users, X } from "lucide-react";
+import { BookOpen, ClipboardCheck, Clock, GraduationCap, MapPin, Users, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { TeacherPicker, type PickerTeacher } from "@/components/calendar/teacher-picker";
 import { EVENT_TYPES, toHHMM, type EventType, type MeetingDTO } from "@/components/meetings/meeting-types";
@@ -50,6 +50,7 @@ export function EventDialog({ event, defaultDate, onClose, onSaved }: Props) {
   const [participantIds, setParticipantIds] = useState<string[]>(event?.participantes.map((p) => p.userId) ?? []);
   const [noTeachers, setNoTeachers] = useState(event?.semProfessores ?? false);
   const [classIds, setClassIds] = useState<string[]>(event?.turmas.map((t) => t.id) ?? []);
+  const [needsAttendance, setNeedsAttendance] = useState(event?.exigePresenca ?? false);
 
   const [users, setUsers] = useState<Option[]>([]);
   const [classes, setClasses] = useState<ClassOption[]>([]);
@@ -66,6 +67,21 @@ export function EventDialog({ event, defaultDate, onClose, onSaved }: Props) {
     api.get<ClassOption[]>("/classes").then(setClasses).catch(() => setError("Não foi possível carregar as turmas."));
     if (!event) api.get<ClassOption[]>("/disciplinas").then(setSubjects).catch(() => setError("Não foi possível carregar as matérias."));
   }, [event]);
+
+  // Só a aula comum tem presença: 1 professor e ao menos 1 turma. Depois que a aula começa, presença,
+  // professor e turmas ficam travados (o backend responde 409).
+  const attendance = type === "AULA" && needsAttendance;
+  const started = isEdit && event.tipo === "AULA" && new Date(`${event.data.slice(0, 10)}T${toHHMM(event.horarioInicio)}:00`) <= new Date();
+  const lockAttendance = started;
+  const lockPeople = started && event.exigePresenca;
+
+  const toggleAttendance = (checked: boolean) => {
+    setNeedsAttendance(checked);
+    if (!checked) return;
+    setNoTeachers(false);
+    // Fica só um professor (o primeiro já escolhido).
+    setParticipantIds((prev) => prev.filter((id) => teachers.some((t) => t.id === id)).slice(0, 1));
+  };
 
   const userName = (id: string) => users.find((u) => u.id === id)?.name ?? event?.participantes.find((p) => p.userId === id)?.name ?? "...";
   const subject = useMemo(() => {
@@ -98,6 +114,10 @@ export function EventDialog({ event, defaultDate, onClose, onSaved }: Props) {
     if (!isEdit && needsSubject(type) && !subjectId) return setError("Informe a matéria da aula.");
 
     const hasTeacher = participantIds.some((id) => teachers.some((t) => t.id === id));
+    if (attendance) {
+      if (participantIds.length !== 1 || !hasTeacher) return setError("Escolha exatamente um professor para a aula com presença.");
+      if (classIds.length === 0) return setError("Escolha ao menos uma turma para a aula com presença.");
+    }
     if (!hasTeacher && !noTeachers) return setError("Inclua pelo menos um professor ou marque que o evento não precisa de professores.");
 
     setError(null);
@@ -111,8 +131,9 @@ export function EventDialog({ event, defaultDate, onClose, onSaved }: Props) {
         horarioFim: endTime,
         local: location.trim() || undefined,
         participanteIds: participantIds,
-        semProfessores: noTeachers,
-        turmaIds: classIds
+        semProfessores: attendance ? false : noTeachers,
+        turmaIds: classIds,
+        exigePresenca: attendance
       };
       if (event) await api.put(`/meetings/${event.id}`, payload);
       else await api.post("/meetings", { ...payload, disciplinaId: needsSubject(type) ? subjectId : undefined });
@@ -183,6 +204,31 @@ export function EventDialog({ event, defaultDate, onClose, onSaved }: Props) {
             })}
           </div>
 
+          {type === "AULA" && (
+            <div className="flex items-start gap-4">
+              <ClipboardCheck size={18} className="mt-0.5 shrink-0 text-slate-400" />
+              <div className="min-w-0 flex-1">
+                <label className={`flex items-center gap-2 text-sm text-slate-800 ${lockAttendance ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
+                  <input
+                    type="checkbox"
+                    checked={needsAttendance}
+                    disabled={lockAttendance}
+                    onChange={(e) => toggleAttendance(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300"
+                  />
+                  Essa aula precisa de presença
+                </label>
+                <p className="mt-0.5 text-xs text-slate-400">O professor registra a presença no horário da aula, como nas aulas da grade.</p>
+                {lockAttendance && (
+                  <p className="mt-1 text-xs text-amber-700">
+                    A aula já começou: a presença{event.exigePresenca ? ", o professor, as turmas e o horário" : ""} não pode mais ser alterada.
+                  </p>
+                )}
+                {attendance && !lockAttendance && <p className="mt-1 text-xs text-slate-500">Escolha exatamente um professor e ao menos uma turma.</p>}
+              </div>
+            </div>
+          )}
+
           {needsSubject(type) && (
             <div className="flex items-center gap-4">
               <BookOpen size={18} className="shrink-0 text-slate-400" />
@@ -212,30 +258,39 @@ export function EventDialog({ event, defaultDate, onClose, onSaved }: Props) {
           <div className="flex items-center gap-4">
             <Clock size={18} className="shrink-0 text-slate-400" />
             <div className="flex flex-wrap items-center gap-2">
-              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Data" className={inputClass} />
-              <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} aria-label="Início" className={inputClass} />
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} disabled={lockPeople} aria-label="Data" className={inputClass} />
+              <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} disabled={lockPeople} aria-label="Início" className={inputClass} />
               <span className="text-slate-400">–</span>
-              <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} aria-label="Fim" className={inputClass} />
+              <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} disabled={lockPeople} aria-label="Fim" className={inputClass} />
             </div>
           </div>
 
           <div className="flex items-start gap-4">
             <Users size={18} className="mt-2.5 shrink-0 text-slate-400" />
             <div className="min-w-0 flex-1">
-              <div aria-disabled={noTeachers} className={noTeachers ? "pointer-events-none opacity-50" : undefined}>
+              <div
+                aria-disabled={noTeachers || lockPeople}
+                className={noTeachers || lockPeople ? "pointer-events-none opacity-50" : undefined}
+              >
                 <TeacherPicker
                   teachers={teachers}
                   subject={subject}
-                  mode="multiple"
+                  mode={attendance ? "single" : "multiple"}
                   selectedIds={participantIds}
                   onChange={setParticipantIds}
                   unavailable={declined}
-                  extraPeople={users}
+                  extraPeople={attendance ? [] : users}
                   nameFallback={userName}
                 />
               </div>
-              <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm text-slate-600">
-                <input type="checkbox" checked={noTeachers} onChange={(e) => setNoTeachers(e.target.checked)} className="h-4 w-4 rounded border-slate-300" />
+              <label className={`mt-2 flex items-center gap-2 text-sm text-slate-600 ${attendance ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
+                <input
+                  type="checkbox"
+                  checked={noTeachers}
+                  disabled={attendance}
+                  onChange={(e) => setNoTeachers(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300"
+                />
                 Este evento não precisa de professores
               </label>
             </div>
@@ -244,7 +299,7 @@ export function EventDialog({ event, defaultDate, onClose, onSaved }: Props) {
           <div className="flex items-start gap-4">
             <GraduationCap size={18} className="mt-1.5 shrink-0 text-slate-400" />
             <div className="flex flex-1 flex-wrap gap-1.5">
-              {classes.length === 0 && <span className="py-1 text-sm text-slate-400">Turmas (opcional)</span>}
+              {classes.length === 0 && <span className="py-1 text-sm text-slate-400">{attendance ? "Turmas (obrigatório)" : "Turmas (opcional)"}</span>}
               {classes.map((c) => {
                 const active = classIds.includes(c.id);
                 return (
@@ -252,7 +307,8 @@ export function EventDialog({ event, defaultDate, onClose, onSaved }: Props) {
                     key={c.id}
                     type="button"
                     onClick={() => toggleClass(c.id)}
-                    className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+                    disabled={lockPeople}
+                    className={`rounded-full border px-3 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                       active ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 text-slate-600 hover:bg-slate-50"
                     }`}
                   >

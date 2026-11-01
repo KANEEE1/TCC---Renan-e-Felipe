@@ -42,6 +42,8 @@ export class MeetingsService {
     const turmas = [...new Set(turmaIds ?? [])];
     await this.assertActiveUsers(convidadoIds);
     await this.assertTurmas(turmas);
+    await this.assertPresenca(input.tipo, input.exigePresenca ?? false, convidadoIds, turmas, input.semProfessores);
+    if (input.exigePresenca) this.assertComecaNoFuturo(isoDate(input.data), input.horarioInicio);
     const semProfessores = await this.resolveSemProfessores(convidadoIds, input.semProfessores ?? false);
 
     return this.toResponse(await this.meetingsRepository.create({ ...fields, semProfessores }, actor.id, convidadoIds, turmas), actor);
@@ -75,6 +77,17 @@ export class MeetingsService {
     if (turmas) await this.assertTurmas(turmas);
 
     const participantesFinais = syncedIds ?? current.participacoes.map((participacao) => participacao.userId);
+    const turmasFinais = turmas ?? current.turmas.map((turma) => turma.id);
+    const exigePresenca = input.exigePresenca ?? current.exigePresenca;
+    await this.assertPresenca(input.tipo ?? current.tipo, exigePresenca, participantesFinais, turmasFinais, input.semProfessores);
+    await this.assertPresencaEditavel(current, input, participantesFinais, turmasFinais);
+    // Ligar a presença ou remarcar uma aula com presença: o início tem de ser futuro (editar outros campos não revalida).
+    const remarcadaAgora =
+      (input.data !== undefined && isoDate(input.data) !== isoDate(current.data)) ||
+      (input.horarioInicio !== undefined && input.horarioInicio !== formatTimeHHMM(current.horarioInicio));
+    if (exigePresenca && (!current.exigePresenca || remarcadaAgora)) {
+      this.assertComecaNoFuturo(input.data ? isoDate(input.data) : isoDate(current.data), input.horarioInicio ?? formatTimeHHMM(current.horarioInicio));
+    }
     fields.semProfessores = await this.resolveSemProfessores(participantesFinais, input.semProfessores ?? current.semProfessores);
 
     // Mudou a data ou o horário: é uma remarcação. Quem já participava precisa confirmar de novo.
@@ -114,6 +127,10 @@ export class MeetingsService {
 
   async remove(id: string, actor: Actor) {
     const current = await this.findOrThrow(id);
+
+    if (current.exigePresenca && (await this.meetingsRepository.countPresencas(id)) > 0) {
+      throw new HttpError(409, "Este evento já tem presença registrada e não pode ser excluído");
+    }
 
     // Evento que ainda não começou: todos os participantes (qualquer status), menos quem excluiu, são avisados do cancelamento.
     const avisos = jaComecou({ data: isoDate(current.data), horarioInicio: formatTimeHHMM(current.horarioInicio) }, agora())
@@ -161,6 +178,59 @@ export class MeetingsService {
       throw new HttpError(400, "Inclua pelo menos um professor ou marque que o evento não precisa de professores");
     }
     return true;
+  }
+
+  // Aula comum com presença: só no tipo AULA, com exatamente 1 participante (professor) e ao menos 1 turma.
+  private async assertPresenca(
+    tipo: CreateMeetingInput["tipo"],
+    exigePresenca: boolean,
+    participanteIds: string[],
+    turmaIds: string[],
+    semProfessores: boolean | undefined
+  ) {
+    if (!exigePresenca) return;
+    if (tipo !== "AULA") throw new HttpError(400, "Só a aula comum pode exigir presença");
+    if (semProfessores) throw new HttpError(400, "Uma aula com presença precisa de professor");
+    if (participanteIds.length !== 1 || (await this.meetingsRepository.findProfessorIds(participanteIds)).length !== 1) {
+      throw new HttpError(400, "Uma aula com presença precisa de exatamente um professor, e ninguém mais como participante");
+    }
+    if (turmaIds.length === 0) throw new HttpError(400, "Uma aula com presença precisa de ao menos uma turma");
+  }
+
+  private assertComecaNoFuturo(data: string, horarioInicio: string) {
+    if (jaComecou({ data, horarioInicio }, agora())) throw new HttpError(400, "Uma aula com presença precisa começar no futuro");
+  }
+
+  // Presença, professor, turmas (e data/horário, dos quais a janela depende) ficam travados quando a aula começa.
+  private async assertPresencaEditavel(
+    current: MeetingWithParticipants,
+    input: UpdateMeetingInput,
+    participantesFinais: string[],
+    turmasFinais: string[]
+  ) {
+    const mesmoConjunto = (a: string[], b: string[]) => a.length === b.length && a.every((id) => b.includes(id));
+    const desligando = current.exigePresenca && input.exigePresenca === false;
+    if (desligando && (await this.meetingsRepository.countPresencas(current.id)) > 0) {
+      throw new HttpError(409, "Esta aula já tem presença registrada; não é possível desligar a presença");
+    }
+
+    if (!jaComecou({ data: isoDate(current.data), horarioInicio: formatTimeHHMM(current.horarioInicio) }, agora())) return;
+
+    const mudouPresenca = input.exigePresenca !== undefined && input.exigePresenca !== current.exigePresenca;
+    const exigePresenca = input.exigePresenca ?? current.exigePresenca;
+    const mudouParticipantes = !mesmoConjunto(participantesFinais, current.participacoes.map((participacao) => participacao.userId));
+    const mudouTurmas = !mesmoConjunto(turmasFinais, current.turmas.map((turma) => turma.id));
+    if (mudouPresenca || (exigePresenca && (mudouParticipantes || mudouTurmas))) {
+      throw new HttpError(409, "A aula já começou: não é possível mudar a presença, o professor ou as turmas");
+    }
+
+    const mudouQuando =
+      (input.data !== undefined && isoDate(input.data) !== isoDate(current.data)) ||
+      (input.horarioInicio !== undefined && input.horarioInicio !== formatTimeHHMM(current.horarioInicio)) ||
+      (input.horarioFim !== undefined && input.horarioFim !== formatTimeHHMM(current.horarioFim));
+    if (current.exigePresenca && mudouQuando) {
+      throw new HttpError(409, "A aula já começou: não é possível mudar a data nem o horário de uma aula com presença");
+    }
   }
 
   private async assertTurmas(ids: string[]) {

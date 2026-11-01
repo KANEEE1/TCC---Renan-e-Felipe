@@ -142,7 +142,11 @@ export class MeetingsRepository {
     });
   }
 
-  remove(id: string) {
-    return this.prisma.reuniao.delete({ where: { id } });
+  // Os avisos de cancelamento são criados na mesma transação (a exclusão leva as participações por cascade).
+  remove(id: string, avisos: { userId: string; titulo: string; turma: string | null; data: Date; horarioInicio: Date; horarioFim: Date }[] = []) {
+    return this.prisma.$transaction(async (tx) => {
+      for (const aviso of avisos) await criarAvisoRetirada(tx, { ...aviso, tipo: "CANCELADO_EVENTO" });
+      await tx.reuniao.delete({ where: { id } });
+    });
   }
 }

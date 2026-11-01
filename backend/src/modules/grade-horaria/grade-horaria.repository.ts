@@ -214,6 +214,24 @@ export class GradeHorariaRepository {
     return criarAvisoRetirada(this.db, { ...aviso, tipo: "RETIRADO_AULA" });
   }
 
+  // Avisa o professor de que a ocorrência foi cancelada (snapshot de como ela era).
+  avisarCancelamento(aviso: {
+    userId: string;
+    titulo: string;
+    turma: string;
+    data: Date;
+    horarioInicio: Date;
+    horarioFim: Date;
+    aulaId: string;
+    dataOriginal: Date;
+  }) {
+    return criarAvisoRetirada(this.db, { ...aviso, tipo: "CANCELADO_AULA" });
+  }
+
+  async removerConvocacoes(aulaId: string, dataOriginal: Date) {
+    await this.db.convocacaoAula.deleteMany({ where: { aulaId, dataOriginal } });
+  }
+
   findProfessor(id: string) {
     return this.db.user.findUnique({ where: { id }, select: { id: true, name: true, ativo: true, roles: true } });
   }

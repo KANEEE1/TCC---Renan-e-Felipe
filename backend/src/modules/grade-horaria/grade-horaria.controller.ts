@@ -72,7 +72,7 @@ export class GradeHorariaController {
 
     this.router.delete("/:id/ocorrencias/:dataOriginal", requireAuth, requireRole("GESTAO"), asyncHandler(async (req, res) => {
       const { id, dataOriginal } = ocorrenciaParamsSchema.parse(req.params);
-      await this.gradeHorariaService.cancelarOcorrencia(id, dataOriginal);
+      await this.gradeHorariaService.cancelarOcorrencia(id, dataOriginal, getActor(req));
       res.status(204).end();
     }));
 

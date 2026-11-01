@@ -334,4 +334,77 @@ describe("avisos do professor: convocação e retirada", () => {
       expect(await prisma.avisoProfessor.count()).toBe(0);
     });
   });
+
+  describe("cancelamento", () => {
+    const excluirOcorrencia = (ctx: Ctx, dataOriginal = "2026-10-28") =>
+      request(app).delete(ocorrencia(ctx.aula.id, dataOriginal)).set(asGestor(ctx.gestor.id));
+    const criarEvento = async (ctx: Ctx, participanteIds: string[]) =>
+      (
+        await request(app)
+          .post("/meetings")
+          .set(asGestor(ctx.gestor.id))
+          .send({ titulo: "Reunião pedagógica", tipo: "REUNIAO", data: "2026-11-10", horarioInicio: "14:00", horarioFim: "16:00", participanteIds, turmaIds: [ctx.turma.id] })
+      ).body.id as string;
+
+    it("excluir evento futuro avisa todos os participantes, menos quem excluiu", async () => {
+      const ctx = await setup();
+      const id = await criarEvento(ctx, [ctx.profA.id, ctx.profB.id, ctx.gestor.id]);
+      await request(app).put(`/meetings/${id}/rsvp`).set(asTeacher(ctx.profA.id)).send({ status: "CONFIRMADO" });
+      expect((await request(app).delete(`/meetings/${id}`).set(asGestor(ctx.gestor.id))).status).toBe(204);
+
+      const esperado = [{ id: expect.any(String), tipo: "CANCELADO_EVENTO", titulo: "Reunião pedagógica", turma: "Turma Conv", data: "2026-11-10", horarioInicio: "14:00", horarioFim: "16:00" }];
+      expect((await meus(ctx.profA.id)).retiradas).toEqual(esperado);
+      expect((await meus(ctx.profB.id)).retiradas).toEqual(esperado);
+      expect(await prisma.avisoProfessor.count({ where: { userId: ctx.gestor.id } })).toBe(0);
+      expect((await meus(ctx.profC.id)).retiradas).toEqual([]);
+    });
+
+    it("evento que já começou não avisa", async () => {
+      const ctx = await setup();
+      const id = await criarEvento(ctx, [ctx.profA.id]);
+      setNow(EVENTO_DEPOIS);
+      expect((await request(app).delete(`/meetings/${id}`).set(asGestor(ctx.gestor.id))).status).toBe(204);
+      expect(await prisma.avisoProfessor.count()).toBe(0);
+    });
+
+    it("cancelar ocorrência futura avisa o professor efetivo e invalida a convocação pendente", async () => {
+      const ctx = await setup();
+      await editar(ctx, ctx.profB.id);
+      expect((await meus(ctx.profB.id)).convocacoes).toHaveLength(1);
+      expect((await excluirOcorrencia(ctx)).status).toBe(204);
+
+      const b = await meus(ctx.profB.id);
+      expect(b.convocacoes).toEqual([]);
+      expect(await prisma.convocacaoAula.count()).toBe(0);
+      expect(b.retiradas).toEqual([
+        { id: expect.any(String), tipo: "CANCELADO_AULA", titulo: "Química", turma: "Turma Conv", data: "2026-10-28", horarioInicio: "08:00", horarioFim: "10:00" }
+      ]);
+      // Prof A (antigo) só tem a retirada de quando foi trocado.
+      expect((await meus(ctx.profA.id)).retiradas.map((r) => r.tipo)).toEqual(["RETIRADO_AULA"]);
+    });
+
+    it("o ciente remove o cancelamento; outro usuário não vê nem dá ciente (404)", async () => {
+      const ctx = await setup();
+      expect((await excluirOcorrencia(ctx)).status).toBe(204);
+      const [aviso] = (await meus(ctx.profA.id)).retiradas;
+      expect(aviso.tipo).toBe("CANCELADO_AULA");
+      expect((await meus(ctx.profB.id)).retiradas).toEqual([]);
+      expect((await request(app).post(`/notices/mine/${aviso.id}/ciente`).set(asTeacher(ctx.profB.id))).status).toBe(404);
+      expect((await request(app).post(`/notices/mine/${aviso.id}/ciente`).set(asTeacher(ctx.profA.id))).status).toBe(204);
+      expect((await meus(ctx.profA.id)).retiradas).toEqual([]);
+    });
+
+    it("ocorrência que já começou não pode ser cancelada e não gera aviso", async () => {
+      const ctx = await setup();
+      setNow(QUARTA_0830);
+      expect((await excluirOcorrencia(ctx)).status).toBe(409);
+      expect(await prisma.avisoProfessor.count()).toBe(0);
+    });
+
+    it("excluir a série inteira não gera aviso", async () => {
+      const ctx = await setup();
+      expect((await request(app).delete(`/schedule/${ctx.aula.id}`).set(asGestor(ctx.gestor.id))).status).toBe(204);
+      expect(await prisma.avisoProfessor.count()).toBe(0);
+    });
+  });
 });

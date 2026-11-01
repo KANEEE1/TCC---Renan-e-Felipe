@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "../src/shared/prisma.js";
 import { app, createUser, loginAs, resetDb } from "./helpers.js";
 
-const payload = { titulo: "Evento", tipo: "REUNIAO", data: "2026-11-10", horarioInicio: "14:00", horarioFim: "16:00" };
+const payload = { titulo: "Evento", tipo: "REUNIAO", data: "2026-11-10", horarioInicio: "14:00", horarioFim: "16:00", semProfessores: true };
 
 async function setup() {
   const gestor = await createUser({ email: "gestor@test.com", roles: ["GESTAO"], name: "Gestor" });
@@ -314,5 +314,47 @@ describe("meetings (eventos)", () => {
     expect(keep.status).toBe(200);
     const other = await request(app).post("/meetings").set(auth(tokens.gestor)).send({ ...payload, participanteIds: [p2.id] });
     expect(other.status).toBe(400);
+  });
+
+  describe("regra do professor", () => {
+    const base = { titulo: "Evento", tipo: "REUNIAO", data: "2026-11-10", horarioInicio: "14:00", horarioFim: "16:00" };
+    const post = (tokens: any, body: object) => request(app).post("/meetings").set(auth(tokens.gestor)).send({ ...base, ...body });
+    const put = (tokens: any, id: string, body: object) => request(app).put(`/meetings/${id}`).set(auth(tokens.gestor)).send(body);
+
+    it("rejects creating without a professor unless semProfessores", async () => {
+      const { gestor, p1, tokens } = await setup();
+      expect((await post(tokens, {})).status).toBe(400);
+      expect((await post(tokens, { participanteIds: [gestor.id] })).status).toBe(400);
+      const sem = await post(tokens, { semProfessores: true });
+      expect(sem.status).toBe(201);
+      expect(sem.body.semProfessores).toBe(true);
+      const com = await post(tokens, { participanteIds: [p1.id], semProfessores: true });
+      expect(com.status).toBe(201);
+      expect(com.body.semProfessores).toBe(false);
+      const so = await post(tokens, { participanteIds: [p1.id] });
+      expect(so.status).toBe(201);
+      expect(so.body.semProfessores).toBe(false);
+    });
+
+    it("validates the final participants on update", async () => {
+      const { gestor, p1, tokens } = await setup();
+      const { body } = await post(tokens, { participanteIds: [p1.id, gestor.id] });
+      expect((await put(tokens, body.id, { participanteIds: [gestor.id] })).status).toBe(400);
+      expect((await put(tokens, body.id, { participanteIds: [] })).status).toBe(400);
+      const ok = await put(tokens, body.id, { participanteIds: [gestor.id], semProfessores: true });
+      expect(ok.status).toBe(200);
+      expect(ok.body.semProfessores).toBe(true);
+    });
+
+    it("keeps a saved semProfessores when editing without participants", async () => {
+      const { p1, tokens } = await setup();
+      const { body } = await post(tokens, { semProfessores: true });
+      const res = await put(tokens, body.id, { titulo: "Novo" });
+      expect(res.status).toBe(200);
+      expect(res.body.semProfessores).toBe(true);
+      const withProf = await put(tokens, body.id, { participanteIds: [p1.id] });
+      expect(withProf.status).toBe(200);
+      expect(withProf.body.semProfessores).toBe(false);
+    });
   });
 });

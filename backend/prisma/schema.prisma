@@ -39,6 +39,8 @@ model Reuniao {
   // Matéria da aula/aulão (obrigatória nesses tipos e imutável depois de criado o evento).
   disciplinaId  String?
   disciplina    Disciplina? @relation("EventoDisciplina", fields: [disciplinaId], references: [id])
+  // A gestão marcou que o evento não precisa de professores (sem isso, exige ao menos um).
+  semProfessores Boolean    @default(false)
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 

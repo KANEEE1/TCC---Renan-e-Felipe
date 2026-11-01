@@ -42,8 +42,9 @@ export class MeetingsService {
     const turmas = [...new Set(turmaIds ?? [])];
     await this.assertActiveUsers(convidadoIds);
     await this.assertTurmas(turmas);
+    const semProfessores = await this.resolveSemProfessores(convidadoIds, input.semProfessores ?? false);
 
-    return this.toResponse(await this.meetingsRepository.create(fields, actor.id, convidadoIds, turmas), actor);
+    return this.toResponse(await this.meetingsRepository.create({ ...fields, semProfessores }, actor.id, convidadoIds, turmas), actor);
   }
 
   async update(id: string, input: UpdateMeetingInput, actor: Actor) {
@@ -72,6 +73,9 @@ export class MeetingsService {
 
     const turmas = turmaIds ? [...new Set(turmaIds)] : undefined;
     if (turmas) await this.assertTurmas(turmas);
+
+    const participantesFinais = syncedIds ?? current.participacoes.map((participacao) => participacao.userId);
+    fields.semProfessores = await this.resolveSemProfessores(participantesFinais, input.semProfessores ?? current.semProfessores);
 
     // Mudou a data ou o horário: é uma remarcação. Quem já participava precisa confirmar de novo.
     const remarcado =
@@ -146,6 +150,17 @@ export class MeetingsService {
     if (active.length !== ids.length) {
       throw new HttpError(400, "One or more participants do not exist or are inactive");
     }
+  }
+
+  // Evento precisa de ao menos um professor, a menos que a gestão marque que não precisa. Retorna o valor a gravar.
+  private async resolveSemProfessores(participanteIds: string[], semProfessores: boolean) {
+    const temProfessor = participanteIds.length > 0 && (await this.meetingsRepository.findProfessorIds(participanteIds)).length > 0;
+
+    if (temProfessor) return false;
+    if (!semProfessores) {
+      throw new HttpError(400, "Inclua pelo menos um professor ou marque que o evento não precisa de professores");
+    }
+    return true;
   }
 
   private async assertTurmas(ids: string[]) {

@@ -63,7 +63,8 @@ async function criarEvento(ctx: Ctx, participanteIds: string[]) {
       horarioInicio: "14:00",
       horarioFim: "16:00",
       participanteIds,
-      turmaIds: [ctx.turma.id]
+      turmaIds: [ctx.turma.id],
+      semProfessores: true
     });
   expect(res.status).toBe(201);
   return res.body.id as string;

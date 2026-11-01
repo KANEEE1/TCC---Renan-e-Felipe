@@ -12,7 +12,8 @@ export const createMeetingSchema = z.object({
   descricao: z.string().min(1).optional(),
   participanteIds: z.array(z.string().min(1)).optional(),
   turmaIds: z.array(z.string().cuid()).optional(),
-  disciplinaId: z.string().min(1).optional()
+  disciplinaId: z.string().min(1).optional(),
+  semProfessores: z.boolean().optional()
 });
 
 // A matéria não entra na edição: é definida na criação e não muda depois.

@@ -5,7 +5,7 @@ import type { CreateMeetingInput, UpdateMeetingInput } from "./meetings.schemas.
 
 const meetingInclude = {
   criadoPor: { select: { id: true, name: true } },
-  participacoes: { include: { user: { select: { id: true, name: true } } } },
+  participacoes: { include: { user: { select: { id: true, name: true, roles: true } } } },
   turmas: { select: { id: true, nome: true }, orderBy: { nome: "asc" } },
   disciplina: { select: { id: true, nome: true } }
 } as const;
@@ -44,6 +44,11 @@ export class MeetingsRepository {
 
   async findActiveUserIds(ids: string[]) {
     const users = await this.prisma.user.findMany({ where: { id: { in: ids }, ativo: true }, select: { id: true } });
+    return users.map((user) => user.id);
+  }
+
+  async findProfessorIds(ids: string[]) {
+    const users = await this.prisma.user.findMany({ where: { id: { in: ids }, roles: { has: "PROFESSOR" } }, select: { id: true } });
     return users.map((user) => user.id);
   }
 

@@ -48,6 +48,7 @@ export function EventDialog({ event, defaultDate, onClose, onSaved }: Props) {
   const [endTime, setEndTime] = useState(event ? toHHMM(event.horarioFim) : `${pad(nextHour + 1)}:00`);
   const [location, setLocation] = useState(event?.local ?? "");
   const [participantIds, setParticipantIds] = useState<string[]>(event?.participantes.map((p) => p.userId) ?? []);
+  const [noTeachers, setNoTeachers] = useState(event?.semProfessores ?? false);
   const [classIds, setClassIds] = useState<string[]>(event?.turmas.map((t) => t.id) ?? []);
 
   const [users, setUsers] = useState<Option[]>([]);
@@ -96,6 +97,9 @@ export function EventDialog({ event, defaultDate, onClose, onSaved }: Props) {
     if (!startTime || !endTime || endTime <= startTime) return setError("O horário de término deve ser depois do início.");
     if (!isEdit && needsSubject(type) && !subjectId) return setError("Informe a matéria da aula.");
 
+    const hasTeacher = participantIds.some((id) => teachers.some((t) => t.id === id));
+    if (!hasTeacher && !noTeachers) return setError("Inclua pelo menos um professor ou marque que o evento não precisa de professores.");
+
     setError(null);
     setSaving(true);
     try {
@@ -107,6 +111,7 @@ export function EventDialog({ event, defaultDate, onClose, onSaved }: Props) {
         horarioFim: endTime,
         local: location.trim() || undefined,
         participanteIds: participantIds,
+        semProfessores: noTeachers,
         turmaIds: classIds
       };
       if (event) await api.put(`/meetings/${event.id}`, payload);
@@ -216,16 +221,24 @@ export function EventDialog({ event, defaultDate, onClose, onSaved }: Props) {
 
           <div className="flex items-start gap-4">
             <Users size={18} className="mt-2.5 shrink-0 text-slate-400" />
-            <TeacherPicker
-              teachers={teachers}
-              subject={subject}
-              mode="multiple"
-              selectedIds={participantIds}
-              onChange={setParticipantIds}
-              unavailable={declined}
-              extraPeople={users}
-              nameFallback={userName}
-            />
+            <div className="min-w-0 flex-1">
+              <div aria-disabled={noTeachers} className={noTeachers ? "pointer-events-none opacity-50" : undefined}>
+                <TeacherPicker
+                  teachers={teachers}
+                  subject={subject}
+                  mode="multiple"
+                  selectedIds={participantIds}
+                  onChange={setParticipantIds}
+                  unavailable={declined}
+                  extraPeople={users}
+                  nameFallback={userName}
+                />
+              </div>
+              <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm text-slate-600">
+                <input type="checkbox" checked={noTeachers} onChange={(e) => setNoTeachers(e.target.checked)} className="h-4 w-4 rounded border-slate-300" />
+                Este evento não precisa de professores
+              </label>
+            </div>
           </div>
 
           <div className="flex items-start gap-4">

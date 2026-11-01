@@ -247,7 +247,7 @@ describe("avisos do professor: convocação e retirada", () => {
       const res = await request(app)
         .post("/meetings")
         .set(asGestor(ctx.gestor.id))
-        .send({ titulo: "Reunião pedagógica", tipo: "REUNIAO", data: "2026-11-10", horarioInicio: "14:00", horarioFim: "16:00", participanteIds, turmaIds: [ctx.turma.id] });
+        .send({ titulo: "Reunião pedagógica", tipo: "REUNIAO", data: "2026-11-10", horarioInicio: "14:00", horarioFim: "16:00", participanteIds, turmaIds: [ctx.turma.id], semProfessores: true });
       expect(res.status).toBe(201);
       return res.body.id as string;
     }
@@ -343,7 +343,7 @@ describe("avisos do professor: convocação e retirada", () => {
         await request(app)
           .post("/meetings")
           .set(asGestor(ctx.gestor.id))
-          .send({ titulo: "Reunião pedagógica", tipo: "REUNIAO", data: "2026-11-10", horarioInicio: "14:00", horarioFim: "16:00", participanteIds, turmaIds: [ctx.turma.id] })
+          .send({ titulo: "Reunião pedagógica", tipo: "REUNIAO", data: "2026-11-10", horarioInicio: "14:00", horarioFim: "16:00", participanteIds, turmaIds: [ctx.turma.id], semProfessores: true })
       ).body.id as string;
 
     it("excluir evento futuro avisa todos os participantes, menos quem excluiu", async () => {

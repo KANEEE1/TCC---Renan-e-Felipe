@@ -390,8 +390,8 @@ describe("single-occurrence edits", () => {
       setNow(QUARTA_0830);
       expect((await request(app).get("/dashboard/summary").set(asGestao())).body.todayActivities).toEqual([]);
       setNow(QUINTA_1500);
-      const { todayActivities, stats } = (await request(app).get("/dashboard/summary").set(asGestao())).body;
-      expect(stats.aulasHoje).toBe(1);
+      const { todayActivities } = (await request(app).get("/dashboard/summary").set(asGestao())).body;
+      expect(todayActivities).toHaveLength(1);
       expect(todayActivities[0]).toMatchObject({ professores: ["Prof B"], horarioInicio: "14:00", horarioFim: "16:00" });
     });
   });

@@ -3,13 +3,12 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Bell, BookOpen, CalendarClock, ChevronRight, LogOut, Plus, User, UserMinus, UserX, Users, Video, Zap } from "lucide-react";
+import { Bell, CalendarClock, ChevronRight, LogOut, Plus, User, UserMinus, UserX, Zap } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { clearSession } from "@/lib/auth";
 import { eventTypeOf, toHHMM, type EventType, type MeetingDTO } from "@/components/meetings/meeting-types";
 
 interface DashboardSummary {
-  stats: { turmas: number; aulasHoje: number; auloesHoje: number };
   todayActivities: {
     kind: "AULA" | "EVENTO";
     id: string;
@@ -27,7 +26,6 @@ interface DashboardSummary {
     dataOriginal?: string;
     eventoId?: string;
   }[];
-  upcomingSimulados: { id: string; nome: string; data: string }[];
 }
 
 // Aviso para a gestão: um professor informou que não poderá participar de uma aula ou de um evento.
@@ -194,16 +192,11 @@ export function DashboardScreen() {
 
   const noticeCount = invites.length + notices.length + myNotices.convocacoes.length + myNotices.retiradas.length;
 
-  const stats = [
-    { icon: BookOpen, value: String(summary?.stats.aulasHoje ?? 0), label: "Aulas Hoje" },
-    { icon: Users, value: String(summary?.stats.turmas ?? 0), label: "Turmas" },
-    { icon: Video, value: String(summary?.stats.auloesHoje ?? 0), label: "Aulões" }
-  ];
 
   return (
     <div className="flex-1 bg-slate-50">
-      <div className="bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700 px-5 pt-5 pb-8 text-white">
-        <div className="mb-5 flex items-start justify-between">
+      <div className="bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700 px-5 pb-6 pt-5 text-white">
+        <div className="flex items-start justify-between">
           <div>
             <p className="mb-0.5 text-sm text-blue-200">Bem-vindo de volta 👋</p>
             <h1 className="capitalize text-white">{userName}</h1>
@@ -226,16 +219,6 @@ export function DashboardScreen() {
               <LogOut size={17} />
             </Link>
           </div>
-        </div>
-
-        <div className="grid grid-cols-3 gap-3">
-          {stats.map(({ icon: Icon, value, label }) => (
-            <div key={label} className="rounded-2xl border border-white/20 bg-white/15 p-3 text-center backdrop-blur-sm">
-              <Icon className="mx-auto mb-1 text-white/80" size={20} />
-              <p className="text-2xl leading-tight text-white">{value}</p>
-              <p className="mt-0.5 text-xs text-blue-100">{label}</p>
-            </div>
-          ))}
         </div>
       </div>
 

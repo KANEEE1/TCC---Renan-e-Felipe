@@ -9,7 +9,9 @@ interface PresencaRecord {
   id: string;
   data: string;
   presente: boolean;
-  aula: { disciplina: { nome: string } };
+  // Aula da grade (aula) ou aula comum com presença (reuniao).
+  aula: { disciplina: { nome: string } } | null;
+  reuniao: { titulo: string; disciplina: { nome: string } | null } | null;
 }
 
 interface ReportDTO {
@@ -133,7 +135,7 @@ export function AttendanceReport({ studentId }: { studentId: string }) {
             {recentHistory.map((record) => (
               <div key={record.id} className={`flex items-center justify-between rounded-lg p-3 ${record.presente ? "bg-green-50" : "bg-red-50"}`}>
                 <div className="flex-1">
-                  <div className="text-sm text-gray-800">{record.aula.disciplina.nome}</div>
+                  <div className="text-sm text-gray-800">{(record.aula?.disciplina ?? record.reuniao?.disciplina)?.nome ?? record.reuniao?.titulo ?? "Aula"}</div>
                   <div className="text-xs text-gray-600">{new Date(record.data).toLocaleDateString("pt-BR")}</div>
                 </div>
                 <div className={`flex items-center ${record.presente ? "text-green-600" : "text-red-600"}`}>

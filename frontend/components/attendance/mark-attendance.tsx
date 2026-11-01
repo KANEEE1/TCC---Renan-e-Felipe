@@ -23,7 +23,10 @@ function reason(item: TodayItem) {
   return "A janela de registro desta aula já encerrou.";
 }
 
-export function MarkAttendance({ aulaId }: { aulaId: string }) {
+// `alvo` é o parâmetro da rota: o id da aula da grade, ou "evento-<id>" para uma aula comum com presença.
+export function MarkAttendance({ alvo }: { alvo: string }) {
+  const eventoId = alvo.startsWith("evento-") ? alvo.slice("evento-".length) : null;
+  const aulaId = eventoId ? null : alvo;
   const [item, setItem] = useState<TodayItem | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [students, setStudents] = useState<StudentRow[]>([]);
@@ -35,19 +38,24 @@ export function MarkAttendance({ aulaId }: { aulaId: string }) {
     api
       .get<TodayItem[]>("/attendance/today")
       .then((items) => {
-        const found = items.find((i) => i.aula.id === aulaId) ?? null;
+        const found = items.find((i) => (eventoId ? i.kind === "EVENTO" && i.eventoId === eventoId : i.kind === "AULA" && i.aula.id === aulaId)) ?? null;
         setItem(found);
         if (found) {
-          api.get<ClassDetail>(`/classes/${found.aula.turma.id}`).then((cls) => {
-            setStudents(
-              cls.matriculas.map((m) => ({ id: m.aluno.id, name: m.aluno.nome, number: m.aluno.numero ?? "-", present: true }))
-            );
-          });
+          // Aula comum pode ter várias turmas: junta os alunos de todas (sem repetir).
+          Promise.all(found.aula.turmas.map((t) => api.get<ClassDetail>(`/classes/${t.id}`)))
+            .then((classes) => {
+              const byId = new Map<string, StudentRow>();
+              for (const m of classes.flatMap((cls) => cls.matriculas)) {
+                byId.set(m.aluno.id, { id: m.aluno.id, name: m.aluno.nome, number: m.aluno.numero ?? "-", present: true });
+              }
+              setStudents(Array.from(byId.values()));
+            })
+            .catch(() => setError("Não foi possível carregar os alunos."));
         }
       })
       .catch((err) => setError(err instanceof ApiError ? err.message : "Não foi possível carregar a aula."))
       .finally(() => setLoaded(true));
-  }, [aulaId]);
+  }, [aulaId, eventoId]);
 
   const canEdit = item?.podeRegistrar === true;
 
@@ -67,7 +75,7 @@ export function MarkAttendance({ aulaId }: { aulaId: string }) {
     setError(null);
     try {
       await api.post("/attendance/mark", {
-        aulaId,
+        ...(eventoId ? { eventoId } : { aulaId }),
         entries: students.map((s) => ({ alunoId: s.id, presente: s.present }))
       });
       setSaved(true);
@@ -89,7 +97,7 @@ export function MarkAttendance({ aulaId }: { aulaId: string }) {
         </div>
 
         <div className="rounded-lg bg-green-500 p-3">
-          <div className="text-sm text-green-100">{item ? `${item.aula.disciplina.nome} - ${item.aula.turma.nome}` : loaded ? "Aula não encontrada hoje" : "Carregando..."}</div>
+          <div className="text-sm text-green-100">{item ? `${item.aula.disciplina.nome}${item.titulo ? ` · ${item.titulo}` : ""} - ${item.aula.turmas.map((t) => t.nome).join(", ")}` : loaded ? "Aula não encontrada hoje" : "Carregando..."}</div>
           {item && (
             <div className="text-sm text-green-100">
               {item.aula.horarioInicio} - {item.aula.horarioFim} | {item.aula.professor.name}

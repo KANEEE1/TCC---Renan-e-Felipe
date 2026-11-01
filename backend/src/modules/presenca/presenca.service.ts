@@ -68,6 +68,20 @@ function statusDaOcorrencia(ocorrencia: Pick<Ocorrencia, "horarioInicio" | "hora
   return "ABERTA";
 }
 
+// Matrícula vigente na data da aula: a data de matrícula (ou de criação) não é posterior a ela.
+const matriculaVigente = (m: { dataMatricula: Date | null; createdAt: Date }, data: string) => todayInSaoPaulo(m.dataMatricula ?? m.createdAt) <= data;
+
+// Aluno matriculado em mais de uma turma do evento: conta uma vez, atribuído à primeira turma por nome (critério determinístico).
+function turmaPorAluno(turmas: { id: string; matriculas: { alunoId: string; dataMatricula: Date | null; createdAt: Date }[] }[], data: string) {
+  const turmaDoAluno = new Map<string, string>();
+  for (const turma of turmas) {
+    for (const m of turma.matriculas) {
+      if (matriculaVigente(m, data) && !turmaDoAluno.has(m.alunoId)) turmaDoAluno.set(m.alunoId, turma.id);
+    }
+  }
+  return turmaDoAluno;
+}
+
 const chaveOcorrencia = (aulaId: string, dataOriginal: string) => `${aulaId}|${dataOriginal}`;
 
 export class PresencaService {
@@ -76,8 +90,38 @@ export class PresencaService {
     private readonly gradeHorariaRepository: GradeHorariaRepository
   ) {}
 
-  // Ocorrências cuja janela já passou sem nenhum registro: todos os matriculados ficam presentes. Idempotente.
+  // Ocorrências (aulas da grade e eventos com presença) cuja janela já passou sem nenhum registro: todos os matriculados ficam presentes. Idempotente.
   async consolidarPresencasPendentes(turmaIds?: string[]) {
+    await this.consolidarAulas(turmaIds);
+    await this.consolidarEventos(turmaIds);
+  }
+
+  private async consolidarEventos(turmaIds?: string[]) {
+    const now = agora();
+    const hoje = todayInSaoPaulo(now);
+    const hora = timeOfDayInSaoPaulo(now);
+    // Só eventos sem nenhum registro dos últimos 60 dias (o que ficou para trás disso não é mais consolidado).
+    const de = new Date(parseDateOnly(hoje).getTime() - 60 * 24 * 60 * 60 * 1000);
+    const eventos = await this.presencaRepository.listEventosForConsolidation(de, parseDateOnly(hoje), turmaIds);
+    if (eventos.length === 0) return;
+
+    const rows: Parameters<PresencaRepository["createManyPresencas"]>[0] = [];
+    for (const evento of eventos) {
+      const data = isoDate(evento.data);
+      const fim = formatTimeHHMM(evento.horarioFim);
+      if (data === hoje && hora <= fim) continue;
+      // Evento criado depois do fim da janela: ninguém chegou a poder registrar, então não consolida.
+      const criada = todayInSaoPaulo(evento.createdAt);
+      if (criada > data || (criada === data && timeOfDayInSaoPaulo(evento.createdAt) >= fim)) continue;
+      // Só alunos com matrícula vigente na data.
+      for (const [alunoId, turmaId] of turmaPorAluno(evento.turmas, data)) {
+        rows.push({ alunoId, reuniaoId: evento.id, turmaId, data: evento.data, presente: true, automatica: true });
+      }
+    }
+    if (rows.length > 0) await this.presencaRepository.createManyPresencas(rows);
+  }
+
+  private async consolidarAulas(turmaIds?: string[]) {
     const now = agora();
     const hoje = todayInSaoPaulo(now);
     const hora = timeOfDayInSaoPaulo(now);
@@ -138,10 +182,12 @@ export class PresencaService {
   }
 
   async markBulk(actor: Actor, input: MarkAttendanceInput) {
+    if (input.eventoId) return this.markEvento(actor, input, input.eventoId);
+
     const now = agora();
     const hoje = todayInSaoPaulo(now);
 
-    const aula = await this.presencaRepository.findAulaForMark(input.aulaId);
+    const aula = await this.presencaRepository.findAulaForMark(input.aulaId!);
     if (!aula) throw new HttpError(404, "Aula não encontrada");
 
     // A ocorrência que acontece hoje (pode ter sido movida/alterada); a presença é gravada na data original dela.
@@ -178,6 +224,76 @@ export class PresencaService {
     return this.presencaRepository.markBulk(aula.id, parseDateOnly(dataOriginal), entries);
   }
 
+  // Aula comum com presença: mesmas regras da aula da grade (janela de hoje, só o professor, só matriculados).
+  private async markEvento(actor: Actor, input: MarkAttendanceInput, eventoId: string) {
+    const now = agora();
+    const hoje = todayInSaoPaulo(now);
+
+    const evento = await this.presencaRepository.findEventoForMark(eventoId);
+    if (!evento) throw new HttpError(404, "Aula não encontrada");
+    if (!evento.exigePresenca) throw new HttpError(409, "Este evento não exige presença");
+    if (!evento.participacoes.some((p) => p.userId === actor.id)) {
+      throw new HttpError(403, "Somente o professor responsável pela aula pode registrar a presença");
+    }
+    if (input.data && input.data !== hoje) throw new HttpError(400, "A presença só pode ser registrada para a data de hoje");
+
+    if (isoDate(evento.data) !== hoje) throw new HttpError(409, "A aula não é hoje");
+    const ocorrencia = { horarioInicio: formatTimeHHMM(evento.horarioInicio), horarioFim: formatTimeHHMM(evento.horarioFim) };
+    if (statusDaOcorrencia(ocorrencia, timeOfDayInSaoPaulo(now)) !== "ABERTA") throw new HttpError(409, "Fora do horário da aula");
+
+    const turmaDoAluno = turmaPorAluno(evento.turmas, hoje);
+    if (input.entries.some((e) => !turmaDoAluno.has(e.alunoId))) {
+      throw new HttpError(400, "Há aluno que não está matriculado nas turmas da aula");
+    }
+
+    // Matriculados que o professor não enviou ficam presentes (registro do professor, não automático).
+    const enviados = new Set(input.entries.map((e) => e.alunoId));
+    const entries = [
+      ...input.entries,
+      ...Array.from(turmaDoAluno.keys()).filter((id) => !enviados.has(id)).map((alunoId) => ({ alunoId, presente: true }))
+    ].map((e) => ({ ...e, turmaId: turmaDoAluno.get(e.alunoId)! }));
+    return this.presencaRepository.markEventoBulk(evento.id, evento.data, entries);
+  }
+
+  // Aulas comuns com presença do dia, no mesmo formato das aulas da grade (kind "EVENTO", id do evento em eventoId).
+  private async eventosDeHoje(actor: Actor, hoje: string, hora: string) {
+    const eventos = await this.presencaRepository.listEventosDoDia(parseDateOnly(hoje));
+    return eventos.flatMap((evento) => {
+      const professor = evento.participacoes[0]?.user;
+      if (!professor) return [];
+      const horarioInicio = formatTimeHHMM(evento.horarioInicio);
+      const horarioFim = formatTimeHHMM(evento.horarioFim);
+      const status = statusDaOcorrencia({ horarioInicio, horarioFim }, hora);
+      const manual = evento.presencas.some((p) => !p.automatica);
+      const responsavel = professor.id === actor.id;
+      return [
+        {
+          kind: "EVENTO" as const,
+          eventoId: evento.id,
+          titulo: evento.titulo,
+          aula: {
+            id: evento.id,
+            horarioInicio,
+            horarioFim,
+            disciplina: evento.disciplina,
+            turmas: evento.turmas,
+            professor
+          },
+          data: hoje,
+          dataOriginal: hoje,
+          alterada: false,
+          status,
+          registrada: manual,
+          automatica: status === "ENCERRADA" && evento.presencas.length > 0 && !manual,
+          responsavel,
+          podeRegistrar: responsavel && status === "ABERTA",
+          presentes: evento.presencas.filter((p) => p.presente).length,
+          total: evento.presencas.length
+        }
+      ];
+    });
+  }
+
   async today(actor: Actor) {
     await this.consolidarPresencasPendentes();
     const now = agora();
@@ -186,7 +302,8 @@ export class PresencaService {
 
     const { aulas, excecoes } = await this.gradeHorariaRepository.carregarFontesDoDia(hoje);
     const ocorrencias = gerarOcorrencias(aulas, excecoes, hoje, hoje);
-    if (ocorrencias.length === 0) return [];
+    const eventos = await this.eventosDeHoje(actor, hoje, hora);
+    if (ocorrencias.length === 0) return eventos;
 
     const pares = ocorrencias.map((oc) => ({ aulaId: oc.aulaId, dataOriginal: parseDateOnly(oc.dataOriginal) }));
     const [presencas, substituidas] = await Promise.all([
@@ -199,19 +316,21 @@ export class PresencaService {
       ...excecoes.flatMap((e) => (e.professor ? [[e.professor.id, e.professor] as const] : []))
     ]);
 
-    return ocorrencias.map((oc) => {
+    const daGrade = ocorrencias.map((oc) => {
       const aula = aulaPorId.get(oc.aulaId)!;
       const status = statusDaOcorrencia(oc, hora);
       const rows = presencas.filter((p) => p.aulaId === oc.aulaId && isoDate(p.data) === oc.dataOriginal);
       const manual = rows.some((p) => !p.automatica);
       const responsavel = oc.professorId === actor.id || substituidas.has(chaveOcorrencia(oc.aulaId, oc.dataOriginal));
       return {
+        kind: "AULA" as const,
         aula: {
           id: aula.id,
           horarioInicio: oc.horarioInicio,
           horarioFim: oc.horarioFim,
           disciplina: aula.disciplina,
           turma: { id: aula.turma.id, nome: aula.turma.nome },
+          turmas: [{ id: aula.turma.id, nome: aula.turma.nome }],
           professor: professores.get(oc.professorId) ?? aula.professor
         },
         data: oc.data,
@@ -226,6 +345,7 @@ export class PresencaService {
         total: rows.length
       };
     });
+    return [...daGrade, ...eventos].sort((a, b) => a.aula.horarioInicio.localeCompare(b.aula.horarioInicio));
   }
 
   async summary(query: AttendanceSummaryQuery) {

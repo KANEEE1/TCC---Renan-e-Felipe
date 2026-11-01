@@ -199,7 +199,7 @@ export function DashboardScreen() {
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className="text-sm text-slate-800">
-                          Novo evento com a sua participação: <strong>{event.titulo}</strong>
+                          {event.meuRemarcado ? "Evento remarcado" : "Novo evento com a sua participação"}: <strong>{event.titulo}</strong>
                         </p>
                         <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-slate-600">
                           <span className={`inline-block h-2 w-2 rounded-full ${type.dot}`} />
@@ -207,7 +207,11 @@ export function DashboardScreen() {
                           {toHHMM(event.horarioFim)}
                           {event.local ? ` · ${event.local}` : ""}
                         </p>
-                        <p className="mt-1.5 text-xs text-slate-600">Confirme se vai participar para a coordenação se organizar.</p>
+                        <p className="mt-1.5 text-xs text-slate-600">
+                          {event.meuRemarcado
+                            ? "A data ou o horário mudou. Confirme se você continua disponível."
+                            : "Confirme se vai participar para a coordenação se organizar."}
+                        </p>
                       </div>
                     </div>
                     <Link

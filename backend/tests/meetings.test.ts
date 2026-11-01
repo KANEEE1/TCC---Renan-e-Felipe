@@ -159,6 +159,52 @@ describe("meetings (eventos)", () => {
       expect(statusOf(res.body, p1.id)).toBe("RECUSADO");
     });
 
+    it("rescheduling (date or time) asks participants to confirm again, except the editor", async () => {
+      const { gestor, p1, p2, tokens } = await setup();
+      const created = await request(app)
+        .post("/meetings")
+        .set(auth(tokens.gestor))
+        .send({ ...payload, participanteIds: [gestor.id, p1.id, p2.id] });
+      const id = created.body.id as string;
+      await request(app).put(`/meetings/${id}/rsvp`).set(auth(tokens.p1)).send({ status: "CONFIRMADO" });
+      await request(app).put(`/meetings/${id}/rsvp`).set(auth(tokens.p2)).send({ status: "RECUSADO" });
+
+      // Mudar só o título não é remarcação.
+      const renamed = await request(app).put(`/meetings/${id}`).set(auth(tokens.gestor)).send({ titulo: "Novo título" });
+      expect(statusOf(renamed.body, p1.id)).toBe("CONFIRMADO");
+
+      const moved = await request(app).put(`/meetings/${id}`).set(auth(tokens.gestor)).send({ data: "2026-11-12" });
+      expect(moved.status).toBe(200);
+      expect(statusOf(moved.body, gestor.id)).toBe("CONFIRMADO");
+      expect(statusOf(moved.body, p1.id)).toBe("PENDENTE");
+      expect(statusOf(moved.body, p2.id)).toBe("PENDENTE");
+      expect(moved.body.meuRemarcado).toBe(false);
+
+      const forP1 = await request(app).get(`/meetings/${id}`).set(auth(tokens.p1));
+      expect(forP1.body.meuRemarcado).toBe(true);
+      const answered = await request(app).put(`/meetings/${id}/rsvp`).set(auth(tokens.p1)).send({ status: "CONFIRMADO" });
+      expect(answered.body.meuRemarcado).toBe(false);
+      expect(statusOf(answered.body, p1.id)).toBe("CONFIRMADO");
+
+      const retimed = await request(app).put(`/meetings/${id}`).set(auth(tokens.gestor)).send({ horarioInicio: "15:00" });
+      expect(statusOf(retimed.body, p1.id)).toBe("PENDENTE");
+      expect((await request(app).get(`/meetings/${id}`).set(auth(tokens.p1))).body.meuRemarcado).toBe(true);
+    });
+
+    it("new invitees added together with a reschedule are plain invites, not reschedules", async () => {
+      const { p1, p2, tokens } = await setup();
+      const created = await request(app).post("/meetings").set(auth(tokens.gestor)).send({ ...payload, participanteIds: [p1.id] });
+      await request(app)
+        .put(`/meetings/${created.body.id}`)
+        .set(auth(tokens.gestor))
+        .send({ data: "2026-11-13", participanteIds: [p1.id, p2.id] });
+
+      expect((await request(app).get(`/meetings/${created.body.id}`).set(auth(tokens.p1))).body.meuRemarcado).toBe(true);
+      const forP2 = await request(app).get(`/meetings/${created.body.id}`).set(auth(tokens.p2));
+      expect(forP2.body.meuStatus).toBe("PENDENTE");
+      expect(forP2.body.meuRemarcado).toBe(false);
+    });
+
     it("update with participanteIds adds/removes and preserves status; without keeps", async () => {
       const { p1, p2, tokens } = await setup();
       const { body } = await request(app).post("/meetings").set(auth(tokens.gestor)).send({ ...payload, participanteIds: [p2.id] });

@@ -57,7 +57,14 @@ export class MeetingsService {
     const turmas = turmaIds ? [...new Set(turmaIds)] : undefined;
     if (turmas) await this.assertTurmas(turmas);
 
-    return this.toResponse(await this.meetingsRepository.update(id, fields, actor.id, syncedIds, turmas), actor);
+    // Mudou a data ou o horário: é uma remarcação. Quem já participava precisa confirmar de novo.
+    const remarcado =
+      (fields.data !== undefined && fields.data.toISOString().slice(0, 10) !== current.data.toISOString().slice(0, 10)) ||
+      (fields.horarioInicio !== undefined && fields.horarioInicio !== formatTimeHHMM(current.horarioInicio)) ||
+      (fields.horarioFim !== undefined && fields.horarioFim !== formatTimeHHMM(current.horarioFim));
+    const remarcarIds = remarcado ? current.participacoes.map((participacao) => participacao.userId) : [];
+
+    return this.toResponse(await this.meetingsRepository.update(id, fields, actor.id, syncedIds, turmas, remarcarIds), actor);
   }
 
   async respond(id: string, input: RsvpInput, actor: Actor) {
@@ -123,6 +130,7 @@ export class MeetingsService {
       ...rest,
       participantes,
       meuStatus: minha?.status ?? null,
+      meuRemarcado: minha?.remarcado ?? false,
       permissoes: { editar: canManage, excluir: canManage, responder: !!minha }
     };
   }

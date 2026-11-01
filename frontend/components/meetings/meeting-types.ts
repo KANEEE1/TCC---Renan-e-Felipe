@@ -72,6 +72,8 @@ export interface MeetingDTO {
   local: string | null;
   descricao: string | null;
   turmas: { id: string; nome: string }[];
+  // Matéria da aula/aulão (definida na criação e imutável); null nos demais tipos.
+  disciplina: { id: string; nome: string } | null;
   participantes: { userId: string; name: string; status: ParticipationStatus }[];
   meuStatus: ParticipationStatus | null;
   // O evento foi remarcado (data ou horário) e o usuário ainda não respondeu de novo.

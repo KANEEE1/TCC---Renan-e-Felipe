@@ -808,6 +808,12 @@ export function CalendarView() {
                 <Tag size={18} className="shrink-0 text-slate-400" />
                 {eventTypeOf(selectedMeeting.tipo).label}
               </li>
+              {selectedMeeting.disciplina && (
+                <li className="flex items-center gap-4">
+                  <BookOpen size={18} className="shrink-0 text-slate-400" />
+                  {selectedMeeting.disciplina.nome}
+                </li>
+              )}
               {selectedMeeting.local && (
                 <li className="flex items-center gap-4">
                   <MapPin size={18} className="shrink-0 text-slate-400" />

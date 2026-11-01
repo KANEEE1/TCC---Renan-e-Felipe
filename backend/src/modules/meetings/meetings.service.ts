@@ -12,6 +12,9 @@ function assertValidRange(horarioInicio: string, horarioFim: string) {
 
 type MeetingWithParticipants = Awaited<ReturnType<MeetingsRepository["findById"]>> & {};
 
+// Tipos de evento que acontecem como aula e exigem a matéria.
+const TIPOS_COM_MATERIA = new Set<string>(["AULA", "AULAO"]);
+
 export class MeetingsService {
   constructor(private readonly meetingsRepository: MeetingsRepository) {}
 
@@ -30,6 +33,7 @@ export class MeetingsService {
 
   async create(input: CreateMeetingInput, actor: Actor) {
     assertValidRange(input.horarioInicio, input.horarioFim);
+    await this.assertMateria(input.tipo, input.disciplinaId);
 
     const { participanteIds, turmaIds, ...fields } = input;
     const convidadoIds = [...new Set(participanteIds ?? [])];
@@ -44,6 +48,16 @@ export class MeetingsService {
     const current = await this.findOrThrow(id);
 
     assertValidRange(input.horarioInicio ?? formatTimeHHMM(current.horarioInicio), input.horarioFim ?? formatTimeHHMM(current.horarioFim));
+
+    // A matéria é imutável: o tipo só muda dentro do mesmo grupo (Aula comum ↔ Aulão, Reunião ↔ Simulado).
+    if (input.tipo !== undefined && TIPOS_COM_MATERIA.has(input.tipo) !== TIPOS_COM_MATERIA.has(current.tipo)) {
+      throw new HttpError(
+        400,
+        TIPOS_COM_MATERIA.has(input.tipo)
+          ? "Para virar aula ou aulão, crie um novo evento com a matéria"
+          : "Aula e aulão só podem mudar entre si (a matéria não pode ser removida)"
+      );
+    }
 
     const { participanteIds, turmaIds, ...fields } = input;
     let syncedIds: string[] | undefined;
@@ -110,6 +124,18 @@ export class MeetingsService {
 
     if ((await this.meetingsRepository.countTurmas(ids)) !== ids.length) {
       throw new HttpError(400, "One or more classes do not exist");
+    }
+  }
+
+  private async assertMateria(tipo: CreateMeetingInput["tipo"], disciplinaId: string | undefined) {
+    if (!TIPOS_COM_MATERIA.has(tipo)) {
+      if (disciplinaId !== undefined) throw new HttpError(400, "Só aula e aulão têm matéria");
+      return;
+    }
+
+    if (!disciplinaId) throw new HttpError(400, "Informe a matéria da aula");
+    if (!(await this.meetingsRepository.disciplinaExiste(disciplinaId))) {
+      throw new HttpError(400, "Matéria não encontrada");
     }
   }
 

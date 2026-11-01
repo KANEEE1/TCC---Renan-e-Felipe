@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Clock, GraduationCap, MapPin, Search, Users, X } from "lucide-react";
+import { BookOpen, Clock, GraduationCap, MapPin, Search, Users, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { EVENT_TYPES, toHHMM, type EventType, type MeetingDTO } from "@/components/meetings/meeting-types";
 
@@ -30,6 +30,11 @@ function toDateInput(date: Date) {
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
+// Aula comum e aulão exigem a matéria; ela é escolhida na criação e não muda depois. Por isso, na edição, o tipo
+// só troca dentro do mesmo grupo (Aula comum ↔ Aulão, Reunião ↔ Simulado).
+const TYPES_WITH_SUBJECT: EventType[] = ["AULA", "AULAO"];
+const needsSubject = (type: EventType) => TYPES_WITH_SUBJECT.includes(type);
+
 export function EventDialog({ event, defaultDate, onClose, onSaved }: Props) {
   const isEdit = !!event;
 
@@ -46,6 +51,8 @@ export function EventDialog({ event, defaultDate, onClose, onSaved }: Props) {
 
   const [users, setUsers] = useState<Option[]>([]);
   const [classes, setClasses] = useState<ClassOption[]>([]);
+  const [subjects, setSubjects] = useState<ClassOption[]>([]);
+  const [subjectId, setSubjectId] = useState(event?.disciplina?.id ?? "");
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -54,7 +61,8 @@ export function EventDialog({ event, defaultDate, onClose, onSaved }: Props) {
   useEffect(() => {
     api.get<Option[]>("/meetings/participant-options").then(setUsers).catch(() => setError("Não foi possível carregar os professores."));
     api.get<ClassOption[]>("/classes").then(setClasses).catch(() => setError("Não foi possível carregar as turmas."));
-  }, []);
+    if (!event) api.get<ClassOption[]>("/disciplinas").then(setSubjects).catch(() => setError("Não foi possível carregar as matérias."));
+  }, [event]);
 
   const userName = (id: string) => users.find((u) => u.id === id)?.name ?? event?.participantes.find((p) => p.userId === id)?.name ?? "...";
   const suggestions = useMemo(() => {
@@ -77,6 +85,7 @@ export function EventDialog({ event, defaultDate, onClose, onSaved }: Props) {
     if (!title.trim()) return setError("Informe um título.");
     if (!date) return setError("Informe a data.");
     if (!startTime || !endTime || endTime <= startTime) return setError("O horário de término deve ser depois do início.");
+    if (!isEdit && needsSubject(type) && !subjectId) return setError("Informe a matéria da aula.");
 
     setError(null);
     setSaving(true);
@@ -92,7 +101,7 @@ export function EventDialog({ event, defaultDate, onClose, onSaved }: Props) {
         turmaIds: classIds
       };
       if (event) await api.put(`/meetings/${event.id}`, payload);
-      else await api.post("/meetings", payload);
+      else await api.post("/meetings", { ...payload, disciplinaId: needsSubject(type) ? subjectId : undefined });
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Não foi possível salvar o evento.");
@@ -141,17 +150,50 @@ export function EventDialog({ event, defaultDate, onClose, onSaved }: Props) {
           />
 
           <div className="flex flex-wrap gap-2">
-            {EVENT_TYPES.map((t) => (
-              <button
-                key={t.value}
-                type="button"
-                onClick={() => setType(t.value)}
-                className={`rounded-full border px-3 py-1 text-sm transition-colors ${type === t.value ? t.chipActive : t.chip}`}
-              >
-                {t.label}
-              </button>
-            ))}
+            {EVENT_TYPES.map((t) => {
+              const locked = isEdit && needsSubject(t.value) !== needsSubject(event.tipo);
+              return (
+                <button
+                  key={t.value}
+                  type="button"
+                  onClick={() => setType(t.value)}
+                  disabled={locked}
+                  title={locked ? "Não é possível mudar para este tipo depois de criado o evento" : undefined}
+                  className={`rounded-full border px-3 py-1 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                    type === t.value ? t.chipActive : t.chip
+                  }`}
+                >
+                  {t.label}
+                </button>
+              );
+            })}
           </div>
+
+          {needsSubject(type) && (
+            <div className="flex items-center gap-4">
+              <BookOpen size={18} className="shrink-0 text-slate-400" />
+              {isEdit ? (
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-slate-800">{event.disciplina?.nome ?? "Sem matéria"}</p>
+                  <p className="text-xs text-slate-400">A matéria não pode ser alterada.</p>
+                </div>
+              ) : (
+                <select
+                  value={subjectId}
+                  onChange={(e) => setSubjectId(e.target.value)}
+                  aria-label="Matéria"
+                  className={`${inputClass} flex-1`}
+                >
+                  <option value="">Selecione a matéria</option>
+                  {subjects.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.nome}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
 
           <div className="flex items-center gap-4">
             <Clock size={18} className="shrink-0 text-slate-400" />

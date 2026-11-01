@@ -167,18 +167,19 @@ export function DashboardScreen() {
   const now = new Date();
   const startOf = (event: MeetingDTO) => new Date(`${event.data.slice(0, 10)}T${toHHMM(event.horarioInicio)}:00`);
 
-  // Próximas atividades: eventos (exceto "Aula comum") que ainda vão começar nesta semana, de segunda a domingo,
-  // em ordem de horário. A gestão vê todos; o professor, só os que confirmou presença.
-  const endOfWeek = new Date(now);
-  endOfWeek.setDate(endOfWeek.getDate() + (6 - ((endOfWeek.getDay() + 6) % 7)));
-  endOfWeek.setHours(23, 59, 59, 999);
+  // Próximas atividades: eventos (exceto "Aula comum") que ainda vão começar nos próximos 7 dias — de agora até o fim
+  // do dia que fica 7 dias à frente de hoje —, em ordem de horário. A gestão vê todos; o professor, só os que
+  // confirmou presença.
+  const windowEnd = new Date(now);
+  windowEnd.setDate(windowEnd.getDate() + 7);
+  windowEnd.setHours(23, 59, 59, 999);
   const upcoming = events
     .filter((event) => {
       const startsAt = startOf(event);
       return (
         event.tipo !== "AULA" &&
         startsAt > now &&
-        startsAt <= endOfWeek &&
+        startsAt <= windowEnd &&
         (userRole === "gestão" || event.meuStatus === "CONFIRMADO")
       );
     })
@@ -520,7 +521,7 @@ export function DashboardScreen() {
           <div className="space-y-2.5">
             {upcoming.length === 0 && (
               <p className="rounded-2xl border border-dashed border-slate-200 bg-white p-4 text-center text-sm text-slate-400">
-                Nenhuma atividade prevista para esta semana.
+                Nenhuma atividade prevista para os próximos 7 dias.
               </p>
             )}
             {upcoming.map((event) => {

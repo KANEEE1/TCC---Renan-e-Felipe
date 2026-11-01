@@ -30,6 +30,14 @@ export class MeetingsRepository {
     });
   }
 
+  listByDate(data: Date) {
+    return this.prisma.reuniao.findMany({
+      where: { data },
+      include: meetingInclude,
+      orderBy: { horarioInicio: "asc" }
+    });
+  }
+
   findById(id: string) {
     return this.prisma.reuniao.findUnique({ where: { id }, include: meetingInclude });
   }

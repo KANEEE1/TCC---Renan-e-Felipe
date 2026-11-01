@@ -388,11 +388,11 @@ describe("single-occurrence edits", () => {
       const ctx = await setup();
       await moverParaQuinta(ctx);
       setNow(QUARTA_0830);
-      expect((await request(app).get("/dashboard/summary")).body.todayActivities).toEqual([]);
+      expect((await request(app).get("/dashboard/summary").set(asGestao())).body.todayActivities).toEqual([]);
       setNow(QUINTA_1500);
-      const { todayActivities, stats } = (await request(app).get("/dashboard/summary")).body;
+      const { todayActivities, stats } = (await request(app).get("/dashboard/summary").set(asGestao())).body;
       expect(stats.aulasHoje).toBe(1);
-      expect(todayActivities[0]).toMatchObject({ teacher: "Prof B", time: "1970-01-01T14:00:00.000Z", endTime: "1970-01-01T16:00:00.000Z" });
+      expect(todayActivities[0]).toMatchObject({ professores: ["Prof B"], horarioInicio: "14:00", horarioFim: "16:00" });
     });
   });
 
@@ -403,7 +403,7 @@ describe("single-occurrence edits", () => {
 
       setNow(QUARTA_0830);
       expect((await request(app).get("/attendance/today").set(asTeacher(ctx.profA.id))).body).toEqual([]);
-      expect((await request(app).get("/dashboard/summary")).body.todayActivities).toEqual([]);
+      expect((await request(app).get("/dashboard/summary").set(asGestao())).body.todayActivities).toEqual([]);
       const mark = await request(app)
         .post("/attendance/mark")
         .set(asTeacher(ctx.profA.id))

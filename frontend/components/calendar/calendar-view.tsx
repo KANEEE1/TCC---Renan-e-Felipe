@@ -26,6 +26,21 @@ const HOUR_HEIGHT = 52;
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const TOTAL_HEIGHT = 24 * HOUR_HEIGHT;
 
+// Professores e local exibidos nos blocos da agenda.
+function meetingTeachers(meeting: MeetingDTO) {
+  const names = meeting.participantes.map((p) => p.name.split(" ")[0]);
+  return names.length === 0 ? "Sem professores" : names.join(", ");
+}
+
+// "305" vira "Sala 305"; um valor que já começa com "sala" fica como está.
+function roomLabel(room: string) {
+  return /^sala\b/i.test(room.trim()) ? room.trim() : `Sala ${room.trim()}`;
+}
+
+function lessonDetails(event: ScheduleItem) {
+  return `Prof. ${event.teacher}${event.room ? ` · ${roomLabel(event.room)}` : ""}`;
+}
+
 function minutesOf(time: string) {
   if (!time) return 0;
   const [h, m] = time.split(":").map(Number);
@@ -489,14 +504,21 @@ export function CalendarView() {
                         key={entry.id}
                         type="button"
                         onClick={() => setSelectedMeetingId(entry.meeting.id)}
+                        title={`${entry.meeting.titulo} · ${type.label} · ${entry.startTime} – ${entry.endTime}${
+                          entry.meeting.local ? ` · ${entry.meeting.local}` : ""
+                        } · ${meetingTeachers(entry.meeting)}`}
                         className={`absolute overflow-hidden rounded-md border-l-4 px-1.5 py-0.5 text-left shadow-sm transition hover:brightness-95 ${type.block}`}
                         style={position}
                       >
                         <span className="block truncate text-[11px] font-semibold leading-tight">{entry.meeting.titulo}</span>
-                        {height >= 34 && (
+                        {height >= 28 && (
                           <span className="block truncate text-[10px] leading-tight opacity-80">
-                            {type.label} · {entry.startTime} – {entry.endTime}
+                            {entry.startTime} – {entry.endTime}
+                            {entry.meeting.local ? ` · ${entry.meeting.local}` : ""}
                           </span>
+                        )}
+                        {height >= 42 && (
+                          <span className="block truncate text-[10px] leading-tight opacity-80">{meetingTeachers(entry.meeting)}</span>
                         )}
                       </button>
                     );
@@ -507,6 +529,7 @@ export function CalendarView() {
                       key={entry.id}
                       type="button"
                       onClick={() => setSelected(entry.occurrence)}
+                      title={`${event.subject} · ${event.startTime} – ${event.endTime} · ${lessonDetails(event)} · ${event.class}`}
                       className={`absolute overflow-hidden rounded-md border border-white px-1.5 py-0.5 text-left text-white shadow-sm transition hover:brightness-110 ${colorOf(entry.occurrence)}`}
                       style={{
                         top: (start / 60) * HOUR_HEIGHT + 1,
@@ -516,16 +539,16 @@ export function CalendarView() {
                       }}
                     >
                       <span className="block truncate text-[11px] font-semibold leading-tight">{event.subject}</span>
-                      {height >= 34 && (
+                      {height >= 28 && (
                         <span className="block truncate text-[10px] leading-tight opacity-90">
                           {event.startTime} – {event.endTime}
+                          {event.room ? ` · ${roomLabel(event.room)}` : ""}
                         </span>
                       )}
-                      {height >= 52 && (
-                        <span className="block truncate text-[10px] leading-tight opacity-80">
-                          {viewMode === "day" ? `${event.teacher} · ${event.class}` : event.class}
-                        </span>
+                      {height >= 42 && (
+                        <span className="block truncate text-[10px] leading-tight opacity-90">Prof. {event.teacher}</span>
                       )}
+                      {height >= 56 && <span className="block truncate text-[10px] leading-tight opacity-80">{event.class}</span>}
                     </button>
                   );
                 })}
@@ -578,6 +601,7 @@ export function CalendarView() {
                   entry.kind === "meeting" ? (
                     <span
                       key={entry.id}
+                      title={`${entry.meeting.titulo}${entry.meeting.local ? ` · ${entry.meeting.local}` : ""} · ${meetingTeachers(entry.meeting)}`}
                       className={`block truncate rounded border-l-2 px-1 text-[10px] leading-4 ${eventTypeOf(entry.meeting.tipo).block} ${inMonth ? "" : "opacity-50"}`}
                     >
                       {entry.startTime} {entry.meeting.titulo}
@@ -585,6 +609,7 @@ export function CalendarView() {
                   ) : (
                     <span
                       key={entry.id}
+                      title={`${entry.occurrence.event.subject} · ${lessonDetails(entry.occurrence.event)}`}
                       className={`block truncate rounded px-1 text-[10px] leading-4 text-white ${colorOf(entry.occurrence)} ${inMonth ? "" : "opacity-50"}`}
                     >
                       {entry.startTime} {entry.occurrence.event.subject}

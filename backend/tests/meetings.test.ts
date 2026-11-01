@@ -97,6 +97,35 @@ describe("meetings (eventos)", () => {
     expect((await request(app).delete(`/meetings/${unknownId}`).set(auth(tokens.gestor))).status).toBe(404);
   });
 
+  it("class-type events require an immutable subject", async () => {
+    const { tokens } = await setup();
+    const quimica = await prisma.disciplina.create({ data: { nome: "Química", nomeNormalizado: "quimica" } });
+    const post = (body: object) => request(app).post("/meetings").set(auth(tokens.gestor)).send({ ...payload, ...body });
+
+    expect((await post({ tipo: "AULA" })).status).toBe(400);
+    expect((await post({ tipo: "AULAO", disciplinaId: "nao-existe" })).status).toBe(400);
+    expect((await post({ tipo: "REUNIAO", disciplinaId: quimica.id })).status).toBe(400);
+
+    const aulao = await post({ tipo: "AULAO", disciplinaId: quimica.id });
+    expect(aulao.status).toBe(201);
+    expect(aulao.body.disciplina).toEqual({ id: quimica.id, nome: "Química" });
+    const id = aulao.body.id as string;
+    const put = (body: object) => request(app).put(`/meetings/${id}`).set(auth(tokens.gestor)).send(body);
+
+    const outra = await prisma.disciplina.create({ data: { nome: "Física", nomeNormalizado: "fisica" } });
+    expect((await put({ disciplinaId: outra.id })).status).toBe(400);
+    expect((await put({ tipo: "REUNIAO" })).status).toBe(400);
+
+    const asAula = await put({ tipo: "AULA", titulo: "Revisão" });
+    expect(asAula.status).toBe(200);
+    expect(asAula.body.disciplina).toEqual({ id: quimica.id, nome: "Química" });
+
+    const reuniao = await post({ tipo: "REUNIAO" });
+    expect(reuniao.body.disciplina).toBeNull();
+    expect((await request(app).put(`/meetings/${reuniao.body.id}`).set(auth(tokens.gestor)).send({ tipo: "AULAO" })).status).toBe(400);
+    expect((await request(app).put(`/meetings/${reuniao.body.id}`).set(auth(tokens.gestor)).send({ tipo: "SIMULADO" })).status).toBe(200);
+  });
+
   it("links classes: returns them, replaces on update, rejects unknown", async () => {
     const { tokens } = await setup();
     const a = await prisma.turma.create({ data: { nome: "Turma A", anoLetivo: 2026 } });

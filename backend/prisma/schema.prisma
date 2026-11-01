@@ -36,6 +36,9 @@ model Reuniao {
   descricao     String?
   criadoPorId   String?
   criadoPor     User?       @relation("CriadorReunioes", fields: [criadoPorId], references: [id], onDelete: SetNull)
+  // Matéria da aula/aulão (obrigatória nesses tipos e imutável depois de criado o evento).
+  disciplinaId  String?
+  disciplina    Disciplina? @relation("EventoDisciplina", fields: [disciplinaId], references: [id])
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
@@ -160,6 +163,7 @@ model Disciplina {
   professores User[]                 @relation("ProfessorDisciplinas")
   simulados   Simulado[]
   cargas      CargaDisciplinaTurma[]
+  eventos     Reuniao[]  @relation("EventoDisciplina")
 }
 
 model CargaDisciplinaTurma {

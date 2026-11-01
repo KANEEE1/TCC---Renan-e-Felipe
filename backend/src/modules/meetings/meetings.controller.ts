@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { getActor, requireRole } from "../../shared/auth.js";
-import { asyncHandler } from "../../shared/http.js";
+import { asyncHandler, HttpError } from "../../shared/http.js";
 import { createMeetingSchema, rsvpSchema, updateMeetingSchema } from "./meetings.schemas.js";
 import type { MeetingsService } from "./meetings.service.js";
 
@@ -30,6 +30,9 @@ export class MeetingsController {
 
     this.router.put("/:id", requireRole("GESTAO"), asyncHandler(async (req, res) => {
       const actor = getActor(req);
+      if (req.body?.disciplinaId !== undefined) {
+        throw new HttpError(400, "A matéria do evento não pode ser alterada");
+      }
       const input = updateMeetingSchema.parse(req.body);
       res.json(await this.meetingsService.update(req.params.id as string, input, actor));
     }));

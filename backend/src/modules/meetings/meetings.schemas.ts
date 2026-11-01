@@ -11,10 +11,12 @@ export const createMeetingSchema = z.object({
   local: z.string().min(1).optional(),
   descricao: z.string().min(1).optional(),
   participanteIds: z.array(z.string().min(1)).optional(),
-  turmaIds: z.array(z.string().cuid()).optional()
+  turmaIds: z.array(z.string().cuid()).optional(),
+  disciplinaId: z.string().min(1).optional()
 });
 
-export const updateMeetingSchema = createMeetingSchema.partial();
+// A matéria não entra na edição: é definida na criação e não muda depois.
+export const updateMeetingSchema = createMeetingSchema.omit({ disciplinaId: true }).partial();
 
 export const rsvpSchema = z.object({
   status: z.enum(["CONFIRMADO", "RECUSADO"])

@@ -140,7 +140,10 @@ function lessonOccurrenceOf(occurrence: Occurrence): LessonOccurrence {
     startTime: event.startTime,
     endTime: event.endTime,
     teacherId: event.teacherId,
-    teacher: event.teacher
+    teacher: event.teacher,
+    unavailableTeacherIds: occurrence.series.indisponibilidades
+      .filter((i) => i.dataOriginal === occurrence.dataOriginal)
+      .map((i) => i.professorId)
   };
 }
 

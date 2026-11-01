@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { CalendarDays, Clock, GraduationCap, MapPin, Tag, User, X } from "lucide-react";
+import { TeacherPicker } from "@/components/calendar/teacher-picker";
 import { api, ApiError } from "@/lib/api";
 import { useSchedule, type ScheduleItem } from "@/components/schedule/schedule-context";
 
@@ -20,6 +21,8 @@ export interface LessonOccurrence {
   endTime: string;
   teacherId: string;
   teacher: string;
+  // Professores que avisaram que não vão dar a aula desta ocorrência.
+  unavailableTeacherIds: string[];
 }
 
 interface Props {
@@ -59,15 +62,11 @@ export function LessonDialog({ lesson, occurrence, onClose, onSaved }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  // Professores ativos que lecionam a disciplina primeiro; depois os demais (inclui o atual, mesmo inativo).
-  const { teaching, others } = useMemo(() => {
-    const teachesSubject = (t: Teacher) => t.disciplinas.some((d) => d.id === lesson.subjectId);
-    const usable = teachers.filter((t) => t.ativo || t.id === teacherId);
-    return {
-      teaching: usable.filter((t) => t.ativo && teachesSubject(t)),
-      others: usable.filter((t) => !(t.ativo && teachesSubject(t)))
-    };
-  }, [teachers, lesson.subjectId, teacherId]);
+  const subject = lesson.subjectId ? { id: lesson.subjectId, nome: lesson.subject } : null;
+  const unavailable = useMemo(
+    () => Object.fromEntries(occurrence.unavailableTeacherIds.map((id) => [id, "Disse que não pode nesta data"])),
+    [occurrence.unavailableTeacherIds]
+  );
 
   const handleSave = async () => {
     if (saving || deleting) return;
@@ -152,21 +151,17 @@ export function LessonDialog({ lesson, occurrence, onClose, onSaved }: Props) {
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            <User size={18} className="shrink-0 text-slate-400" />
-            <select value={teacherId} onChange={(e) => setTeacherId(e.target.value)} aria-label="Professor" className={`${inputClass} flex-1`}>
-              {!teachers.some((t) => t.id === teacherId) && <option value={teacherId}>{occurrence.teacher}</option>}
-              {teaching.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-              {others.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name} ({t.ativo ? "não leciona esta disciplina" : "inativo"})
-                </option>
-              ))}
-            </select>
+          <div className="flex items-start gap-4">
+            <User size={18} className="mt-2.5 shrink-0 text-slate-400" />
+            <TeacherPicker
+              teachers={teachers}
+              subject={subject}
+              mode="single"
+              selectedIds={teacherId ? [teacherId] : []}
+              onChange={(ids) => setTeacherId(ids[0] ?? "")}
+              unavailable={unavailable}
+              nameFallback={(id) => (id === occurrence.teacherId ? occurrence.teacher : undefined)}
+            />
           </div>
 
           <ul className="space-y-3 border-t border-slate-100 pt-4 text-sm text-slate-600">

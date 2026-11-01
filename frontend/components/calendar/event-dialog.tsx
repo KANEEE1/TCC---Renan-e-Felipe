@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { BookOpen, Clock, GraduationCap, MapPin, Search, Users, X } from "lucide-react";
+import { BookOpen, Clock, GraduationCap, MapPin, Users, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
+import { TeacherPicker, type PickerTeacher } from "@/components/calendar/teacher-picker";
 import { EVENT_TYPES, toHHMM, type EventType, type MeetingDTO } from "@/components/meetings/meeting-types";
 
 interface Option {
@@ -53,22 +54,30 @@ export function EventDialog({ event, defaultDate, onClose, onSaved }: Props) {
   const [classes, setClasses] = useState<ClassOption[]>([]);
   const [subjects, setSubjects] = useState<ClassOption[]>([]);
   const [subjectId, setSubjectId] = useState(event?.disciplina?.id ?? "");
-  const [search, setSearch] = useState("");
+  const [teachers, setTeachers] = useState<PickerTeacher[]>([]);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     api.get<Option[]>("/meetings/participant-options").then(setUsers).catch(() => setError("Não foi possível carregar os professores."));
+    api.get<PickerTeacher[]>("/teachers").then(setTeachers).catch(() => setTeachers([]));
     api.get<ClassOption[]>("/classes").then(setClasses).catch(() => setError("Não foi possível carregar as turmas."));
     if (!event) api.get<ClassOption[]>("/disciplinas").then(setSubjects).catch(() => setError("Não foi possível carregar as matérias."));
   }, [event]);
 
   const userName = (id: string) => users.find((u) => u.id === id)?.name ?? event?.participantes.find((p) => p.userId === id)?.name ?? "...";
-  const suggestions = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return users.filter((u) => !participantIds.includes(u.id) && u.name.toLowerCase().includes(term)).slice(0, 6);
-  }, [users, participantIds, search]);
+  const subject = useMemo(() => {
+    if (!needsSubject(type)) return null;
+    if (isEdit) return event.disciplina;
+    const found = subjects.find((s) => s.id === subjectId);
+    return found ? { id: found.id, nome: found.nome } : null;
+  }, [type, isEdit, event, subjects, subjectId]);
+  // Quem já recusou este evento não é recomendado de novo.
+  const declined = useMemo(
+    () => Object.fromEntries((event?.participantes ?? []).filter((p) => p.status === "RECUSADO").map((p) => [p.userId, "Recusou este evento"])),
+    [event]
+  );
 
   const toggleClass = (id: string) => setClassIds((prev) => (prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]));
 
@@ -207,54 +216,16 @@ export function EventDialog({ event, defaultDate, onClose, onSaved }: Props) {
 
           <div className="flex items-start gap-4">
             <Users size={18} className="mt-2.5 shrink-0 text-slate-400" />
-            <div className="min-w-0 flex-1">
-              {participantIds.length > 0 && (
-                <div className="mb-2 flex flex-wrap gap-1.5">
-                  {participantIds.map((id) => (
-                    <span key={id} className="flex items-center gap-1 rounded-full bg-blue-50 py-1 pl-3 pr-1.5 text-xs text-blue-700">
-                      {userName(id)}
-                      <button
-                        type="button"
-                        onClick={() => setParticipantIds((prev) => prev.filter((p) => p !== id))}
-                        aria-label={`Remover ${userName(id)}`}
-                        className="flex h-4 w-4 items-center justify-center rounded-full hover:bg-blue-100"
-                      >
-                        <X size={12} />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
-              <div className="relative">
-                <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Adicionar professores"
-                  className={`${inputClass} w-full pl-9`}
-                />
-              </div>
-              {search.trim() && (
-                <ul className="mt-1 overflow-hidden rounded-lg border border-slate-200">
-                  {suggestions.length === 0 && <li className="px-3 py-2 text-sm text-slate-400">Ninguém encontrado.</li>}
-                  {suggestions.map((u) => (
-                    <li key={u.id}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setParticipantIds((prev) => [...prev, u.id]);
-                          setSearch("");
-                        }}
-                        className="w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
-                      >
-                        {u.name}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+            <TeacherPicker
+              teachers={teachers}
+              subject={subject}
+              mode="multiple"
+              selectedIds={participantIds}
+              onChange={setParticipantIds}
+              unavailable={declined}
+              extraPeople={users}
+              nameFallback={userName}
+            />
           </div>
 
           <div className="flex items-start gap-4">

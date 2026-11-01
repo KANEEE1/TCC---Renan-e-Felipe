@@ -1,5 +1,6 @@
 import type { PrismaClient, StatusParticipacao } from "@prisma/client";
 import { parseTimeToDate } from "../../shared/time.js";
+import { criarAvisoRetirada, removerAvisosRetirada } from "../avisos/avisos-professor.db.js";
 import type { CreateMeetingInput, UpdateMeetingInput } from "./meetings.schemas.js";
 
 const meetingInclude = {
@@ -70,7 +71,9 @@ export class MeetingsRepository {
     participanteIds?: string[],
     turmaIds?: string[],
     // Participantes que já estavam no evento antes de uma remarcação: voltam a "pendente" e recebem aviso.
-    remarcarIds: string[] = []
+    remarcarIds: string[] = [],
+    // Participantes removidos que recebem aviso de retirada (já filtrados: evento futuro, sem o editor).
+    retiradosIds: string[] = []
   ) {
     return this.prisma.$transaction(async (tx) => {
       if (remarcarIds.length > 0) {
@@ -92,9 +95,11 @@ export class MeetingsRepository {
           })),
           skipDuplicates: true
         });
+        // Quem volta ao evento deixa de ter aviso de retirada.
+        await removerAvisosRetirada(tx, participanteIds, { tipo: "RETIRADO_EVENTO", reuniaoId: id });
       }
 
-      return tx.reuniao.update({
+      const atualizada = await tx.reuniao.update({
         where: { id },
         data: {
           ...data,
@@ -104,6 +109,21 @@ export class MeetingsRepository {
         },
         include: meetingInclude
       });
+
+      for (const userId of retiradosIds) {
+        await criarAvisoRetirada(tx, {
+          userId,
+          tipo: "RETIRADO_EVENTO",
+          titulo: atualizada.titulo,
+          turma: atualizada.turmas.length > 0 ? atualizada.turmas.map((turma) => turma.nome).join(", ") : null,
+          data: atualizada.data,
+          horarioInicio: atualizada.horarioInicio,
+          horarioFim: atualizada.horarioFim,
+          reuniaoId: id
+        });
+      }
+
+      return atualizada;
     });
   }
 

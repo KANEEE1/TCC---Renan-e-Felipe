@@ -1,7 +1,8 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { parseTimeToDate } from "../../shared/time.js";
 import type { CreateAulaInput, UpdateAulaInput } from "./grade-horaria.schemas.js";
-import { aulaOcorrivelSelect, carregarExcecoesDasAulas, carregarFontesDoDia, excecaoSelect } from "./ocorrencias.db.js";
+import { criarAvisoRetirada, removerAvisosRetirada } from "../avisos/avisos-professor.db.js";
+import { aulaOcorrivelSelect, carregarExcecoesDasAulas, carregarFontesDoDia, excecaoSelect, upsertIndisponibilidade } from "./ocorrencias.db.js";
 
 const aulaInclude = {
   turma: true,
@@ -184,14 +185,33 @@ export class GradeHorariaRepository {
     });
   }
 
-  // Professor avisa que não dará a ocorrência. Repetir é idempotente; se a gestão já deu "ciente", o aviso reabre.
   upsertIndisponibilidade(aulaId: string, dataOriginal: Date, professorId: string) {
-    return this.db.indisponibilidadeAula.upsert({
+    return upsertIndisponibilidade(this.db, aulaId, dataOriginal, professorId);
+  }
+
+  // Convoca o professor para a ocorrência (ele responde Vou/Não vou). Reconvocar reabre a convocação como pendente
+  // e apaga um aviso de retirada que ele tivesse para a mesma ocorrência.
+  async convocarProfessor(aulaId: string, dataOriginal: Date, professorId: string) {
+    await this.db.convocacaoAula.upsert({
       where: { aulaId_dataOriginal_professorId: { aulaId, dataOriginal, professorId } },
       create: { aulaId, dataOriginal, professorId },
-      update: { cienteEm: null },
-      select: { aulaId: true, dataOriginal: true, professorId: true }
+      update: { status: "PENDENTE" }
     });
+    await removerAvisosRetirada(this.db, [professorId], { tipo: "RETIRADO_AULA", aulaId, dataOriginal });
+  }
+
+  // Avisa o professor de que saiu da ocorrência (snapshot de como ela era para ele).
+  avisarRetirada(aviso: {
+    userId: string;
+    titulo: string;
+    turma: string;
+    data: Date;
+    horarioInicio: Date;
+    horarioFim: Date;
+    aulaId: string;
+    dataOriginal: Date;
+  }) {
+    return criarAvisoRetirada(this.db, { ...aviso, tipo: "RETIRADO_AULA" });
   }
 
   findProfessor(id: string) {

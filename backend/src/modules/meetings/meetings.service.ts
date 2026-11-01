@@ -1,6 +1,8 @@
+import { agora } from "../../shared/clock.js";
 import { formatTimeHHMM } from "../../shared/time.js";
 import { hasRole, type Actor } from "../../shared/auth.js";
 import { HttpError } from "../../shared/http.js";
+import { isoDate, jaComecou } from "../grade-horaria/ocorrencias.js";
 import type { CreateMeetingInput, RsvpInput, UpdateMeetingInput } from "./meetings.schemas.js";
 import type { MeetingsRepository } from "./meetings.repository.js";
 
@@ -78,7 +80,20 @@ export class MeetingsService {
       (fields.horarioFim !== undefined && fields.horarioFim !== formatTimeHHMM(current.horarioFim));
     const remarcarIds = remarcado ? current.participacoes.map((participacao) => participacao.userId) : [];
 
-    return this.toResponse(await this.meetingsRepository.update(id, fields, actor.id, syncedIds, turmas, remarcarIds), actor);
+    // Quem saiu da lista de participantes de um evento que ainda não começou recebe um aviso de retirada (menos o editor).
+    const dataFinal = fields.data ? isoDate(fields.data) : isoDate(current.data);
+    const inicioFinal = fields.horarioInicio ?? formatTimeHHMM(current.horarioInicio);
+    const retiradosIds =
+      syncedIds && !jaComecou({ data: dataFinal, horarioInicio: inicioFinal }, agora())
+        ? current.participacoes
+            .map((participacao) => participacao.userId)
+            .filter((userId) => userId !== actor.id && !syncedIds.includes(userId))
+        : [];
+
+    return this.toResponse(
+      await this.meetingsRepository.update(id, fields, actor.id, syncedIds, turmas, remarcarIds, retiradosIds),
+      actor
+    );
   }
 
   async respond(id: string, input: RsvpInput, actor: Actor) {

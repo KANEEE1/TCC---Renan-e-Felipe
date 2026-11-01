@@ -157,7 +157,8 @@ export class GradeHorariaService {
   }
 
   // Altera uma única ocorrência da série (data, horário e/ou professor). Grava um snapshot completo.
-  editarOcorrencia(id: string, dataOriginal: string, input: UpdateOcorrenciaInput) {
+  // Se o professor efetivo muda (e a ocorrência ainda não começou), o novo é convocado e o anterior é avisado da retirada.
+  editarOcorrencia(id: string, dataOriginal: string, input: UpdateOcorrenciaInput, actor: Actor) {
     return this.gradeHorariaRepository.transaction(async (repository) => {
       const aula = await repository.findAulaParaOcorrencia(id);
       if (!aula) throw new HttpError(404, "Class schedule entry not found");
@@ -214,6 +215,26 @@ export class GradeHorariaService {
         professorId
       });
       const efetiva = resolverOcorrencia(aula, salva, dataOriginal)!;
+
+      if (professorId !== atual.professorId) {
+        // O próprio editor não é notificado das mudanças que ele mesmo fez.
+        if (professorId !== actor.id && !jaComecou(efetiva, agora())) {
+          await repository.convocarProfessor(id, original, professorId);
+        }
+        if (atual.professorId !== actor.id) {
+          await repository.avisarRetirada({
+            userId: atual.professorId,
+            titulo: aula.disciplina.nome,
+            turma: aula.turma.nome,
+            data: parseDateOnly(atual.data),
+            horarioInicio: parseTimeToDate(atual.horarioInicio),
+            horarioFim: parseTimeToDate(atual.horarioFim),
+            aulaId: id,
+            dataOriginal: original
+          });
+        }
+      }
+
       return {
         aulaId: efetiva.aulaId,
         dataOriginal: efetiva.dataOriginal,

@@ -62,7 +62,7 @@ export class GradeHorariaController {
     this.router.put("/:id/ocorrencias/:dataOriginal", requireAuth, requireRole("GESTAO"), asyncHandler(async (req, res) => {
       const { id, dataOriginal } = ocorrenciaParamsSchema.parse(req.params);
       const input = updateOcorrenciaSchema.parse(req.body);
-      res.json(await this.gradeHorariaService.editarOcorrencia(id, dataOriginal, input));
+      res.json(await this.gradeHorariaService.editarOcorrencia(id, dataOriginal, input, getActor(req)));
     }));
 
     this.router.post("/:id/ocorrencias/:dataOriginal/indisponivel", requireAuth, asyncHandler(async (req, res) => {

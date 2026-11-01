@@ -55,3 +55,13 @@ export function carregarExcecoesDasAulas(db: Db, aulaIds: string[], de: string, 
     select: excecaoSelect
   });
 }
+
+// Professor avisa que não dará a ocorrência. Repetir é idempotente; se a gestão já deu "ciente", o aviso reabre.
+export function upsertIndisponibilidade(db: Db, aulaId: string, dataOriginal: Date, professorId: string) {
+  return db.indisponibilidadeAula.upsert({
+    where: { aulaId_dataOriginal_professorId: { aulaId, dataOriginal, professorId } },
+    create: { aulaId, dataOriginal, professorId },
+    update: { cienteEm: null },
+    select: { aulaId: true, dataOriginal: true, professorId: true }
+  });
+}

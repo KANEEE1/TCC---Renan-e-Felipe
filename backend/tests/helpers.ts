@@ -14,6 +14,8 @@ export async function resetDb() {
     prisma.substituicao.deleteMany(),
     prisma.ausenciaAula.deleteMany(),
     prisma.indisponibilidadeAula.deleteMany(),
+    prisma.convocacaoAula.deleteMany(),
+    prisma.avisoProfessor.deleteMany(),
     prisma.aulaExcecao.deleteMany(),
     prisma.aula.deleteMany(),
     prisma.disponibilidade.deleteMany(),

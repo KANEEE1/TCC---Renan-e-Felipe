@@ -97,6 +97,9 @@ model User {
   excecoesAula AulaExcecao[] @relation("ProfessorExcecoes")
 
   indisponibilidadesAula IndisponibilidadeAula[] @relation("ProfessorIndisponibilidades")
+
+  convocacoesAula ConvocacaoAula[] @relation("ProfessorConvocacoes")
+  avisosProfessor AvisoProfessor[] @relation("AvisosDoProfessor")
 }
 
 model Aluno {
@@ -213,6 +216,7 @@ model Aula {
   ausencias  AusenciaAula[]
   excecoes   AulaExcecao[]
   indisponibilidades IndisponibilidadeAula[]
+  convocacoes ConvocacaoAula[]
   professor  User           @relation("ProfessorAulas", fields: [professorId], references: [id])
   turma      Turma          @relation(fields: [turmaId], references: [id])
 
@@ -257,6 +261,45 @@ model IndisponibilidadeAula {
   professor User @relation("ProfessorIndisponibilidades", fields: [professorId], references: [id], onDelete: Cascade)
 
   @@unique([aulaId, dataOriginal, professorId])
+}
+
+// Convocação do professor que a gestão colocou numa ocorrência (identificada pela data original) ao editá-la pela agenda.
+// Ele responde Vou/Não vou; "Não vou" vira IndisponibilidadeAula. Só vale enquanto ele continua sendo o professor efetivo.
+model ConvocacaoAula {
+  id           String             @id @default(cuid())
+  aulaId       String
+  dataOriginal DateTime           @db.Date
+  professorId  String
+  status       StatusParticipacao @default(PENDENTE)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  aula      Aula @relation(fields: [aulaId], references: [id], onDelete: Cascade)
+  professor User @relation("ProfessorConvocacoes", fields: [professorId], references: [id], onDelete: Cascade)
+
+  @@unique([aulaId, dataOriginal, professorId])
+}
+
+// Aviso informativo ao professor retirado de uma aula (RETIRADO_AULA) ou evento (RETIRADO_EVENTO). É um snapshot (a
+// aula/evento pode mudar ou sumir depois) e some com o "ciente" ou quando o início passa.
+model AvisoProfessor {
+  id            String    @id @default(cuid())
+  userId        String
+  tipo          String
+  titulo        String
+  turma         String?
+  data          DateTime  @db.Date
+  horarioInicio DateTime  @db.Time(0)
+  horarioFim    DateTime  @db.Time(0)
+  aulaId        String?
+  dataOriginal  DateTime? @db.Date
+  reuniaoId     String?
+  cienteEm      DateTime?
+  createdAt     DateTime  @default(now())
+
+  user User @relation("AvisosDoProfessor", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Matricula {

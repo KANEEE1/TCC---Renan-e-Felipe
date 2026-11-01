@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Bell, BookOpen, ChevronRight, LogOut, Plus, User, UserX, Users, Video, Zap } from "lucide-react";
-import { api } from "@/lib/api";
+import { Bell, BookOpen, CalendarClock, ChevronRight, LogOut, Plus, User, UserMinus, UserX, Users, Video, Zap } from "lucide-react";
+import { api, ApiError } from "@/lib/api";
 import { clearSession } from "@/lib/auth";
 import { eventTypeOf, toHHMM, type MeetingDTO } from "@/components/meetings/meeting-types";
 
@@ -38,6 +38,42 @@ interface IndisponibilidadeNotice {
   eventoId?: string;
 }
 
+// Avisos do próprio professor: aula em que foi escalado (precisa responder) e aula/evento de que foi retirado (só "Ciente").
+interface ConvocacaoNotice {
+  id: string;
+  aulaId: string;
+  dataOriginal: string;
+  data: string;
+  horarioInicio: string;
+  horarioFim: string;
+  disciplina: string;
+  turma: string;
+}
+
+interface RetiradaNotice {
+  id: string;
+  tipo: "RETIRADO_AULA" | "RETIRADO_EVENTO";
+  titulo: string;
+  turma: string | null;
+  data: string;
+  horarioInicio: string;
+  horarioFim: string;
+}
+
+interface MyNotices {
+  convocacoes: ConvocacaoNotice[];
+  retiradas: RetiradaNotice[];
+}
+
+const NOTICE_GONE_MESSAGE = "Esta convocação não vale mais (a aula mudou ou já começou).";
+const REMOVAL_GONE_MESSAGE = "Este aviso não está mais disponível.";
+
+const byDateAndTime = (a: { data: string; horarioInicio: string }, b: { data: string; horarioInicio: string }) =>
+  a.data.localeCompare(b.data) || a.horarioInicio.localeCompare(b.horarioInicio);
+
+const formatNoticeDate = (data: string) =>
+  new Date(`${data}T00:00:00`).toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "2-digit" });
+
 const STATUS_STYLE: Record<string, string> = {
   "em andamento": "bg-emerald-100 text-emerald-700",
   agendada: "bg-blue-100 text-blue-700",
@@ -60,10 +96,12 @@ export function DashboardScreen() {
   const [userRole, setUserRole] = useState("");
   const [events, setEvents] = useState<MeetingDTO[]>([]);
   const [notices, setNotices] = useState<IndisponibilidadeNotice[]>([]);
+  const [myNotices, setMyNotices] = useState<MyNotices>({ convocacoes: [], retiradas: [] });
 
   useEffect(() => {
     api.get<DashboardSummary>("/dashboard/summary").then(setSummary).catch(() => setSummary(null));
     api.get<MeetingDTO[]>("/meetings").then(setEvents).catch(() => setEvents([]));
+    api.get<MyNotices>("/notices/mine").then(setMyNotices).catch(() => setMyNotices({ convocacoes: [], retiradas: [] }));
     api
       .get<{ name: string; roles: ("GESTAO" | "PROFESSOR")[] }>("/auth/me")
       .then((me) => {
@@ -83,6 +121,35 @@ export function DashboardScreen() {
       setNotices((current) =>
         [...current, notice].sort((a, b) => a.data.localeCompare(b.data) || a.horarioInicio.localeCompare(b.horarioInicio))
       );
+      setNoticeError("Não foi possível marcar o aviso como ciente. Tente novamente.");
+    });
+  };
+
+  // Convocação de aula: Vou / Não vou. O card some já; se o servidor falhar, ele volta e aparece um erro.
+  const answerConvocacao = (convocacao: ConvocacaoNotice, status: "CONFIRMADO" | "RECUSADO") => {
+    setNoticeError(null);
+    setMyNotices((current) => ({ ...current, convocacoes: current.convocacoes.filter((item) => item.id !== convocacao.id) }));
+    api.put(`/notices/mine/convocacoes/${convocacao.id}`, { status }).catch((error) => {
+      // 404/409: a convocação não vale mais (aula mudou ou começou); o card fica removido.
+      if (error instanceof ApiError && (error.status === 404 || error.status === 409)) {
+        setNoticeError(NOTICE_GONE_MESSAGE);
+        return;
+      }
+      setMyNotices((current) => ({ ...current, convocacoes: [...current.convocacoes, convocacao].sort(byDateAndTime) }));
+      setNoticeError("Não foi possível registrar sua resposta. Tente novamente.");
+    });
+  };
+
+  // Retirada: o professor dá ciente e o card some (volta se o servidor falhar).
+  const dismissRetirada = (retirada: RetiradaNotice) => {
+    setNoticeError(null);
+    setMyNotices((current) => ({ ...current, retiradas: current.retiradas.filter((item) => item.id !== retirada.id) }));
+    api.post(`/notices/mine/${retirada.id}/ciente`).catch((error) => {
+      if (error instanceof ApiError && error.status === 404) {
+        setNoticeError(REMOVAL_GONE_MESSAGE);
+        return;
+      }
+      setMyNotices((current) => ({ ...current, retiradas: [...current.retiradas, retirada].sort(byDateAndTime) }));
       setNoticeError("Não foi possível marcar o aviso como ciente. Tente novamente.");
     });
   };
@@ -120,6 +187,8 @@ export function DashboardScreen() {
       return startOf(event) > now;
     })
     .sort((a, b) => a.data.localeCompare(b.data) || a.horarioInicio.localeCompare(b.horarioInicio));
+
+  const noticeCount = invites.length + notices.length + myNotices.convocacoes.length + myNotices.retiradas.length;
 
   const stats = [
     { icon: BookOpen, value: String(summary?.stats.aulasHoje ?? 0), label: "Aulas Hoje" },
@@ -203,18 +272,16 @@ export function DashboardScreen() {
           <div className="mb-3 flex items-center gap-2">
             <div className="h-5 w-1 rounded-full bg-amber-500" />
             <h2 className="text-slate-700">Avisos</h2>
-            {invites.length + notices.length > 0 && (
-              <span className="rounded-full bg-amber-500 px-2 py-0.5 text-xs text-white">{invites.length + notices.length}</span>
-            )}
+            {noticeCount > 0 && <span className="rounded-full bg-amber-500 px-2 py-0.5 text-xs text-white">{noticeCount}</span>}
           </div>
 
-          {invites.length + notices.length === 0 ? (
+          {noticeError && <p className="mb-2 text-xs text-slate-500">{noticeError}</p>}
+          {noticeCount === 0 ? (
             <p className="rounded-2xl border border-dashed border-slate-200 bg-white p-4 text-center text-sm text-slate-400">
               Nenhum aviso no momento.
             </p>
           ) : (
             <div className="space-y-2.5">
-              {noticeError && <p className="text-xs text-red-600">{noticeError}</p>}
               {notices.map((notice) => {
                 const date = new Date(`${notice.data}T00:00:00`).toLocaleDateString("pt-BR", {
                   weekday: "long",
@@ -262,6 +329,73 @@ export function DashboardScreen() {
                   </div>
                 );
               })}
+              {myNotices.convocacoes.map((convocacao) => (
+                <div key={convocacao.id} className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white">
+                      <CalendarClock size={18} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm text-slate-800">
+                        <strong>Você foi escalado para uma aula</strong>: {convocacao.disciplina}
+                      </p>
+                      <p className="mt-0.5 text-xs text-slate-600">
+                        {convocacao.turma} · <span className="capitalize">{formatNoticeDate(convocacao.data)}</span>, das{" "}
+                        {convocacao.horarioInicio} às {convocacao.horarioFim}
+                      </p>
+                      <p className="mt-1.5 text-xs text-slate-600">Confirme se você vai dar esta aula.</p>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => answerConvocacao(convocacao, "CONFIRMADO")}
+                      className="flex-1 rounded-xl bg-amber-500 py-2.5 text-sm text-white transition-colors hover:bg-amber-600"
+                    >
+                      Vou
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => answerConvocacao(convocacao, "RECUSADO")}
+                      className="flex-1 rounded-xl border border-amber-300 bg-white py-2.5 text-sm text-amber-700 transition-colors hover:bg-amber-100"
+                    >
+                      Não vou
+                    </button>
+                  </div>
+                  <Link
+                    href={`/calendar?aula=${convocacao.aulaId}&data=${convocacao.dataOriginal}`}
+                    className="mt-2 flex items-center justify-center gap-1 text-xs text-amber-700 hover:underline"
+                  >
+                    Ver na agenda <ChevronRight size={13} />
+                  </Link>
+                </div>
+              ))}
+              {myNotices.retiradas.map((retirada) => (
+                <div key={retirada.id} className="rounded-2xl border border-slate-200 bg-slate-100 p-4 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-500 text-white">
+                      <UserMinus size={18} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm text-slate-800">
+                        <strong>Você não está mais em</strong>: {retirada.titulo}
+                      </p>
+                      <p className="mt-0.5 text-xs text-slate-600">
+                        {retirada.turma ? `${retirada.turma} · ` : ""}
+                        <span className="capitalize">{formatNoticeDate(retirada.data)}</span>, das {retirada.horarioInicio} às{" "}
+                        {retirada.horarioFim}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => dismissRetirada(retirada)}
+                    className="mt-3 w-full rounded-xl border border-slate-300 bg-white py-2.5 text-sm text-slate-700 transition-colors hover:bg-slate-200"
+                  >
+                    Ciente
+                  </button>
+                </div>
+              ))}
               {invites.map((event) => {
                 const type = eventTypeOf(event.tipo);
                 const date = new Date(`${event.data.slice(0, 10)}T00:00:00`).toLocaleDateString("pt-BR", {

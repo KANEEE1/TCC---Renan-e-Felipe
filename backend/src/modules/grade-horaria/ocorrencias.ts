@@ -1,4 +1,4 @@
-import { diaSemanaOfDateOnly, formatTimeHHMM, parseDateOnly } from "../../shared/time.js";
+import { diaSemanaOfDateOnly, formatTimeHHMM, parseDateOnly, timeOfDayInSaoPaulo, todayInSaoPaulo } from "../../shared/time.js";
 
 // Núcleo puro das ocorrências de aulas. Uma Aula é semanal (série); uma AulaExcecao altera ou cancela uma única
 // ocorrência, identificada pela data original (o dia da série). Datas são "YYYY-MM-DD" e horários "HH:MM".
@@ -12,6 +12,7 @@ export interface AulaOcorrivel {
   horarioInicio: Date;
   horarioFim: Date;
   createdAt?: Date;
+  updatedAt?: Date;
   turma: { gradeInicio: Date | null; gradeFim: Date | null };
 }
 
@@ -23,6 +24,7 @@ export interface ExcecaoOcorrencia {
   horarioInicio: Date | null;
   horarioFim: Date | null;
   professorId: string | null;
+  updatedAt?: Date;
 }
 
 export interface Ocorrencia {
@@ -120,4 +122,27 @@ export function valoresEfetivos(
     horarioFim: excecao?.horarioFim ?? base.horarioFim,
     data: excecao?.data ?? dataOriginal
   };
+}
+
+// O início da ocorrência (data e horário efetivos, fuso de São Paulo) já passou ou é agora?
+export function jaComecou(ocorrencia: Pick<Ocorrencia, "data" | "horarioInicio">, now: Date) {
+  const hoje = todayInSaoPaulo(now);
+  return ocorrencia.data < hoje || (ocorrencia.data === hoje && ocorrencia.horarioInicio <= timeOfDayInSaoPaulo(now));
+}
+
+// A indisponibilidade (aviso do professor de que não dará a ocorrência) ainda vale? Vale enquanto a ocorrência existe
+// (não cancelada), o professor efetivo continua sendo quem avisou e nem ela (exceção) nem a série foram alteradas depois do aviso.
+// Devolve a ocorrência efetiva quando vale; null caso contrário.
+export function indisponibilidadeVigente(
+  aula: AulaOcorrivel,
+  excecao: ExcecaoOcorrencia | undefined,
+  indisponibilidade: { dataOriginal: Date; professorId: string; updatedAt: Date }
+): Ocorrencia | null {
+  const dataOriginal = isoDate(indisponibilidade.dataOriginal);
+  if (!excecao && !dataDaSerie(aula, dataOriginal)) return null;
+  // Série editada depois do aviso (dia, horário, professor...): o aviso perde o sentido.
+  if (aula.updatedAt && aula.updatedAt.getTime() > indisponibilidade.updatedAt.getTime()) return null;
+  if (excecao?.updatedAt && excecao.updatedAt.getTime() > indisponibilidade.updatedAt.getTime()) return null;
+  const ocorrencia = resolverOcorrencia(aula, excecao, dataOriginal);
+  return ocorrencia && ocorrencia.professorId === indisponibilidade.professorId ? ocorrencia : null;
 }

@@ -824,6 +824,11 @@ export function CalendarView() {
                 </button>
               </div>
             )}
+            {selectedMeeting.permissoes.responder && selectedMeeting.meuRemarcado && (
+              <p className="mx-6 mt-6 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                Este evento foi remarcado. Confirme se você continua disponível na nova data e horário.
+              </p>
+            )}
             {selectedMeeting.permissoes.responder && (
               <div className="mt-6 grid grid-cols-2 gap-2 px-6">
                 {(["CONFIRMADO", "RECUSADO"] as const).map((status) => {

@@ -54,6 +54,8 @@ model ParticipacaoReuniao {
   reuniaoId String
   userId    String
   status    StatusParticipacao @default(PENDENTE)
+  // true quando o evento foi remarcado (data ou horário) e a pessoa ainda não respondeu de novo.
+  remarcado Boolean            @default(false)
   createdAt DateTime           @default(now())
   updatedAt DateTime           @updatedAt
 

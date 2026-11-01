@@ -74,6 +74,8 @@ export interface MeetingDTO {
   turmas: { id: string; nome: string }[];
   participantes: { userId: string; name: string; status: ParticipationStatus }[];
   meuStatus: ParticipationStatus | null;
+  // O evento foi remarcado (data ou horário) e o usuário ainda não respondeu de novo.
+  meuRemarcado: boolean;
   criadoPorId: string | null;
   criadoPor: { id: string; name: string } | null;
   permissoes: { editar: boolean; excluir: boolean; responder: boolean };

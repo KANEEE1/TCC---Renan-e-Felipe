@@ -58,8 +58,23 @@ export class MeetingsRepository {
     });
   }
 
-  update(id: string, data: MeetingFields<UpdateMeetingInput>, editorId: string, participanteIds?: string[], turmaIds?: string[]) {
+  update(
+    id: string,
+    data: MeetingFields<UpdateMeetingInput>,
+    editorId: string,
+    participanteIds?: string[],
+    turmaIds?: string[],
+    // Participantes que já estavam no evento antes de uma remarcação: voltam a "pendente" e recebem aviso.
+    remarcarIds: string[] = []
+  ) {
     return this.prisma.$transaction(async (tx) => {
+      if (remarcarIds.length > 0) {
+        await tx.participacaoReuniao.updateMany({
+          where: { reuniaoId: id, userId: { in: remarcarIds, not: editorId } },
+          data: { status: "PENDENTE", remarcado: true }
+        });
+      }
+
       if (participanteIds) {
         await tx.participacaoReuniao.deleteMany({ where: { reuniaoId: id, userId: { notIn: participanteIds } } });
         // Só cria as participações novas (skipDuplicates preserva o status das existentes); quem edita e se
@@ -90,7 +105,7 @@ export class MeetingsRepository {
   updateParticipacaoStatus(reuniaoId: string, userId: string, status: StatusParticipacao) {
     return this.prisma.participacaoReuniao.update({
       where: { reuniaoId_userId: { reuniaoId, userId } },
-      data: { status }
+      data: { status, remarcado: false }
     });
   }
 

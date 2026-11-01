@@ -1,7 +1,8 @@
 import { createHash, randomInt } from "node:crypto";
+import type { Actor } from "../../shared/auth.js";
 import { HttpError } from "../../shared/http.js";
 import { agora } from "../../shared/clock.js";
-import { diaSemanaOfDateOnly, formatTimeHHMM, parseDateOnly, parseTimeToDate, timeOfDayInSaoPaulo, todayInSaoPaulo } from "../../shared/time.js";
+import { diaSemanaOfDateOnly, formatTimeHHMM, parseDateOnly, parseTimeToDate, todayInSaoPaulo } from "../../shared/time.js";
 import type { DisponibilidadeService } from "../disponibilidade/disponibilidade.service.js";
 import { allocate, overlaps } from "./grade-horaria.allocator.js";
 import { allocateTurma, criarAleatorio, type PropostaTurma } from "./grade-horaria.turma-allocator.js";
@@ -29,7 +30,7 @@ import type {
   UpdateOcorrenciaInput
 } from "./grade-horaria.schemas.js";
 import type { GradeHorariaRepository } from "./grade-horaria.repository.js";
-import { dataDaSerie, dataNoPeriodo, gerarOcorrencias, isoDate, resolverOcorrencia, type AulaOcorrivel, type ExcecaoOcorrencia } from "./ocorrencias.js";
+import { dataDaSerie, dataNoPeriodo, gerarOcorrencias, indisponibilidadeVigente, isoDate, jaComecou, resolverOcorrencia, type AulaOcorrivel, type ExcecaoOcorrencia } from "./ocorrencias.js";
 
 interface ExistingAula {
   id: string;
@@ -59,6 +60,12 @@ interface ExcecaoComProfessor extends ExcecaoOcorrencia {
   professor: { id: string; name: string } | null;
 }
 
+interface IndisponibilidadeRow {
+  dataOriginal: Date;
+  professorId: string;
+  updatedAt: Date;
+}
+
 function toExcecaoResponse(excecao: ExcecaoComProfessor) {
   return {
     dataOriginal: isoDate(excecao.dataOriginal),
@@ -76,8 +83,19 @@ export class GradeHorariaService {
     private readonly disponibilidadeService: DisponibilidadeService
   ) {}
 
-  private withExcecoes<T extends { excecoes: ExcecaoComProfessor[] }>(aulas: T[]) {
-    return aulas.map((aula) => ({ ...aula, excecoes: aula.excecoes.map(toExcecaoResponse) }));
+  // Indisponibilidades só aparecem enquanto valem (ocorrência não cancelada, mesmo professor, sem alteração posterior).
+  private withExcecoes<T extends AulaOcorrivel & { excecoes: ExcecaoComProfessor[]; indisponibilidades: IndisponibilidadeRow[] }>(aulas: T[]) {
+    return aulas.map((aula) => ({
+      ...aula,
+      excecoes: aula.excecoes.map(toExcecaoResponse),
+      indisponibilidades: aula.indisponibilidades
+        .filter((indisponibilidade) => {
+          const dataOriginal = isoDate(indisponibilidade.dataOriginal);
+          const excecao = aula.excecoes.find((e) => isoDate(e.dataOriginal) === dataOriginal);
+          return indisponibilidadeVigente(aula, excecao, indisponibilidade) !== null;
+        })
+        .map((indisponibilidade) => ({ dataOriginal: isoDate(indisponibilidade.dataOriginal), professorId: indisponibilidade.professorId }))
+    }));
   }
 
   async list() {
@@ -232,10 +250,30 @@ export class GradeHorariaService {
     });
   }
 
+  // O professor efetivo da ocorrência avisa que não conseguirá dá-la (não registra falta). Idempotente.
+  async marcarIndisponivel(id: string, dataOriginal: string, actor: Actor) {
+    const aula = await this.gradeHorariaRepository.findAulaParaOcorrencia(id);
+    if (!aula) throw new HttpError(404, "Class schedule entry not found");
+
+    const data = parseDateOnly(dataOriginal);
+    const excecao = await this.gradeHorariaRepository.findExcecao(id, data);
+    this.assertOcorrenciaDaSerie(aula, excecao, dataOriginal);
+    if (excecao?.cancelada) throw new HttpError(409, "A ocorrência está cancelada");
+
+    const ocorrencia = resolverOcorrencia(aula, excecao ?? undefined, dataOriginal)!;
+    if (ocorrencia.professorId !== actor.id) {
+      throw new HttpError(403, "Only the teacher of this class can report unavailability");
+    }
+    if (jaComecou(ocorrencia, agora())) {
+      throw new HttpError(409, "Não é possível avisar indisponibilidade de uma aula que já começou");
+    }
+
+    const { aulaId, professorId } = await this.gradeHorariaRepository.upsertIndisponibilidade(id, data, actor.id);
+    return { aulaId, dataOriginal, professorId };
+  }
+
   private assertNaoComecou(ocorrencia: { data: string; horarioInicio: string }) {
-    const now = agora();
-    const hoje = todayInSaoPaulo(now);
-    if (ocorrencia.data < hoje || (ocorrencia.data === hoje && ocorrencia.horarioInicio <= timeOfDayInSaoPaulo(now))) {
+    if (jaComecou(ocorrencia, agora())) {
       throw new HttpError(409, "Não é possível alterar uma aula que já aconteceu");
     }
   }

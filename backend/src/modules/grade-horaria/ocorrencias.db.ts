@@ -11,6 +11,7 @@ export const excecaoSelect = {
   horarioInicio: true,
   horarioFim: true,
   professorId: true,
+  updatedAt: true,
   professor: { select: { id: true, name: true } }
 } satisfies Prisma.AulaExcecaoSelect;
 
@@ -23,6 +24,7 @@ export const aulaOcorrivelSelect = {
   horarioInicio: true,
   horarioFim: true,
   createdAt: true,
+  updatedAt: true,
   tipo: true,
   sala: true,
   turma: { select: { id: true, nome: true, gradeInicio: true, gradeFim: true } },

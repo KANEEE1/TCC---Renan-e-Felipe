@@ -34,6 +34,8 @@ export interface ScheduleItem {
   periodStart?: string | null;
   periodEnd?: string | null;
   excecoes: ScheduleException[];
+  // Ocorrências (pela data original) que o professor avisou que não vai conseguir dar; só as ainda válidas.
+  indisponibilidades: { dataOriginal: string; professorId: string }[];
 }
 
 interface ExcecaoDTO {
@@ -56,6 +58,7 @@ interface AulaDTO {
   disciplina: { id: string; nome: string };
   professor: { id: string; name: string };
   excecoes?: ExcecaoDTO[];
+  indisponibilidades?: { dataOriginal: string; professorId: string }[];
 }
 
 // Índice do dia na semana começando na segunda (0) até o domingo (6).
@@ -123,7 +126,8 @@ function fromAula(aula: AulaDTO, color: string): ScheduleItem {
       endTime: e.horarioFim,
       teacherId: e.professor?.id ?? null,
       teacher: e.professor?.name ?? null
-    }))
+    })),
+    indisponibilidades: aula.indisponibilidades ?? []
   };
 }
 
@@ -131,12 +135,14 @@ interface ScheduleContextType {
   schedules: ScheduleItem[];
   loading: boolean;
   refresh: () => Promise<void>;
-  addSchedule: (item: Omit<ScheduleItem, "id" | "duration" | "color" | "excecoes">) => Promise<void>;
-  updateSchedule: (id: string, patch: Partial<Omit<ScheduleItem, "id" | "excecoes">>) => Promise<void>;
+  addSchedule: (item: Omit<ScheduleItem, "id" | "duration" | "color" | "excecoes" | "indisponibilidades">) => Promise<void>;
+  updateSchedule: (id: string, patch: Partial<Omit<ScheduleItem, "id" | "excecoes" | "indisponibilidades">>) => Promise<void>;
   removeSchedule: (id: string) => Promise<void>;
   // Altera ou cancela só uma data da aula ("Esta aula"); dataOriginal é o dia da série ("YYYY-MM-DD").
   updateOccurrence: (id: string, dataOriginal: string, patch: { data: string; startTime: string; endTime: string; teacherId: string }) => Promise<void>;
   cancelOccurrence: (id: string, dataOriginal: string) => Promise<void>;
+  // O professor da ocorrência avisa que não vai conseguir dá-la (a gestão vê um aviso; não registra falta).
+  declineOccurrence: (id: string, dataOriginal: string) => Promise<void>;
 }
 
 const ScheduleContext = createContext<ScheduleContextType | null>(null);
@@ -160,7 +166,7 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
     refresh();
   }, []);
 
-  const addSchedule = async (item: Omit<ScheduleItem, "id" | "duration" | "color" | "excecoes">) => {
+  const addSchedule = async (item: Omit<ScheduleItem, "id" | "duration" | "color" | "excecoes" | "indisponibilidades">) => {
     await api.post("/schedule", {
       turmaId: item.classId,
       disciplinaId: item.subjectId,
@@ -174,7 +180,7 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
     await refresh();
   };
 
-  const updateSchedule = async (id: string, patch: Partial<Omit<ScheduleItem, "id" | "excecoes">>) => {
+  const updateSchedule = async (id: string, patch: Partial<Omit<ScheduleItem, "id" | "excecoes" | "indisponibilidades">>) => {
     await api.put(`/schedule/${id}`, {
       turmaId: patch.classId,
       disciplinaId: patch.subjectId,
@@ -209,9 +215,14 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
     await refresh();
   };
 
+  const declineOccurrence = async (id: string, dataOriginal: string) => {
+    await api.post(`/schedule/${id}/ocorrencias/${dataOriginal}/indisponivel`);
+    await refresh();
+  };
+
   return (
     <ScheduleContext.Provider
-      value={{ schedules, loading, refresh, addSchedule, updateSchedule, removeSchedule, updateOccurrence, cancelOccurrence }}
+      value={{ schedules, loading, refresh, addSchedule, updateSchedule, removeSchedule, updateOccurrence, cancelOccurrence, declineOccurrence }}
     >
       {children}
     </ScheduleContext.Provider>

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireAuth, requireRole } from "../../shared/auth.js";
+import { getActor, requireAuth, requireRole } from "../../shared/auth.js";
 import { asyncHandler } from "../../shared/http.js";
 import {
   confirmScheduleSchema,
@@ -63,6 +63,11 @@ export class GradeHorariaController {
       const { id, dataOriginal } = ocorrenciaParamsSchema.parse(req.params);
       const input = updateOcorrenciaSchema.parse(req.body);
       res.json(await this.gradeHorariaService.editarOcorrencia(id, dataOriginal, input));
+    }));
+
+    this.router.post("/:id/ocorrencias/:dataOriginal/indisponivel", requireAuth, asyncHandler(async (req, res) => {
+      const { id, dataOriginal } = ocorrenciaParamsSchema.parse(req.params);
+      res.status(201).json(await this.gradeHorariaService.marcarIndisponivel(id, dataOriginal, getActor(req)));
     }));
 
     this.router.delete("/:id/ocorrencias/:dataOriginal", requireAuth, requireRole("GESTAO"), asyncHandler(async (req, res) => {

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Bell, BookOpen, ChevronRight, LogOut, Plus, User, Users, Video, Zap } from "lucide-react";
+import { Bell, BookOpen, ChevronRight, LogOut, Plus, User, UserX, Users, Video, Zap } from "lucide-react";
 import { api } from "@/lib/api";
 import { clearSession } from "@/lib/auth";
 import { eventTypeOf, toHHMM, type MeetingDTO } from "@/components/meetings/meeting-types";
@@ -21,6 +21,21 @@ interface DashboardSummary {
     status: "agendada" | "em andamento" | "concluída";
   }[];
   upcomingSimulados: { id: string; nome: string; data: string }[];
+}
+
+// Aviso para a gestão: um professor informou que não poderá participar de uma aula ou de um evento.
+interface IndisponibilidadeNotice {
+  id: string;
+  tipo: "AULA" | "EVENTO";
+  professor: { id: string; name: string };
+  titulo: string;
+  turma: string | null;
+  data: string;
+  horarioInicio: string;
+  horarioFim: string;
+  aulaId?: string;
+  dataOriginal?: string;
+  eventoId?: string;
 }
 
 const STATUS_STYLE: Record<string, string> = {
@@ -44,6 +59,7 @@ export function DashboardScreen() {
   // Vazio até /auth/me responder, para professores não verem por um instante as ferramentas do gestor.
   const [userRole, setUserRole] = useState("");
   const [events, setEvents] = useState<MeetingDTO[]>([]);
+  const [notices, setNotices] = useState<IndisponibilidadeNotice[]>([]);
 
   useEffect(() => {
     api.get<DashboardSummary>("/dashboard/summary").then(setSummary).catch(() => setSummary(null));
@@ -53,9 +69,23 @@ export function DashboardScreen() {
       .then((me) => {
         setUserName(me.name);
         setUserRole(me.roles.includes("GESTAO") ? "gestão" : "professor");
+        if (me.roles.includes("GESTAO")) api.get<IndisponibilidadeNotice[]>("/notices").then(setNotices).catch(() => setNotices([]));
       })
       .catch(() => {});
   }, []);
+
+  // "Ciente": a gestão dispensa o aviso. O card some já; se o servidor falhar, ele volta e aparece um erro.
+  const [noticeError, setNoticeError] = useState<string | null>(null);
+  const dismissNotice = (notice: IndisponibilidadeNotice) => {
+    setNoticeError(null);
+    setNotices((current) => current.filter((item) => item.id !== notice.id));
+    api.post(`/notices/${notice.id}/ciente`).catch(() => {
+      setNotices((current) =>
+        [...current, notice].sort((a, b) => a.data.localeCompare(b.data) || a.horarioInicio.localeCompare(b.horarioInicio))
+      );
+      setNoticeError("Não foi possível marcar o aviso como ciente. Tente novamente.");
+    });
+  };
 
   const handleLogout = (event: React.MouseEvent) => {
     event.preventDefault();
@@ -173,17 +203,65 @@ export function DashboardScreen() {
           <div className="mb-3 flex items-center gap-2">
             <div className="h-5 w-1 rounded-full bg-amber-500" />
             <h2 className="text-slate-700">Avisos</h2>
-            {invites.length > 0 && (
-              <span className="rounded-full bg-amber-500 px-2 py-0.5 text-xs text-white">{invites.length}</span>
+            {invites.length + notices.length > 0 && (
+              <span className="rounded-full bg-amber-500 px-2 py-0.5 text-xs text-white">{invites.length + notices.length}</span>
             )}
           </div>
 
-          {invites.length === 0 ? (
+          {invites.length + notices.length === 0 ? (
             <p className="rounded-2xl border border-dashed border-slate-200 bg-white p-4 text-center text-sm text-slate-400">
               Nenhum aviso no momento.
             </p>
           ) : (
             <div className="space-y-2.5">
+              {noticeError && <p className="text-xs text-red-600">{noticeError}</p>}
+              {notices.map((notice) => {
+                const date = new Date(`${notice.data}T00:00:00`).toLocaleDateString("pt-BR", {
+                  weekday: "long",
+                  day: "2-digit",
+                  month: "2-digit"
+                });
+                const editHref =
+                  notice.tipo === "AULA"
+                    ? `/calendar?aula=${notice.aulaId}&data=${notice.dataOriginal}&edit=1`
+                    : `/calendar?event=${notice.eventoId}&edit=1`;
+                return (
+                  <div key={notice.id} className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+                    <div className="flex items-start gap-3">
+                      <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white">
+                        <UserX size={18} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm text-slate-800">
+                          <strong>{notice.professor.name}</strong> não poderá participar
+                        </p>
+                        <p className="mt-0.5 text-sm text-slate-700">
+                          {notice.tipo === "AULA" ? "Aula" : "Evento"}: <strong>{notice.titulo}</strong>
+                          {notice.turma ? ` · ${notice.turma}` : ""}
+                        </p>
+                        <p className="mt-0.5 text-xs text-slate-600">
+                          <span className="capitalize">{date}</span>, das {notice.horarioInicio} às {notice.horarioFim}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex gap-2">
+                      <Link
+                        href={editHref}
+                        className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-amber-500 py-2.5 text-sm text-white transition-colors hover:bg-amber-600"
+                      >
+                        {notice.tipo === "AULA" ? "Editar aula" : "Editar evento"} <ChevronRight size={15} />
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => dismissNotice(notice)}
+                        className="rounded-xl border border-amber-300 bg-white px-5 py-2.5 text-sm text-amber-700 transition-colors hover:bg-amber-100"
+                      >
+                        Ciente
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
               {invites.map((event) => {
                 const type = eventTypeOf(event.tipo);
                 const date = new Date(`${event.data.slice(0, 10)}T00:00:00`).toLocaleDateString("pt-BR", {

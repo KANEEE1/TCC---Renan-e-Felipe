@@ -1,8 +1,9 @@
 import type { Express } from "express";
-import { requireAuth } from "../shared/auth.js";
+import { requireAuth, requireRole } from "../shared/auth.js";
 import { alunosController } from "./alunos/alunos.module.js";
 import { ausenciasController } from "./ausencias/ausencias.module.js";
 import { authController } from "./auth/auth.module.js";
+import { avisosController } from "./avisos/avisos.module.js";
 import { dashboardController } from "./dashboard/dashboard.module.js";
 import { disciplinasController } from "./disciplinas/disciplinas.module.js";
 import { disponibilidadeController } from "./disponibilidade/disponibilidade.module.js";
@@ -29,6 +30,7 @@ export function registerRoutes(app: Express) {
   app.use("/disciplinas", disciplinasController.router);
   app.use("/matriculas", matriculasController.router);
   app.use("/meetings", requireAuth, meetingsController.router);
+  app.use("/notices", requireAuth, requireRole("GESTAO"), avisosController.router);
   app.use("/absences", requireAuth, ausenciasController.router);
   app.use("/substitutions", requireAuth, substituicoesController.router);
   app.use("/disponibilidade", disponibilidadeController.router);

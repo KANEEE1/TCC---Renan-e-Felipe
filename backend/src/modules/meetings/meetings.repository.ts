@@ -105,7 +105,7 @@ export class MeetingsRepository {
   updateParticipacaoStatus(reuniaoId: string, userId: string, status: StatusParticipacao) {
     return this.prisma.participacaoReuniao.update({
       where: { reuniaoId_userId: { reuniaoId, userId } },
-      data: { status, remarcado: false }
+      data: { status, remarcado: false, recusaCienteEm: null }
     });
   }
 

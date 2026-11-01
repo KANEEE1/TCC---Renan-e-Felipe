@@ -16,7 +16,8 @@ const aulaInclude = {
 
 const aulaComExcecoesInclude = {
   ...aulaInclude,
-  excecoes: { select: excecaoSelect, orderBy: { dataOriginal: "asc" } }
+  excecoes: { select: excecaoSelect, orderBy: { dataOriginal: "asc" } },
+  indisponibilidades: { select: { dataOriginal: true, professorId: true, updatedAt: true } }
 } satisfies Prisma.AulaInclude;
 
 export class GradeHorariaRepository {
@@ -180,6 +181,16 @@ export class GradeHorariaRepository {
     return this.db.aulaExcecao.findUnique({
       where: { aulaId_dataOriginal: { aulaId, dataOriginal } },
       select: excecaoSelect
+    });
+  }
+
+  // Professor avisa que não dará a ocorrência. Repetir é idempotente; se a gestão já deu "ciente", o aviso reabre.
+  upsertIndisponibilidade(aulaId: string, dataOriginal: Date, professorId: string) {
+    return this.db.indisponibilidadeAula.upsert({
+      where: { aulaId_dataOriginal_professorId: { aulaId, dataOriginal, professorId } },
+      create: { aulaId, dataOriginal, professorId },
+      update: { cienteEm: null },
+      select: { aulaId: true, dataOriginal: true, professorId: true }
     });
   }
 

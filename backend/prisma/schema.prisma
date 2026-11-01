@@ -56,6 +56,8 @@ model ParticipacaoReuniao {
   status    StatusParticipacao @default(PENDENTE)
   // true quando o evento foi remarcado (data ou horário) e a pessoa ainda não respondeu de novo.
   remarcado Boolean            @default(false)
+  // Quando a gestão deu "ciente" da recusa (aviso na tela de início); zerado ao mudar a resposta.
+  recusaCienteEm DateTime?
   createdAt DateTime           @default(now())
   updatedAt DateTime           @updatedAt
 
@@ -90,6 +92,8 @@ model User {
   substituicoesDesignadas Substituicao[] @relation("SubstituicoesDesignadas")
 
   excecoesAula AulaExcecao[] @relation("ProfessorExcecoes")
+
+  indisponibilidadesAula IndisponibilidadeAula[] @relation("ProfessorIndisponibilidades")
 }
 
 model Aluno {
@@ -204,6 +208,7 @@ model Aula {
   presencas  Presenca[]
   ausencias  AusenciaAula[]
   excecoes   AulaExcecao[]
+  indisponibilidades IndisponibilidadeAula[]
   professor  User           @relation("ProfessorAulas", fields: [professorId], references: [id])
   turma      Turma          @relation(fields: [turmaId], references: [id])
 
@@ -231,6 +236,23 @@ model AulaExcecao {
 
   @@unique([aulaId, dataOriginal])
   @@index([data])
+}
+
+// Aviso do professor de que não conseguirá dar uma ocorrência (identificada pela data original) da aula. Não é uma
+// falta: só alimenta o aviso da gestão e a cor cinza na agenda do professor. `cienteEm` = gestão deu "ciente".
+model IndisponibilidadeAula {
+  id           String    @id @default(cuid())
+  aulaId       String
+  dataOriginal DateTime  @db.Date
+  professorId  String
+  cienteEm     DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  aula      Aula @relation(fields: [aulaId], references: [id], onDelete: Cascade)
+  professor User @relation("ProfessorIndisponibilidades", fields: [professorId], references: [id], onDelete: Cascade)
+
+  @@unique([aulaId, dataOriginal, professorId])
 }
 
 model Matricula {

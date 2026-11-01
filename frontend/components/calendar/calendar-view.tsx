@@ -19,25 +19,8 @@ const DAY_FULL = ["segunda-feira", "terça-feira", "quarta-feira", "quinta-feira
 const VIEW_LABELS: Record<ViewMode, string> = { day: "Dia", week: "Semana", month: "Mês" };
 const TYPE_LABELS: Record<string, string> = { aula: "Aula", plantao: "Plantão", aulao: "Aulão" };
 
-// Aulas que o professor avisou que não vai conseguir dar (por enquanto só visual, guardado neste navegador).
-const DECLINED_KEY = "agenda-nao-vou-participar";
+// Aula que o professor avisou que não vai conseguir dar (indisponibilidade vinda do servidor): fica cinza.
 const DECLINED_COLOR = "bg-slate-400";
-
-function loadDeclined(): Set<string> {
-  try {
-    return new Set(JSON.parse(localStorage.getItem(DECLINED_KEY) ?? "[]") as string[]);
-  } catch {
-    return new Set();
-  }
-}
-
-function saveDeclined(keys: Set<string>) {
-  try {
-    localStorage.setItem(DECLINED_KEY, JSON.stringify([...keys]));
-  } catch {
-    // Sem armazenamento disponível: a marcação vale só enquanto a tela estiver aberta.
-  }
-}
 
 const HOUR_HEIGHT = 52;
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
@@ -168,7 +151,7 @@ export function CalendarView() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { schedules } = useSchedule();
+  const { schedules, declineOccurrence } = useSchedule();
   const now = useNow();
 
   // A agenda sempre abre na semana de hoje.
@@ -187,15 +170,17 @@ export function CalendarView() {
     // Só na abertura da tela.
   }, []);
 
-  // Sessão e marcações "não vou participar": lidas após montar (ficam no navegador).
+  // Sessão: lida após montar (fica no navegador).
   const [session, setSession] = useState<{ id: string; isManagement: boolean } | null>(null);
-  const [declined, setDeclined] = useState<Set<string>>(new Set());
   useEffect(() => {
     const user = getSessionUser();
     if (user) setSession({ id: user.id, isManagement: user.roles.includes("GESTAO") });
-    setDeclined(loadDeclined());
   }, []);
-  const isDeclined = (occurrence: Occurrence) => declined.has(occurrence.key);
+  // "Não vou conseguir participar": vem do servidor, vale para o professor efetivo da ocorrência.
+  const isDeclined = (occurrence: Occurrence) =>
+    occurrence.series.indisponibilidades.some((i) => i.dataOriginal === occurrence.dataOriginal && i.professorId === occurrence.event.teacherId);
+  const [declineError, setDeclineError] = useState<string | null>(null);
+  const [declining, setDeclining] = useState(false);
   const colorOf = (occurrence: Occurrence) => (isDeclined(occurrence) ? DECLINED_COLOR : occurrence.event.color);
 
   // A aula aberta no painel é uma ocorrência (aula + data), para saber se é futura e se foi marcada.
@@ -206,6 +191,7 @@ export function CalendarView() {
   const setSelectedEvent = (value: null) => {
     setSelected(value);
     setConfirmingDecline(false);
+    setDeclineError(null);
   };
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -233,6 +219,7 @@ export function CalendarView() {
   // Link direto para um evento (?event=<id>, ex.: aviso de convite no início): abre a agenda na data dele
   // com o painel do evento aberto, uma única vez.
   const eventParam = searchParams.get("event");
+  const editParam = searchParams.get("edit") === "1";
   const openedFromLink = useRef(false);
   useEffect(() => {
     if (!eventParam || openedFromLink.current) return;
@@ -241,6 +228,8 @@ export function CalendarView() {
     openedFromLink.current = true;
     setCursor(new Date(`${meeting.data.slice(0, 10)}T00:00:00`));
     setSelectedMeetingId(meeting.id);
+    // ?edit=1 (aviso da gestão): abre direto o pop-up de edição.
+    if (editParam && getSessionUser()?.roles.includes("GESTAO")) setDialog({ event: meeting });
   }, [meetings, eventParam]);
 
   const classes = useMemo(
@@ -351,6 +340,31 @@ export function CalendarView() {
         .map((meeting): Entry => ({ kind: "meeting", id: `m-${meeting.id}`, startTime: toHHMM(meeting.horarioInicio), endTime: toHHMM(meeting.horarioFim), meeting }))
     ];
   };
+
+  // Link direto para uma aula (?aula=<id>&data=<dataOriginal>[&edit=1], ex.: aviso da gestão): vai até a data efetiva
+  // da ocorrência e abre o painel dela (ou o pop-up de edição), uma única vez.
+  const aulaParam = searchParams.get("aula");
+  const dataParam = searchParams.get("data");
+  const openedLessonFromLink = useRef(false);
+  useEffect(() => {
+    if (!aulaParam || !dataParam || openedLessonFromLink.current) return;
+    const series = schedules.find((s) => s.id === aulaParam);
+    if (!series) return;
+    const date = new Date(`${series.excecoes.find((e) => e.dataOriginal === dataParam)?.data ?? dataParam}T00:00:00`);
+    const occurrence = eventsOn(date).find((o) => o.series.id === aulaParam && o.dataOriginal === dataParam);
+    if (!occurrence) {
+      // Os filtros de turma/professor podem esconder a aula: limpa-os (sem mexer na URL) e tenta de novo.
+      if (selectedClass !== "all" || selectedTeacher !== "all") {
+        setSelectedClass("all");
+        setSelectedTeacher("all");
+      }
+      return;
+    }
+    openedLessonFromLink.current = true;
+    setCursor(date);
+    setSelected(occurrence);
+    if (editParam && getSessionUser()?.roles.includes("GESTAO")) setEditingLesson(occurrence);
+  }, [schedules, aulaParam, dataParam, selectedClass, selectedTeacher]);
 
   const weekStart = startOfWeek(cursor);
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
@@ -994,6 +1008,7 @@ export function CalendarView() {
                         </p>
                       </div>
                     </div>
+                    {declineError && <p className="text-sm text-red-600">{declineError}</p>}
                     <div className="flex justify-end gap-2">
                       <button
                         type="button"
@@ -1004,14 +1019,20 @@ export function CalendarView() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          const next = new Set(declined);
-                          next.add(selected.key);
-                          setDeclined(next);
-                          saveDeclined(next);
-                          setConfirmingDecline(false);
+                        disabled={declining}
+                        onClick={async () => {
+                          setDeclining(true);
+                          setDeclineError(null);
+                          try {
+                            await declineOccurrence(selected.series.id, selected.dataOriginal);
+                            setConfirmingDecline(false);
+                          } catch (error) {
+                            setDeclineError(error instanceof Error ? error.message : "Não foi possível enviar o aviso.");
+                          } finally {
+                            setDeclining(false);
+                          }
                         }}
-                        className="rounded-full bg-amber-500 px-4 py-2 text-sm text-white hover:bg-amber-600"
+                        className="rounded-full bg-amber-500 px-4 py-2 text-sm text-white hover:bg-amber-600 disabled:opacity-60"
                       >
                         Sim, não vou participar
                       </button>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { BarChart3, ClipboardList, Edit, Plus, Search } from "lucide-react";
+import { BarChart3, BookOpen, ClipboardList, Edit, Plus, Search } from "lucide-react";
 import { api } from "@/lib/api";
 import { getSessionUser } from "@/lib/auth";
 
@@ -23,24 +23,33 @@ interface Student {
   id: string;
   nome: string;
   numero: string | null;
-  matriculas: { turma: { nome: string } }[];
+  matriculas: { turma: { id: string; nome: string } }[];
 }
 
 export function StudentList() {
   const [searchTerm, setSearchTerm] = useState("");
   const [students, setStudents] = useState<Student[]>([]);
+  const [classes, setClasses] = useState<{ id: string; nome: string }[]>([]);
+  // Filtro por turma (id), combinado com a busca por texto.
+  const [selectedClass, setSelectedClass] = useState("all");
   // Cadastrar e editar alunos é da gestão; professores só consultam.
   const [isManagement, setIsManagement] = useState(false);
 
   useEffect(() => {
     setIsManagement(!!getSessionUser()?.roles.includes("GESTAO"));
     api.get<Student[]>("/students").then(setStudents).catch(() => setStudents([]));
+    api
+      .get<{ id: string; nome: string }[]>("/classes")
+      .then((list) => setClasses([...list].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"))))
+      .catch(() => setClasses([]));
   }, []);
 
   const withClass = students.map((s) => ({ ...s, className: s.matriculas[0]?.turma.nome ?? "Sem turma" }));
 
   const filtered = withClass.filter(
-    (s) => s.nome.toLowerCase().includes(searchTerm.toLowerCase()) || s.className.toLowerCase().includes(searchTerm.toLowerCase())
+    (s) =>
+      (selectedClass === "all" || s.matriculas.some((m) => m.turma.id === selectedClass)) &&
+      (s.nome.toLowerCase().includes(searchTerm.toLowerCase()) || s.className.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   const total = students.length;
@@ -88,6 +97,31 @@ export function StudentList() {
           />
         </div>
       </div>
+
+      {classes.length > 0 && (
+        <div className="mb-3 overflow-x-auto px-4">
+          <div className="flex min-w-max items-center gap-1.5">
+            <span className="w-12 shrink-0 text-[11px] font-medium uppercase tracking-wide text-slate-400">Turma</span>
+            {[{ id: "all", nome: "Todas" }, ...classes].map(({ id, nome }) => {
+              const active = selectedClass === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setSelectedClass(id)}
+                  aria-pressed={active}
+                  className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors ${
+                    active ? "border-indigo-200 bg-indigo-50 text-indigo-700" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  {id === "all" ? <BookOpen size={12} /> : null}
+                  {nome}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="mb-3 px-4">
         <p className="text-xs text-slate-400">{filtered.length} aluno(s) encontrado(s)</p>

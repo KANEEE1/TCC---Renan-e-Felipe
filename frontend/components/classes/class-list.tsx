@@ -123,21 +123,18 @@ export function ClassList() {
                     )}
                   </div>
                 </div>
-              </div>
-
-              {/* Indicadores da turma: alunos, frequência média e média dos simulados. */}
-              <div className="mb-3 grid grid-cols-3 gap-2">
-                <div className={`rounded-xl bg-gradient-to-br px-2 py-2 text-center ${CARD_ACCENTS[idx % CARD_ACCENTS.length]}`}>
-                  <p className="text-lg leading-tight text-white">{cls.indicadores?.alunos ?? 0}</p>
-                  <p className="text-[10px] text-white/70">alunos</p>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-2 py-2 text-center">
-                  <p className="text-lg leading-tight text-slate-700">{formatPercent(cls.indicadores?.frequenciaPercentual ?? null)}</p>
-                  <p className="text-[10px] text-slate-400">frequência</p>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-2 py-2 text-center">
-                  <p className="text-lg leading-tight text-slate-700">{formatPercent(cls.indicadores?.mediaSimuladosPercentual ?? null)}</p>
-                  <p className="text-[10px] text-slate-400">simulados</p>
+                {/* Indicadores da turma, no formato da badge de alunos: só a cor muda. */}
+                <div className="ml-3 flex shrink-0 gap-1.5">
+                  {[
+                    { value: String(cls.indicadores?.alunos ?? 0), label: "alunos", color: CARD_ACCENTS[idx % CARD_ACCENTS.length] },
+                    { value: formatPercent(cls.indicadores?.frequenciaPercentual ?? null), label: "frequência", color: "from-sky-500 to-blue-600" },
+                    { value: formatPercent(cls.indicadores?.mediaSimuladosPercentual ?? null), label: "simulados", color: "from-orange-500 to-amber-500" }
+                  ].map(({ value, label, color }) => (
+                    <div key={label} className={`rounded-xl bg-gradient-to-br px-3 py-2 text-center ${color}`}>
+                      <p className="text-lg leading-tight text-white">{value}</p>
+                      <p className="text-[10px] text-white/70">{label}</p>
+                    </div>
+                  ))}
                 </div>
               </div>
 

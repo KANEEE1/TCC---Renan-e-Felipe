@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { BarChart3, Edit, Plus, Search } from "lucide-react";
+import { BarChart3, ClipboardList, Edit, Plus, Search } from "lucide-react";
 import { api } from "@/lib/api";
 import { getSessionUser } from "@/lib/auth";
 
@@ -111,7 +111,7 @@ export function StudentList() {
 
               {student.numero && <p className="mb-3 text-xs text-slate-400">Nº {student.numero}</p>}
 
-              <div className={`grid gap-2 ${isManagement ? "grid-cols-2" : "grid-cols-1"}`}>
+              <div className={`grid gap-2 ${isManagement ? "grid-cols-3" : "grid-cols-2"}`}>
                 {isManagement && (
                   <Link
                     href={`/students/edit/${student.id}`}
@@ -125,6 +125,12 @@ export function StudentList() {
                   className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 py-2 text-xs text-slate-500 transition-colors hover:bg-purple-50 hover:text-purple-600"
                 >
                   <BarChart3 size={13} /> Frequência
+                </Link>
+                <Link
+                  href={`/students/${student.id}/notas`}
+                  className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 py-2 text-xs text-slate-500 transition-colors hover:bg-indigo-50 hover:text-indigo-600"
+                >
+                  <ClipboardList size={13} /> Notas
                 </Link>
               </div>
             </div>

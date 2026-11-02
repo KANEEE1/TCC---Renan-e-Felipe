@@ -48,8 +48,34 @@ export class SimuladosRepository {
     });
   }
 
+  findAluno(id: string) {
+    return this.db.aluno.findUnique({ where: { id }, select: { id: true, nome: true } });
+  }
+
   findById(id: string) {
     return this.db.reuniao.findFirst({ where: { id, tipo: "SIMULADO" }, select: simuladoSelect });
+  }
+
+  // Notas do aluno em simulados com correção finalizada (enviada ou encerrada pelo prazo).
+  listNotasFinalizadasDoAluno(alunoId: string) {
+    return this.db.notaSimulado.findMany({
+      where: { alunoId, reuniao: { tipo: "SIMULADO", pontuacaoMaxima: { not: null }, OR: [{ correcaoEnviadaEm: { not: null } }, { correcaoEncerradaEm: { not: null } }] } },
+      select: {
+        valor: true,
+        ausente: true,
+        automatica: true,
+        turma: { select: { id: true, nome: true } },
+        reuniao: { select: { id: true, titulo: true, data: true, horarioInicio: true, pontuacaoMaxima: true } }
+      }
+    });
+  }
+
+  // Notas de todos os alunos nos simulados dados (base da média da turma).
+  listNotasDosSimulados(reuniaoIds: string[]) {
+    return this.db.notaSimulado.findMany({
+      where: { reuniaoId: { in: reuniaoIds } },
+      select: { reuniaoId: true, turmaId: true, valor: true, ausente: true }
+    });
   }
 
   // Simulados em aberto cujo prazo (dia) já passou: os pendentes de encerramento.

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Check, Save, Search, UserMinus, UserPlus } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
+import { getSessionUser } from "@/lib/auth";
 
 interface StudentRow {
   id: string;
@@ -26,6 +27,12 @@ export function AssignStudents({ classId }: { classId: string }) {
   const [initiallyAssigned, setInitiallyAssigned] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Professor só consulta os alunos da turma; atribuir e remover é da gestão (o backend também exige GESTAO).
+  const [canEdit, setCanEdit] = useState(false);
+
+  useEffect(() => {
+    setCanEdit(!!getSessionUser()?.roles.includes("GESTAO"));
+  }, []);
 
   useEffect(() => {
     Promise.all([
@@ -43,6 +50,7 @@ export function AssignStudents({ classId }: { classId: string }) {
   }, [classId]);
 
   const toggleStudent = (studentId: string) => {
+    if (!canEdit) return;
     setStudents((prev) => prev.map((student) => (student.id === studentId ? { ...student, assigned: !student.assigned } : student)));
   };
 
@@ -76,7 +84,7 @@ export function AssignStudents({ classId }: { classId: string }) {
           <Link href="/classes" className="mr-3">
             <ArrowLeft size={24} />
           </Link>
-          <h1>Gerenciar Alunos</h1>
+          <h1>{canEdit ? "Gerenciar Alunos" : "Alunos da Turma"}</h1>
         </div>
 
         <div className="rounded-lg bg-indigo-500 p-3">
@@ -85,7 +93,8 @@ export function AssignStudents({ classId }: { classId: string }) {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 pb-32">
+      <div className={`flex-1 overflow-y-auto p-4 ${canEdit ? "pb-32" : "pb-6"}`}>
+        {canEdit && (
         <div className="mb-4 rounded-lg bg-white p-4 shadow">
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-lg bg-green-50 p-3 text-center">
@@ -100,6 +109,7 @@ export function AssignStudents({ classId }: { classId: string }) {
             </div>
           </div>
         </div>
+        )}
 
         <div className="relative mb-4">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 transform text-gray-400" size={20} />
@@ -120,7 +130,7 @@ export function AssignStudents({ classId }: { classId: string }) {
                 <div
                   key={student.id}
                   onClick={() => toggleStudent(student.id)}
-                  className="cursor-pointer rounded-lg border-l-4 border-green-500 bg-white p-4 shadow transition-shadow hover:shadow-md"
+                  className={`rounded-lg border-l-4 border-green-500 bg-white p-4 shadow ${canEdit ? "cursor-pointer transition-shadow hover:shadow-md" : ""}`}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex flex-1 items-center">
@@ -129,9 +139,11 @@ export function AssignStudents({ classId }: { classId: string }) {
                       </div>
                       <h4 className="text-gray-800">{student.name}</h4>
                     </div>
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500">
-                      <Check className="text-white" size={18} />
-                    </div>
+                    {canEdit && (
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500">
+                        <Check className="text-white" size={18} />
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -139,7 +151,7 @@ export function AssignStudents({ classId }: { classId: string }) {
           </section>
         )}
 
-        {unassignedStudents.length > 0 && (
+        {canEdit && unassignedStudents.length > 0 && (
           <section>
             <h3 className="mb-3 text-gray-800">Alunos Disponíveis ({unassignedStudents.length})</h3>
             <div className="space-y-2">
@@ -167,6 +179,11 @@ export function AssignStudents({ classId }: { classId: string }) {
         {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
       </div>
 
+      {!canEdit && students.length > 0 && assignedStudents.length === 0 && (
+        <p className="px-4 text-center text-sm text-gray-500">{searchTerm ? "Nenhum aluno encontrado." : "Nenhum aluno nesta turma."}</p>
+      )}
+
+      {canEdit && (
       <div className="fixed bottom-16 left-0 right-0 z-40 border-t bg-white p-4">
         <div className="mb-2 text-center text-sm text-gray-600">{assignedCount} alunos atribuídos</div>
         <button
@@ -179,6 +196,7 @@ export function AssignStudents({ classId }: { classId: string }) {
           {saving ? "Salvando..." : "Salvar Alterações"}
         </button>
       </div>
+      )}
     </div>
   );
 }

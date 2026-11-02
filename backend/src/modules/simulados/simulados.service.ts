@@ -109,6 +109,41 @@ export class SimuladosService {
     return (await this.simuladosRepository.list()).map((s) => this.resumo(s, now));
   }
 
+  // Notas do aluno nos simulados finalizados, em % da pontuação máxima, com a média da turma dele em cada um.
+  async notasDoAluno(alunoId: string) {
+    const aluno = await this.simuladosRepository.findAluno(alunoId);
+    if (!aluno) throw new HttpError(404, "Aluno não encontrado");
+    await this.consolidarPrazos();
+    const doAluno = await this.simuladosRepository.listNotasFinalizadasDoAluno(alunoId);
+    const todas = await this.simuladosRepository.listNotasDosSimulados(doAluno.map((n) => n.reuniao.id));
+    const percentual = (valor: number, maxima: number) => (valor / maxima) * 100;
+    const arredonda = (n: number) => Math.round(n * 100) / 100;
+
+    const simulados = doAluno
+      .sort((a, b) => a.reuniao.data.getTime() - b.reuniao.data.getTime() || a.reuniao.horarioInicio.getTime() - b.reuniao.horarioInicio.getTime())
+      .map((n) => {
+        const maxima = n.reuniao.pontuacaoMaxima!;
+        const pontos = todas
+          .filter((o) => o.reuniaoId === n.reuniao.id && o.turmaId === n.turma.id && !o.ausente && o.valor !== null)
+          .map((o) => percentual(o.valor!, maxima));
+        return {
+          id: n.reuniao.id,
+          titulo: n.reuniao.titulo,
+          data: isoDate(n.reuniao.data),
+          pontuacaoMaxima: maxima,
+          valor: n.valor,
+          ausente: n.ausente,
+          automatica: n.automatica,
+          percentual: !n.ausente && n.valor !== null ? arredonda(percentual(n.valor, maxima)) : null,
+          mediaTurmaPercentual: pontos.length > 0 ? arredonda(pontos.reduce((s, p) => s + p, 0) / pontos.length) : null,
+          turma: n.turma
+        };
+      });
+    const percentuais = simulados.flatMap((s) => (s.percentual === null ? [] : [s.percentual]));
+    const mediaGeral = percentuais.length > 0 ? arredonda(percentuais.reduce((s, p) => s + p, 0) / percentuais.length) : null;
+    return { aluno, media: mediaGeral, simulados };
+  }
+
   async getById(id: string, actor: Actor) {
     await this.consolidarPrazos();
     const s = await this.simuladosRepository.findById(id);

@@ -477,4 +477,59 @@ describe("simulados", () => {
       expect(depois).toMatchObject({ valor: 0, automatica: true, lancadaPorId: null });
     });
   });
+
+  describe("notas do aluno", () => {
+    const notasDe = (ctx: Ctx, alunoId: string) => request(app).get(`/simulados/aluno/${alunoId}`).set(ctx.gestorHeader);
+    const enviarTudo = (ctx: Ctx, id: string, notas: Nota[]) => lancar(ctx.gestorHeader, id, notas, true);
+
+    it("lists only finalized simulados in date order, as percent, ignoring absent in averages", async () => {
+      const ctx = await setup();
+      setNow("2026-11-01T12:00:00Z");
+      const velho = await criarSimulado(ctx, { titulo: "Antigo", data: "2026-11-03", pontuacaoMaxima: 50 });
+      const novo = await criarSimulado(ctx, { titulo: "Novo", data: "2026-11-07", pontuacaoMaxima: 90 });
+      const aberto = await criarSimulado(ctx, { titulo: "Aberto", data: "2026-11-07", horarioInicio: "13:00", horarioFim: "14:00" });
+      setNow(DEPOIS);
+      // Antigo: Ana 25/50 = 50%, Bia 40/50 = 80%, Gabi ausente, Caio 0. Média da Turma A = 65%.
+      await enviarTudo(ctx, velho, [nota(ctx.ana.id, 25), nota(ctx.bia.id, 40), nota(ctx.gabi.id, null, true), nota(ctx.caio.id, 0)]);
+      // Novo: Ana 54/90 = 60%, Bia ausente, Gabi 90, Caio 45.
+      await enviarTudo(ctx, novo, [nota(ctx.ana.id, 54), nota(ctx.bia.id, null, true), nota(ctx.gabi.id, 90), nota(ctx.caio.id, 45)]);
+      await lancar(ctx.gestorHeader, aberto, [nota(ctx.ana.id, 10)]);
+
+      const ana = await notasDe(ctx, ctx.ana.id);
+      expect(ana.status).toBe(200);
+      expect(ana.body.aluno).toEqual({ id: ctx.ana.id, nome: "Ana" });
+      expect(ana.body.simulados.map((s: any) => s.titulo)).toEqual(["Antigo", "Novo"]);
+      expect(ana.body.simulados[0]).toMatchObject({ valor: 25, pontuacaoMaxima: 50, percentual: 50, mediaTurmaPercentual: 65, ausente: false, turma: { nome: "Turma A" } });
+      expect(ana.body.simulados[1]).toMatchObject({ valor: 54, percentual: 60, mediaTurmaPercentual: 80 });
+      expect(ana.body.media).toBe(55);
+
+      // Ausente: sem percentual e fora da média.
+      const bia = await notasDe(ctx, ctx.bia.id);
+      expect(bia.body.simulados[1]).toMatchObject({ valor: null, ausente: true, percentual: null });
+      expect(bia.body.media).toBe(80);
+    });
+
+    it("counts the automatic zero and returns null average when nothing was graded", async () => {
+      const ctx = await setup();
+      setNow(ANTES);
+      const id = await criarSimulado(ctx);
+      setNow(DEPOIS);
+      await lancar(ctx.gestorHeader, id, [nota(ctx.ana.id, 45)]);
+      expect((await notasDe(ctx, ctx.bia.id)).body).toMatchObject({ media: null, simulados: [] });
+
+      setNow(VENCIDO);
+      const bia = (await notasDe(ctx, ctx.bia.id)).body;
+      expect(bia.simulados[0]).toMatchObject({ valor: 0, automatica: true, percentual: 0, mediaTurmaPercentual: 16.67 });
+      expect(bia.media).toBe(0);
+      // Aluno de outra turma sem registro fica de fora.
+      expect((await notasDe(ctx, ctx.duda.id)).body.simulados).toEqual([]);
+    });
+
+    it("requires a token and an existing student", async () => {
+      const ctx = await setup();
+      expect((await request(app).get(`/simulados/aluno/${ctx.ana.id}`)).status).toBe(401);
+      expect((await request(app).get("/simulados/aluno/inexistente").set(ctx.gestorHeader)).status).toBe(404);
+      expect((await request(app).get(`/simulados/aluno/${ctx.ana.id}`).set(asTeacher(ctx.profC.id))).status).toBe(200);
+    });
+  });
 });

@@ -48,6 +48,11 @@ export class TurmasRepository {
     });
   }
 
+  async contarAlunosPorTurma() {
+    const grupos = await this.db.matricula.groupBy({ by: ["turmaId"], _count: { _all: true } });
+    return new Map(grupos.map((g) => [g.turmaId, g._count._all]));
+  }
+
   findById(id: string) {
     return this.db.turma.findUnique({
       where: { id },

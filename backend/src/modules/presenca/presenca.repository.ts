@@ -60,6 +60,13 @@ export class PresencaRepository {
     });
   }
 
+  // Todas as presenças com a turma de cada uma (da aula, na grade; a gravada, nas de evento).
+  listPresencasComTurma() {
+    return this.prisma.presenca.findMany({
+      select: { presente: true, turmaId: true, aula: { select: { turmaId: true } } }
+    });
+  }
+
   findAulaForMark(aulaId: string) {
     return this.prisma.aula.findUnique({
       where: { id: aulaId },

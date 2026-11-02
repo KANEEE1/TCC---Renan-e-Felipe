@@ -30,35 +30,33 @@ interface ClassSummary {
   coordenador: string | null;
 }
 
-interface ClassDetail extends ClassSummary {
-  matriculas: unknown[];
+interface ClassIndicadores {
+  turmaId: string;
+  alunos: number;
+  frequenciaPercentual: number | null;
+  mediaSimuladosPercentual: number | null;
 }
+
+const formatPercent = (v: number | null) => (v === null ? "—" : `${Math.round(v)}%`);
 
 export function ClassList() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [classes, setClasses] = useState<(ClassSummary & { students: number })[]>([]);
+  const [classes, setClasses] = useState<(ClassSummary & { indicadores: ClassIndicadores | null })[]>([]);
   // Criar, editar e matricular alunos em turmas é da gestão; professores só consultam.
   const [isManagement, setIsManagement] = useState(false);
 
   useEffect(() => {
     setIsManagement(!!getSessionUser()?.roles.includes("GESTAO"));
-    api.get<ClassSummary[]>("/classes").then(async (list) => {
-      const withCounts = await Promise.all(
-        list.map(async (cls) => {
-          try {
-            const detail = await api.get<ClassDetail>(`/classes/${cls.id}`);
-            return { ...cls, students: detail.matriculas.length };
-          } catch {
-            return { ...cls, students: 0 };
-          }
-        })
-      );
-      setClasses(withCounts);
-    }).catch(() => setClasses([]));
+    Promise.all([api.get<ClassSummary[]>("/classes"), api.get<ClassIndicadores[]>("/classes/indicadores")])
+      .then(([list, indicadores]) => {
+        const porTurma = new Map(indicadores.map((i) => [i.turmaId, i]));
+        setClasses(list.map((cls) => ({ ...cls, indicadores: porTurma.get(cls.id) ?? null })));
+      })
+      .catch(() => setClasses([]));
   }, []);
 
   const filteredClasses = classes.filter((c) => c.nome.toLowerCase().includes(searchTerm.toLowerCase()));
-  const totalStudents = classes.reduce((sum, c) => sum + c.students, 0);
+  const totalStudents = classes.reduce((sum, c) => sum + (c.indicadores?.alunos ?? 0), 0);
 
   return (
     <div className="flex flex-1 flex-col bg-slate-50">
@@ -125,9 +123,18 @@ export function ClassList() {
                     )}
                   </div>
                 </div>
-                <div className={`ml-3 shrink-0 rounded-xl bg-gradient-to-br px-3 py-2 text-center ${CARD_ACCENTS[idx % CARD_ACCENTS.length]}`}>
-                  <p className="text-lg leading-tight text-white">{cls.students}</p>
-                  <p className="text-[10px] text-white/70">alunos</p>
+                {/* Indicadores da turma, no formato da badge de alunos: só a cor muda. */}
+                <div className="ml-3 flex shrink-0 gap-1.5">
+                  {[
+                    { value: String(cls.indicadores?.alunos ?? 0), label: "alunos", color: CARD_ACCENTS[idx % CARD_ACCENTS.length] },
+                    { value: formatPercent(cls.indicadores?.frequenciaPercentual ?? null), label: "frequência", color: "from-sky-500 to-blue-600" },
+                    { value: formatPercent(cls.indicadores?.mediaSimuladosPercentual ?? null), label: "simulados", color: "from-orange-500 to-amber-500" }
+                  ].map(({ value, label, color }) => (
+                    <div key={label} className={`rounded-xl bg-gradient-to-br px-3 py-2 text-center ${color}`}>
+                      <p className="text-lg leading-tight text-white">{value}</p>
+                      <p className="text-[10px] text-white/70">{label}</p>
+                    </div>
+                  ))}
                 </div>
               </div>
 

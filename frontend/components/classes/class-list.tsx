@@ -30,35 +30,33 @@ interface ClassSummary {
   coordenador: string | null;
 }
 
-interface ClassDetail extends ClassSummary {
-  matriculas: unknown[];
+interface ClassIndicadores {
+  turmaId: string;
+  alunos: number;
+  frequenciaPercentual: number | null;
+  mediaSimuladosPercentual: number | null;
 }
+
+const formatPercent = (v: number | null) => (v === null ? "—" : `${Math.round(v)}%`);
 
 export function ClassList() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [classes, setClasses] = useState<(ClassSummary & { students: number })[]>([]);
+  const [classes, setClasses] = useState<(ClassSummary & { indicadores: ClassIndicadores | null })[]>([]);
   // Criar, editar e matricular alunos em turmas é da gestão; professores só consultam.
   const [isManagement, setIsManagement] = useState(false);
 
   useEffect(() => {
     setIsManagement(!!getSessionUser()?.roles.includes("GESTAO"));
-    api.get<ClassSummary[]>("/classes").then(async (list) => {
-      const withCounts = await Promise.all(
-        list.map(async (cls) => {
-          try {
-            const detail = await api.get<ClassDetail>(`/classes/${cls.id}`);
-            return { ...cls, students: detail.matriculas.length };
-          } catch {
-            return { ...cls, students: 0 };
-          }
-        })
-      );
-      setClasses(withCounts);
-    }).catch(() => setClasses([]));
+    Promise.all([api.get<ClassSummary[]>("/classes"), api.get<ClassIndicadores[]>("/classes/indicadores")])
+      .then(([list, indicadores]) => {
+        const porTurma = new Map(indicadores.map((i) => [i.turmaId, i]));
+        setClasses(list.map((cls) => ({ ...cls, indicadores: porTurma.get(cls.id) ?? null })));
+      })
+      .catch(() => setClasses([]));
   }, []);
 
   const filteredClasses = classes.filter((c) => c.nome.toLowerCase().includes(searchTerm.toLowerCase()));
-  const totalStudents = classes.reduce((sum, c) => sum + c.students, 0);
+  const totalStudents = classes.reduce((sum, c) => sum + (c.indicadores?.alunos ?? 0), 0);
 
   return (
     <div className="flex flex-1 flex-col bg-slate-50">
@@ -125,9 +123,21 @@ export function ClassList() {
                     )}
                   </div>
                 </div>
-                <div className={`ml-3 shrink-0 rounded-xl bg-gradient-to-br px-3 py-2 text-center ${CARD_ACCENTS[idx % CARD_ACCENTS.length]}`}>
-                  <p className="text-lg leading-tight text-white">{cls.students}</p>
+              </div>
+
+              {/* Indicadores da turma: alunos, frequência média e média dos simulados. */}
+              <div className="mb-3 grid grid-cols-3 gap-2">
+                <div className={`rounded-xl bg-gradient-to-br px-2 py-2 text-center ${CARD_ACCENTS[idx % CARD_ACCENTS.length]}`}>
+                  <p className="text-lg leading-tight text-white">{cls.indicadores?.alunos ?? 0}</p>
                   <p className="text-[10px] text-white/70">alunos</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-2 py-2 text-center">
+                  <p className="text-lg leading-tight text-slate-700">{formatPercent(cls.indicadores?.frequenciaPercentual ?? null)}</p>
+                  <p className="text-[10px] text-slate-400">frequência</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-2 py-2 text-center">
+                  <p className="text-lg leading-tight text-slate-700">{formatPercent(cls.indicadores?.mediaSimuladosPercentual ?? null)}</p>
+                  <p className="text-[10px] text-slate-400">simulados</p>
                 </div>
               </div>
 

@@ -2,10 +2,33 @@ import { HttpError } from "../../shared/http.js";
 import { formatTimeHHMM, parseDateOnly } from "../../shared/time.js";
 import { normalizarNome } from "../../shared/normalizar-nome.js";
 import type { CargaInput, CreateTurmaInput, PutJanelasInput, UpdateTurmaInput } from "./turmas.schemas.js";
+import type { PresencaService } from "../presenca/presenca.service.js";
+import type { SimuladosService } from "../simulados/simulados.service.js";
 import type { JanelaHorario, LinhaMatriz, TurmasRepository } from "./turmas.repository.js";
 
 export class TurmasService {
-  constructor(private readonly turmasRepository: TurmasRepository) {}
+  constructor(
+    private readonly turmasRepository: TurmasRepository,
+    private readonly presencaService: PresencaService,
+    private readonly simuladosService: SimuladosService
+  ) {}
+
+  // Indicadores de todas as turmas de uma vez: alunos, frequência média e média geral dos simulados (null = sem dados).
+  async indicadores() {
+    const [turmas, alunos, frequencias] = await Promise.all([
+      this.turmasRepository.list(),
+      this.turmasRepository.contarAlunosPorTurma(),
+      this.presencaService.frequenciaPorTurma()
+    ]);
+    return Promise.all(
+      turmas.map(async (t) => ({
+        turmaId: t.id,
+        alunos: alunos.get(t.id) ?? 0,
+        frequenciaPercentual: frequencias.get(t.id) ?? null,
+        mediaSimuladosPercentual: (await this.simuladosService.notasDaTurma(t.id)).media
+      }))
+    );
+  }
 
   async list() {
     return (await this.turmasRepository.list()).map(formatPeriodo);

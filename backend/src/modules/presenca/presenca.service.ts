@@ -345,6 +345,21 @@ export class PresencaService {
     return buildAttendanceSummary(matriculas, presencas, query.limite);
   }
 
+  // Frequência média (%) por turma: presenças / total de registros. Turma sem registros fica fora do mapa.
+  async frequenciaPorTurma() {
+    await this.consolidarPresencasPendentes();
+    const counts = new Map<string, { total: number; presentes: number }>();
+    for (const p of await this.presencaRepository.listPresencasComTurma()) {
+      const turmaId = p.aula?.turmaId ?? p.turmaId;
+      if (!turmaId) continue;
+      const c = counts.get(turmaId) ?? { total: 0, presentes: 0 };
+      c.total += 1;
+      if (p.presente) c.presentes += 1;
+      counts.set(turmaId, c);
+    }
+    return new Map(Array.from(counts, ([id, c]) => [id, Math.round((c.presentes / c.total) * 1000) / 10] as const));
+  }
+
   async report(alunoId: string) {
     await this.consolidarPresencasPendentes(await this.presencaRepository.listTurmaIdsOfAluno(alunoId));
     const presencas = await this.presencaRepository.listByAluno(alunoId);

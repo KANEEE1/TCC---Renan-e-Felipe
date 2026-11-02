@@ -17,6 +17,11 @@ export class TurmasController {
       res.json(await this.turmasService.list());
     }));
 
+    // Antes de "/:id" para não ser tratado como id.
+    this.router.get("/indicadores", requireAuth, asyncHandler(async (_req, res) => {
+      res.json(await this.turmasService.indicadores());
+    }));
+
     this.router.get("/:id", asyncHandler(async (req, res) => {
       res.json(await this.turmasService.getById(req.params.id as string));
     }));

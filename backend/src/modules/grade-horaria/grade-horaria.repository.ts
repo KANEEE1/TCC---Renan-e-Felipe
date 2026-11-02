@@ -191,11 +191,11 @@ export class GradeHorariaRepository {
 
   // Convoca o professor para a ocorrência (ele responde Vou/Não vou). Reconvocar reabre a convocação como pendente
   // e apaga um aviso de retirada que ele tivesse para a mesma ocorrência.
-  async convocarProfessor(aulaId: string, dataOriginal: Date, professorId: string) {
+  async convocarProfessor(aulaId: string, dataOriginal: Date, professorId: string, remarcada = false) {
     await this.db.convocacaoAula.upsert({
       where: { aulaId_dataOriginal_professorId: { aulaId, dataOriginal, professorId } },
-      create: { aulaId, dataOriginal, professorId },
-      update: { status: "PENDENTE" }
+      create: { aulaId, dataOriginal, professorId, remarcada },
+      update: { status: "PENDENTE", remarcada }
     });
     await removerAvisosRetirada(this.db, [professorId], { tipo: "RETIRADO_AULA", aulaId, dataOriginal });
   }

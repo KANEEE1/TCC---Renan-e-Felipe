@@ -80,7 +80,8 @@ describe("avisos do professor: convocação e retirada", () => {
           horarioInicio: "08:00",
           horarioFim: "10:00",
           disciplina: "Química",
-          turma: "Turma Conv"
+          turma: "Turma Conv",
+          remarcada: false
         }
       ]);
 
@@ -91,11 +92,57 @@ describe("avisos do professor: convocação e retirada", () => {
       ]);
     });
 
-    it("editar sem trocar o professor não gera nada", async () => {
+    it("editar sem mudar professor, data nem horário não gera nada", async () => {
       const ctx = await setup();
-      expect((await editar(ctx, ctx.profA.id, "2026-10-28", { horarioInicio: "09:00", horarioFim: "11:00" })).status).toBe(200);
+      expect((await editar(ctx, ctx.profA.id)).status).toBe(200);
       expect(await prisma.convocacaoAula.count()).toBe(0);
       expect(await prisma.avisoProfessor.count()).toBe(0);
+    });
+
+    describe("remarcação (mesmo professor, data ou horário mudou)", () => {
+      it("remarcar a data convoca o mesmo professor com convocação remarcada", async () => {
+        const ctx = await setup();
+        expect((await editar(ctx, ctx.profA.id, "2026-10-28", { data: "2026-10-29" })).status).toBe(200);
+        const a = await meus(ctx.profA.id);
+        expect(a.retiradas).toEqual([]);
+        expect(a.convocacoes).toEqual([expect.objectContaining({ data: "2026-10-29", dataOriginal: "2026-10-28", remarcada: true })]);
+      });
+
+      it("remarcar só o horário também convoca, reabrindo uma convocação já respondida", async () => {
+        const ctx = await setup();
+        await prisma.convocacaoAula.create({
+          data: { aulaId: ctx.aula.id, dataOriginal: day("2026-10-28"), professorId: ctx.profA.id, status: "CONFIRMADO" }
+        });
+        expect((await editar(ctx, ctx.profA.id, "2026-10-28", { horarioInicio: "09:00", horarioFim: "11:00" })).status).toBe(200);
+        expect(await prisma.convocacaoAula.count()).toBe(1);
+        expect((await meus(ctx.profA.id)).convocacoes).toEqual([expect.objectContaining({ horarioInicio: "09:00", remarcada: true })]);
+      });
+
+      it("o editor não recebe a convocação remarcada", async () => {
+        const ctx = await setup();
+        const asProfA = { Authorization: `Bearer ${signAuthToken({ sub: ctx.profA.id, roles: ["GESTAO", "PROFESSOR"] })}` };
+        expect((await request(app).put(ocorrencia(ctx.aula.id)).set(asProfA).send({ data: "2026-10-29" })).status).toBe(200);
+        expect(await prisma.convocacaoAula.count()).toBe(0);
+      });
+
+      it("trocar o professor e a data mantém convocação normal para o novo e retirada para o anterior", async () => {
+        const ctx = await setup();
+        expect((await editar(ctx, ctx.profB.id, "2026-10-28", { data: "2026-10-29" })).status).toBe(200);
+        expect((await meus(ctx.profB.id)).convocacoes).toEqual([expect.objectContaining({ remarcada: false })]);
+        const a = await meus(ctx.profA.id);
+        expect(a.convocacoes).toEqual([]);
+        expect(a.retiradas).toHaveLength(1);
+      });
+
+      it("responder zera a marca de remarcada e Não vou avisa a gestão", async () => {
+        const ctx = await setup();
+        await editar(ctx, ctx.profA.id, "2026-10-28", { data: "2026-10-29" });
+        const [convocacao] = (await meus(ctx.profA.id)).convocacoes;
+        expect((await responder(convocacao.id, ctx.profA.id, "RECUSADO")).status).toBe(200);
+        expect((await prisma.convocacaoAula.findUnique({ where: { id: convocacao.id } }))?.remarcada).toBe(false);
+        expect((await meus(ctx.profA.id)).convocacoes).toEqual([]);
+        expect(await avisosDaGestao(ctx)).toHaveLength(1);
+      });
     });
 
     it("editar a série (PUT /schedule/:id) não gera convocação nem retirada", async () => {

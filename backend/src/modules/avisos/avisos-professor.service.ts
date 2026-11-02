@@ -15,6 +15,7 @@ export interface AvisosDoProfessor {
     horarioFim: string;
     disciplina: string;
     turma: string;
+    remarcada: boolean;
   }[];
   retiradas: {
     id: string;
@@ -108,7 +109,8 @@ export class AvisosProfessorService {
               horarioInicio: ocorrencia.horarioInicio,
               horarioFim: ocorrencia.horarioFim,
               disciplina: convocacao.aula.disciplina.nome,
-              turma: convocacao.aula.turma.nome
+              turma: convocacao.aula.turma.nome,
+              remarcada: convocacao.remarcada
             }]
           : [];
       })

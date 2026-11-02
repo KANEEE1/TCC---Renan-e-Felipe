@@ -7,6 +7,7 @@ const convocacaoSelect = {
   dataOriginal: true,
   professorId: true,
   status: true,
+  remarcada: true,
   aula: { select: aulaOcorrivelSelect }
 } as const;
 
@@ -45,7 +46,7 @@ export class AvisosProfessorRepository {
 
   // Recusar vira o aviso de indisponibilidade da gestão (mesma regra de POST /schedule/:id/ocorrencias/:data/indisponivel).
   async responderConvocacao(convocacao: { id: string; aulaId: string; dataOriginal: Date; professorId: string }, status: StatusParticipacao) {
-    await this.db.convocacaoAula.update({ where: { id: convocacao.id }, data: { status } });
+    await this.db.convocacaoAula.update({ where: { id: convocacao.id }, data: { status, remarcada: false } });
     if (status === "RECUSADO") {
       await upsertIndisponibilidade(this.db, convocacao.aulaId, convocacao.dataOriginal, convocacao.professorId);
     }

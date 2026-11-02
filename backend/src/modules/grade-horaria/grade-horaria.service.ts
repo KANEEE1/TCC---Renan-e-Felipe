@@ -216,7 +216,13 @@ export class GradeHorariaService {
       });
       const efetiva = resolverOcorrencia(aula, salva, dataOriginal)!;
 
-      if (professorId !== atual.professorId) {
+      if (professorId === atual.professorId) {
+        // Mesmo professor, mas data ou horário mudou: ele confirma de novo (convocação remarcada).
+        const remarcou = data !== atual.data || horarioInicio !== atual.horarioInicio || horarioFim !== atual.horarioFim;
+        if (remarcou && professorId !== actor.id && !jaComecou(efetiva, agora())) {
+          await repository.convocarProfessor(id, original, professorId, true);
+        }
+      } else {
         // O próprio editor não é notificado das mudanças que ele mesmo fez.
         if (professorId !== actor.id && !jaComecou(efetiva, agora())) {
           await repository.convocarProfessor(id, original, professorId);

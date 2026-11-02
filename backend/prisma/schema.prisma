@@ -277,6 +277,8 @@ model ConvocacaoAula {
   dataOriginal DateTime           @db.Date
   professorId  String
   status       StatusParticipacao @default(PENDENTE)
+  // Mesmo professor, mas a data ou o horário da aula mudou: ele confirma de novo.
+  remarcada    Boolean            @default(false)
   createdAt    DateTime           @default(now())
   updatedAt    DateTime           @updatedAt
 

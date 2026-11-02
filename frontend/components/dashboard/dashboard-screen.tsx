@@ -53,6 +53,7 @@ interface ConvocacaoNotice {
   horarioFim: string;
   disciplina: string;
   turma: string;
+  remarcada: boolean;
 }
 
 interface RetiradaNotice {
@@ -324,13 +325,13 @@ export function DashboardScreen() {
                     </span>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm text-slate-800">
-                        <strong>Você foi escalado para uma aula</strong>: {convocacao.disciplina}
+                        {convocacao.remarcada ? <strong>Aula remarcada:</strong> : <strong>Você foi escalado para uma aula</strong>}{convocacao.remarcada ? " " : ": "}{convocacao.disciplina}
                       </p>
                       <p className="mt-0.5 text-xs text-slate-600">
                         {convocacao.turma} · <span className="capitalize">{formatNoticeDate(convocacao.data)}</span>, das{" "}
                         {convocacao.horarioInicio} às {convocacao.horarioFim}
                       </p>
-                      <p className="mt-1.5 text-xs text-slate-600">Confirme se você vai dar esta aula.</p>
+                      <p className="mt-1.5 text-xs text-slate-600">{convocacao.remarcada ? "A data ou o horário mudou. Confirme se você continua disponível." : "Confirme se você vai dar esta aula."}</p>
                     </div>
                   </div>
                   <div className="mt-3 flex gap-2">

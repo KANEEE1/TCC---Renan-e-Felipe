@@ -208,6 +208,9 @@ export function CalendarView() {
   const [selected, setSelected] = useState<Occurrence | null>(null);
   const [editingLesson, setEditingLesson] = useState<Occurrence | null>(null);
   const selectedEvent = selected?.event ?? null;
+  // O painel guarda a ocorrência do momento em que abriu; a resposta (Vou/Não vou) é lida da série atual, que é
+  // recarregada após responder — assim o botão ativo e a cor mudam na hora, sem fechar e abrir o painel.
+  const liveSelected = selected ? { ...selected, series: schedules.find((s) => s.id === selected.series.id) ?? selected.series } : null;
   const setSelectedEvent = (value: null) => {
     setSelected(value);
     setDeclineError(null);
@@ -955,7 +958,7 @@ export function CalendarView() {
               </button>
             </div>
             <div className="flex gap-4 px-6">
-              <span className={`mt-1.5 h-4 w-4 shrink-0 rounded ${colorOf(selected)}`} />
+              <span className={`mt-1.5 h-4 w-4 shrink-0 rounded ${colorOf(liveSelected ?? selected)}`} />
               <div className="min-w-0">
                 <h2 className="text-xl text-slate-800">{selectedEvent.subject}</h2>
                 <p className="mt-0.5 text-sm text-slate-500">
@@ -1026,7 +1029,7 @@ export function CalendarView() {
               startsAt.setHours(h, m, 0, 0);
               if (startsAt <= new Date()) return null;
 
-              const declined = isDeclined(selected);
+              const declined = liveSelected ? isDeclined(liveSelected) : false;
               return (
                 <div className="mt-6 px-6">
                   <div className="grid grid-cols-2 gap-2">

@@ -60,10 +60,8 @@ export function StudentForm({ isEdit = false, studentId }: StudentFormProps) {
 
     try {
       if (isEdit && studentId) {
+        // Na edição a turma não muda: só nome e número.
         await api.put(`/students/${studentId}`, payload);
-        if (formData.classId) {
-          await api.post(`/classes/${formData.classId}/students`, { studentIds: [studentId] });
-        }
       } else {
         // No cadastro a turma vai junto: o backend cria o aluno já matriculado.
         await api.post("/students", { ...payload, turmaId: formData.classId });
@@ -120,8 +118,9 @@ export function StudentForm({ isEdit = false, studentId }: StudentFormProps) {
                 <select
                   value={formData.classId}
                   required={!isEdit}
+                  disabled={isEdit}
                   onChange={(e) => setFormData({ ...formData, classId: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-black focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-black focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100 disabled:text-gray-500"
                 >
                   <option value="">Selecione</option>
                   {classOptions.map((cls) => (
@@ -130,6 +129,7 @@ export function StudentForm({ isEdit = false, studentId }: StudentFormProps) {
                     </option>
                   ))}
                 </select>
+                {isEdit && <p className="mt-1 text-sm text-gray-500">A turma do aluno não pode ser alterada.</p>}
                 {!isEdit && classOptions.length === 0 && (
                   <p className="mt-1 text-sm text-gray-500">
                     Nenhuma turma cadastrada.{" "}

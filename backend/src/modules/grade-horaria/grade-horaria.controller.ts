@@ -6,6 +6,7 @@ import {
   createAulaSchema,
   generateScheduleSchema,
   ocorrenciaParamsSchema,
+  respostaOcorrenciaSchema,
   replaceScheduleSchema,
   suggestScheduleSchema,
   updateAulaSchema,
@@ -68,6 +69,12 @@ export class GradeHorariaController {
     this.router.post("/:id/ocorrencias/:dataOriginal/indisponivel", requireAuth, asyncHandler(async (req, res) => {
       const { id, dataOriginal } = ocorrenciaParamsSchema.parse(req.params);
       res.status(201).json(await this.gradeHorariaService.marcarIndisponivel(id, dataOriginal, getActor(req)));
+    }));
+
+    this.router.put("/:id/ocorrencias/:dataOriginal/resposta", requireAuth, asyncHandler(async (req, res) => {
+      const { id, dataOriginal } = ocorrenciaParamsSchema.parse(req.params);
+      const { status } = respostaOcorrenciaSchema.parse(req.body);
+      res.json(await this.gradeHorariaService.responderOcorrencia(id, dataOriginal, status, getActor(req)));
     }));
 
     this.router.delete("/:id/ocorrencias/:dataOriginal", requireAuth, requireRole("GESTAO"), asyncHandler(async (req, res) => {

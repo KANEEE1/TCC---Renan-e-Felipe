@@ -293,26 +293,34 @@ export class GradeHorariaService {
     });
   }
 
-  // O professor efetivo da ocorrência avisa que não conseguirá dá-la (não registra falta). Idempotente.
+  // O professor efetivo da ocorrência responde Vou (CONFIRMADO) / Não vou (RECUSADO) até a aula começar; pode trocar.
+  // Não vou não registra falta: gera o aviso de indisponibilidade da gestão. Idempotente.
+  async responderOcorrencia(id: string, dataOriginal: string, status: "CONFIRMADO" | "RECUSADO", actor: Actor) {
+    return this.gradeHorariaRepository.transaction(async (repository) => {
+      const aula = await repository.findAulaParaOcorrencia(id);
+      if (!aula) throw new HttpError(404, "Class schedule entry not found");
+
+      const data = parseDateOnly(dataOriginal);
+      const excecao = await repository.findExcecao(id, data);
+      this.assertOcorrenciaDaSerie(aula, excecao, dataOriginal);
+      if (excecao?.cancelada) throw new HttpError(409, "A ocorrência está cancelada");
+
+      const ocorrencia = resolverOcorrencia(aula, excecao ?? undefined, dataOriginal)!;
+      if (ocorrencia.professorId !== actor.id) {
+        throw new HttpError(403, "Only the teacher of this class can respond to it");
+      }
+      if (jaComecou(ocorrencia, agora())) {
+        throw new HttpError(409, "Não é possível responder a uma aula que já começou");
+      }
+
+      await repository.registrarRespostaAula(id, data, actor.id, status);
+      return { status };
+    });
+  }
+
   async marcarIndisponivel(id: string, dataOriginal: string, actor: Actor) {
-    const aula = await this.gradeHorariaRepository.findAulaParaOcorrencia(id);
-    if (!aula) throw new HttpError(404, "Class schedule entry not found");
-
-    const data = parseDateOnly(dataOriginal);
-    const excecao = await this.gradeHorariaRepository.findExcecao(id, data);
-    this.assertOcorrenciaDaSerie(aula, excecao, dataOriginal);
-    if (excecao?.cancelada) throw new HttpError(409, "A ocorrência está cancelada");
-
-    const ocorrencia = resolverOcorrencia(aula, excecao ?? undefined, dataOriginal)!;
-    if (ocorrencia.professorId !== actor.id) {
-      throw new HttpError(403, "Only the teacher of this class can report unavailability");
-    }
-    if (jaComecou(ocorrencia, agora())) {
-      throw new HttpError(409, "Não é possível avisar indisponibilidade de uma aula que já começou");
-    }
-
-    const { aulaId, professorId } = await this.gradeHorariaRepository.upsertIndisponibilidade(id, data, actor.id);
-    return { aulaId, dataOriginal, professorId };
+    await this.responderOcorrencia(id, dataOriginal, "RECUSADO", actor);
+    return { aulaId: id, dataOriginal, professorId: actor.id };
   }
 
   private assertNaoComecou(ocorrencia: { data: string; horarioInicio: string }) {

@@ -61,6 +61,8 @@ const dataSchema = z
 
 export const ocorrenciaParamsSchema = z.object({ id: z.string().min(1), dataOriginal: dataSchema });
 
+export const respostaOcorrenciaSchema = z.object({ status: z.enum(["CONFIRMADO", "RECUSADO"]) });
+
 // Campos omitidos herdam os da ocorrência atual.
 export const updateOcorrenciaSchema = z.object({
   data: dataSchema.optional(),

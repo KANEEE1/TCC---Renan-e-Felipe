@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { AlertTriangle, BookOpen, ChevronLeft, ChevronRight, Clock, GraduationCap, MapPin, Plus, Tag, User, UserX, Users, X } from "lucide-react";
+import { BookOpen, ChevronLeft, ChevronRight, Clock, GraduationCap, MapPin, Plus, Tag, User, Users, X } from "lucide-react";
 import { useSchedule, type ScheduleItem } from "@/components/schedule/schedule-context";
 import { api } from "@/lib/api";
 import { getSessionUser } from "@/lib/auth";
@@ -172,7 +172,7 @@ export function CalendarView() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { schedules, declineOccurrence } = useSchedule();
+  const { schedules, respondOccurrence } = useSchedule();
   const now = useNow();
 
   // A agenda sempre abre na semana de hoje.
@@ -206,12 +206,10 @@ export function CalendarView() {
 
   // A aula aberta no painel é uma ocorrência (aula + data), para saber se é futura e se foi marcada.
   const [selected, setSelected] = useState<Occurrence | null>(null);
-  const [confirmingDecline, setConfirmingDecline] = useState(false);
   const [editingLesson, setEditingLesson] = useState<Occurrence | null>(null);
   const selectedEvent = selected?.event ?? null;
   const setSelectedEvent = (value: null) => {
     setSelected(value);
-    setConfirmingDecline(false);
     setDeclineError(null);
   };
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -1023,74 +1021,50 @@ export function CalendarView() {
               const isOwn = session?.id === selectedEvent.teacherId;
               if (!isOwn) return null;
 
-              if (isDeclined(selected)) {
-                return (
-                  <p className="mx-6 mt-6 flex items-center gap-2 rounded-xl bg-slate-100 px-4 py-3 text-sm text-slate-600">
-                    <UserX size={16} className="shrink-0" /> Você informou que não vai conseguir participar desta aula.
-                  </p>
-                );
-              }
-
               const [h, m] = selectedEvent.startTime.split(":").map(Number);
               const startsAt = new Date(selected.date);
               startsAt.setHours(h, m, 0, 0);
               if (startsAt <= new Date()) return null;
 
-              if (confirmingDecline) {
-                return (
-                  <div className="mx-6 mt-6 space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                    <div className="flex items-start gap-2">
-                      <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-500" />
-                      <div>
-                        <p className="font-medium text-slate-800">Tem certeza?</p>
-                        <p className="mt-0.5 text-sm text-slate-600">
-                          Você está informando que não vai conseguir dar a aula de {selectedEvent.subject} em{" "}
-                          {selected.date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}.
-                        </p>
-                      </div>
-                    </div>
-                    {declineError && <p className="text-sm text-red-600">{declineError}</p>}
-                    <div className="flex justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setConfirmingDecline(false)}
-                        className="rounded-full px-4 py-2 text-sm text-slate-600 hover:bg-white"
-                      >
-                        Cancelar
-                      </button>
-                      <button
-                        type="button"
-                        disabled={declining}
-                        onClick={async () => {
-                          setDeclining(true);
-                          setDeclineError(null);
-                          try {
-                            await declineOccurrence(selected.series.id, selected.dataOriginal);
-                            setConfirmingDecline(false);
-                          } catch (error) {
-                            setDeclineError(error instanceof Error ? error.message : "Não foi possível enviar o aviso.");
-                          } finally {
-                            setDeclining(false);
-                          }
-                        }}
-                        className="rounded-full bg-amber-500 px-4 py-2 text-sm text-white hover:bg-amber-600 disabled:opacity-60"
-                      >
-                        Sim, não vou participar
-                      </button>
-                    </div>
-                  </div>
-                );
-              }
-
+              const declined = isDeclined(selected);
               return (
                 <div className="mt-6 px-6">
-                  <button
-                    type="button"
-                    onClick={() => setConfirmingDecline(true)}
-                    className="flex w-full items-center justify-center gap-2 rounded-full border border-slate-300 py-2.5 text-sm text-slate-700 hover:bg-slate-50"
-                  >
-                    <UserX size={16} /> Não vou conseguir participar
-                  </button>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(["CONFIRMADO", "RECUSADO"] as const).map((status) => {
+                      const yes = status === "CONFIRMADO";
+                      const active = yes ? !declined : declined;
+                      return (
+                        <button
+                          key={status}
+                          type="button"
+                          disabled={declining}
+                          onClick={async () => {
+                            setDeclining(true);
+                            setDeclineError(null);
+                            try {
+                              await respondOccurrence(selected.series.id, selected.dataOriginal, status);
+                            } catch (error) {
+                              setDeclineError(error instanceof Error ? error.message : "Não foi possível registrar sua resposta.");
+                            } finally {
+                              setDeclining(false);
+                            }
+                          }}
+                          className={`rounded-full py-2.5 text-sm transition-colors disabled:opacity-60 ${
+                            active
+                              ? yes
+                                ? "bg-green-600 text-white"
+                                : "bg-red-600 text-white"
+                              : yes
+                                ? "bg-green-50 text-green-700 hover:bg-green-100"
+                                : "bg-red-50 text-red-700 hover:bg-red-100"
+                          }`}
+                        >
+                          {yes ? "Vou" : "Não vou"}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {declineError && <p className="mt-2 text-sm text-red-600">{declineError}</p>}
                 </div>
               );
             })()}

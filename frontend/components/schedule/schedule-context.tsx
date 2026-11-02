@@ -141,8 +141,8 @@ interface ScheduleContextType {
   // Altera ou cancela só uma data da aula ("Esta aula"); dataOriginal é o dia da série ("YYYY-MM-DD").
   updateOccurrence: (id: string, dataOriginal: string, patch: { data: string; startTime: string; endTime: string; teacherId: string }) => Promise<void>;
   cancelOccurrence: (id: string, dataOriginal: string) => Promise<void>;
-  // O professor da ocorrência avisa que não vai conseguir dá-la (a gestão vê um aviso; não registra falta).
-  declineOccurrence: (id: string, dataOriginal: string) => Promise<void>;
+  // O professor da ocorrência responde Vou / Não vou, trocável até a aula começar (Não vou avisa a gestão; não registra falta).
+  respondOccurrence: (id: string, dataOriginal: string, status: "CONFIRMADO" | "RECUSADO") => Promise<void>;
 }
 
 const ScheduleContext = createContext<ScheduleContextType | null>(null);
@@ -215,14 +215,14 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
     await refresh();
   };
 
-  const declineOccurrence = async (id: string, dataOriginal: string) => {
-    await api.post(`/schedule/${id}/ocorrencias/${dataOriginal}/indisponivel`);
+  const respondOccurrence = async (id: string, dataOriginal: string, status: "CONFIRMADO" | "RECUSADO") => {
+    await api.put(`/schedule/${id}/ocorrencias/${dataOriginal}/resposta`, { status });
     await refresh();
   };
 
   return (
     <ScheduleContext.Provider
-      value={{ schedules, loading, refresh, addSchedule, updateSchedule, removeSchedule, updateOccurrence, cancelOccurrence, declineOccurrence }}
+      value={{ schedules, loading, refresh, addSchedule, updateSchedule, removeSchedule, updateOccurrence, cancelOccurrence, respondOccurrence }}
     >
       {children}
     </ScheduleContext.Provider>

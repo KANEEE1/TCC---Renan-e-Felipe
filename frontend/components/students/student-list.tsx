@@ -52,14 +52,11 @@ export function StudentList() {
       (s.nome.toLowerCase().includes(searchTerm.toLowerCase()) || s.className.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  const total = students.length;
-  const withClassCount = withClass.filter((s) => s.className !== "Sem turma").length;
-  const withoutClassCount = total - withClassCount;
 
   return (
     <div className="flex flex-1 flex-col bg-slate-50">
       <div className="bg-gradient-to-r from-indigo-600 to-blue-700 px-5 pb-7 pt-5 text-white">
-        <div className="mb-5 flex items-center justify-between">
+        <div className="flex items-center justify-between">
           <div>
             <h1 className="text-white">Alunos</h1>
             <p className="mt-0.5 text-sm text-indigo-200">Alunos matriculados</p>
@@ -69,19 +66,6 @@ export function StudentList() {
               <Plus size={20} className="text-indigo-600" />
             </Link>
           )}
-        </div>
-
-        <div className="grid grid-cols-3 gap-3">
-          {[
-            { value: total, label: "Total", bg: "bg-white/15" },
-            { value: withClassCount, label: "Com turma", bg: "bg-emerald-500/30" },
-            { value: withoutClassCount, label: "Sem turma", bg: "bg-amber-400/30" }
-          ].map(({ value, label, bg }) => (
-            <div key={label} className={`${bg} rounded-2xl border border-white/20 p-3 text-center`}>
-              <p className="text-2xl leading-tight text-white">{value}</p>
-              <p className="mt-0.5 text-xs text-white/70">{label}</p>
-            </div>
-          ))}
         </div>
       </div>
 

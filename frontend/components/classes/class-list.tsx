@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { BarChart3, Calendar, Edit, MapPin, Plus, Search, Users } from "lucide-react";
+import { BarChart3, Edit, MapPin, Plus, Search, Users } from "lucide-react";
 import { api } from "@/lib/api";
 import { getSessionUser } from "@/lib/auth";
 
@@ -56,12 +56,11 @@ export function ClassList() {
   }, []);
 
   const filteredClasses = classes.filter((c) => c.nome.toLowerCase().includes(searchTerm.toLowerCase()));
-  const totalStudents = classes.reduce((sum, c) => sum + (c.indicadores?.alunos ?? 0), 0);
 
   return (
     <div className="flex flex-1 flex-col bg-slate-50">
       <div className="bg-gradient-to-r from-teal-600 to-emerald-700 px-5 pb-7 pt-5 text-white">
-        <div className="mb-5 flex items-center justify-between">
+        <div className="flex items-center justify-between">
           <div>
             <h1 className="text-white">Turmas</h1>
             <p className="mt-0.5 text-sm text-teal-200">{isManagement ? "Gerenciar turmas e alunos" : "Turmas do cursinho"}</p>
@@ -71,19 +70,6 @@ export function ClassList() {
               <Plus size={20} className="text-teal-600" />
             </Link>
           )}
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-2xl border border-white/20 bg-white/15 p-3.5 text-center">
-            <Calendar size={18} className="mx-auto mb-1 text-teal-200" />
-            <p className="text-2xl text-white">{classes.length}</p>
-            <p className="text-xs text-white/60">Turmas</p>
-          </div>
-          <div className="rounded-2xl border border-white/20 bg-white/15 p-3.5 text-center">
-            <Users size={18} className="mx-auto mb-1 text-teal-200" />
-            <p className="text-2xl text-white">{totalStudents}</p>
-            <p className="text-xs text-white/60">Alunos Total</p>
-          </div>
         </div>
       </div>
 

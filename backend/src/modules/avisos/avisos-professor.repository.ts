@@ -1,5 +1,5 @@
 import { Prisma, type PrismaClient, type StatusParticipacao } from "@prisma/client";
-import { aulaOcorrivelSelect, excecaoSelect, upsertIndisponibilidade } from "../grade-horaria/ocorrencias.db.js";
+import { aulaOcorrivelSelect, excecaoSelect, registrarRespostaAula } from "../grade-horaria/ocorrencias.db.js";
 
 const convocacaoSelect = {
   id: true,
@@ -44,12 +44,9 @@ export class AvisosProfessorRepository {
     return this.db.avisoProfessor.findMany({ where: { userId, cienteEm: null, data: { gte: desde } } });
   }
 
-  // Recusar vira o aviso de indisponibilidade da gestão (mesma regra de POST /schedule/:id/ocorrencias/:data/indisponivel).
-  async responderConvocacao(convocacao: { id: string; aulaId: string; dataOriginal: Date; professorId: string }, status: StatusParticipacao) {
-    await this.db.convocacaoAula.update({ where: { id: convocacao.id }, data: { status, remarcada: false } });
-    if (status === "RECUSADO") {
-      await upsertIndisponibilidade(this.db, convocacao.aulaId, convocacao.dataOriginal, convocacao.professorId);
-    }
+  // Recusar vira o aviso de indisponibilidade da gestão; confirmar apaga-o (mesma regra de PUT /schedule/:id/ocorrencias/:data/resposta).
+  responderConvocacao(convocacao: { aulaId: string; dataOriginal: Date; professorId: string }, status: StatusParticipacao) {
+    return registrarRespostaAula(this.db, convocacao.aulaId, convocacao.dataOriginal, convocacao.professorId, status as "CONFIRMADO" | "RECUSADO");
   }
 
   // Devolve false quando o aviso não existe ou não é do professor.

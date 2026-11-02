@@ -2,7 +2,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { parseTimeToDate } from "../../shared/time.js";
 import type { CreateAulaInput, UpdateAulaInput } from "./grade-horaria.schemas.js";
 import { criarAvisoRetirada, removerAvisosRetirada } from "../avisos/avisos-professor.db.js";
-import { aulaOcorrivelSelect, carregarExcecoesDasAulas, carregarFontesDoDia, excecaoSelect, upsertIndisponibilidade } from "./ocorrencias.db.js";
+import { aulaOcorrivelSelect, carregarExcecoesDasAulas, carregarFontesDoDia, excecaoSelect, registrarRespostaAula } from "./ocorrencias.db.js";
 
 const aulaInclude = {
   turma: true,
@@ -185,8 +185,8 @@ export class GradeHorariaRepository {
     });
   }
 
-  upsertIndisponibilidade(aulaId: string, dataOriginal: Date, professorId: string) {
-    return upsertIndisponibilidade(this.db, aulaId, dataOriginal, professorId);
+  registrarRespostaAula(aulaId: string, dataOriginal: Date, professorId: string, status: "CONFIRMADO" | "RECUSADO") {
+    return registrarRespostaAula(this.db, aulaId, dataOriginal, professorId, status);
   }
 
   // Convoca o professor para a ocorrência (ele responde Vou/Não vou). Reconvocar reabre a convocação como pendente

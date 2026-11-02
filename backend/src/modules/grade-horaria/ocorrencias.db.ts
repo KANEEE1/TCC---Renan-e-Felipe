@@ -65,3 +65,20 @@ export function upsertIndisponibilidade(db: Db, aulaId: string, dataOriginal: Da
     select: { aulaId: true, dataOriginal: true, professorId: true }
   });
 }
+
+// Resposta do professor a uma ocorrência (Vou / Não vou), trocável até a aula começar. Não vou = indisponibilidade
+// (aviso da gestão); Vou apaga-a. Se houver convocação dele para a ocorrência, ela acompanha a resposta.
+export async function registrarRespostaAula(
+  db: Db,
+  aulaId: string,
+  dataOriginal: Date,
+  professorId: string,
+  status: "CONFIRMADO" | "RECUSADO"
+) {
+  if (status === "RECUSADO") {
+    await upsertIndisponibilidade(db, aulaId, dataOriginal, professorId);
+  } else {
+    await db.indisponibilidadeAula.deleteMany({ where: { aulaId, dataOriginal, professorId } });
+  }
+  await db.convocacaoAula.updateMany({ where: { aulaId, dataOriginal, professorId }, data: { status, remarcada: false } });
+}

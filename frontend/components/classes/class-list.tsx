@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Calendar, Edit, MapPin, Plus, Search, Users } from "lucide-react";
+import { BarChart3, Calendar, Edit, MapPin, Plus, Search, Users } from "lucide-react";
 import { api } from "@/lib/api";
 import { getSessionUser } from "@/lib/auth";
 
@@ -140,7 +140,7 @@ export function ClassList() {
               )}
 
               {/* Professor vê só "Alunos" (consulta); editar a turma é da gestão. */}
-              <div className={`grid gap-2 ${isManagement ? "grid-cols-2" : "grid-cols-1"}`}>
+              <div className={`grid gap-2 ${isManagement ? "grid-cols-3" : "grid-cols-2"}`}>
                 {isManagement && (
                   <Link
                     href={`/classes/edit/${cls.id}`}
@@ -154,6 +154,12 @@ export function ClassList() {
                   className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 py-2 text-xs text-slate-500 transition-colors hover:bg-indigo-50 hover:text-indigo-600"
                 >
                   <Users size={13} /> Alunos
+                </Link>
+                <Link
+                  href={`/classes/${cls.id}/notas`}
+                  className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 py-2 text-xs text-slate-500 transition-colors hover:bg-amber-50 hover:text-amber-600"
+                >
+                  <BarChart3 size={13} /> Notas
                 </Link>
               </div>
             </div>

@@ -52,6 +52,24 @@ export class SimuladosRepository {
     return this.db.aluno.findUnique({ where: { id }, select: { id: true, nome: true } });
   }
 
+  findTurma(id: string) {
+    return this.db.turma.findUnique({ where: { id }, select: { id: true, nome: true } });
+  }
+
+  // Simulados com correção finalizada em que a turma tem ao menos uma nota, em ordem de data.
+  listSimuladosFinalizadosDaTurma(turmaId: string) {
+    return this.db.reuniao.findMany({
+      where: {
+        tipo: "SIMULADO",
+        pontuacaoMaxima: { not: null },
+        OR: [{ correcaoEnviadaEm: { not: null } }, { correcaoEncerradaEm: { not: null } }],
+        notasSimulado: { some: { turmaId } }
+      },
+      select: { id: true, titulo: true, data: true, horarioInicio: true, pontuacaoMaxima: true },
+      orderBy: [{ data: "asc" }, { horarioInicio: "asc" }]
+    });
+  }
+
   findById(id: string) {
     return this.db.reuniao.findFirst({ where: { id, tipo: "SIMULADO" }, select: simuladoSelect });
   }

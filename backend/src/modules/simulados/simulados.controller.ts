@@ -17,6 +17,10 @@ export class SimuladosController {
       res.json(await this.simuladosService.notasDoAluno(req.params.alunoId as string));
     }));
 
+    this.router.get("/turma/:turmaId", asyncHandler(async (req, res) => {
+      res.json(await this.simuladosService.notasDaTurma(req.params.turmaId as string));
+    }));
+
     this.router.get("/:id", asyncHandler(async (req, res) => {
       res.json(await this.simuladosService.getById(req.params.id as string, getActor(req)));
     }));

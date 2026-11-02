@@ -144,6 +144,40 @@ export class SimuladosService {
     return { aluno, media: mediaGeral, simulados };
   }
 
+  // Médias da turma em cada simulado finalizado (e a geral do simulado); a média final pesa cada simulado igual.
+  async notasDaTurma(turmaId: string) {
+    const turma = await this.simuladosRepository.findTurma(turmaId);
+    if (!turma) throw new HttpError(404, "Turma não encontrada");
+    await this.consolidarPrazos();
+    const finalizados = await this.simuladosRepository.listSimuladosFinalizadosDaTurma(turmaId);
+    const todas = await this.simuladosRepository.listNotasDosSimulados(finalizados.map((s) => s.id));
+    const arredonda = (n: number) => Math.round(n * 100) / 100;
+    const media = (xs: number[]) => (xs.length > 0 ? xs.reduce((s, x) => s + x, 0) / xs.length : null);
+
+    const brutas: (number | null)[] = [];
+    const simulados = finalizados.map((s) => {
+      const maxima = s.pontuacaoMaxima!;
+      const doSimulado = todas.filter((n) => n.reuniaoId === s.id);
+      const pct = (notas: typeof doSimulado) => notas.filter((n) => !n.ausente && n.valor !== null).map((n) => (n.valor! / maxima) * 100);
+      const daTurma = doSimulado.filter((n) => n.turmaId === turmaId);
+      const mediaTurma = media(pct(daTurma));
+      const mediaGeral = media(pct(doSimulado));
+      brutas.push(mediaTurma);
+      return {
+        id: s.id,
+        titulo: s.titulo,
+        data: isoDate(s.data),
+        pontuacaoMaxima: maxima,
+        mediaTurmaPercentual: mediaTurma === null ? null : arredonda(mediaTurma),
+        mediaGeralPercentual: mediaGeral === null ? null : arredonda(mediaGeral),
+        avaliados: pct(daTurma).length,
+        ausentes: daTurma.filter((n) => n.ausente).length
+      };
+    });
+    const mediaFinal = media(brutas.filter((m): m is number => m !== null));
+    return { turma, media: mediaFinal === null ? null : arredonda(mediaFinal), simulados };
+  }
+
   async getById(id: string, actor: Actor) {
     await this.consolidarPrazos();
     const s = await this.simuladosRepository.findById(id);

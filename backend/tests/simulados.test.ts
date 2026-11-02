@@ -532,4 +532,64 @@ describe("simulados", () => {
       expect((await request(app).get(`/simulados/aluno/${ctx.ana.id}`).set(asTeacher(ctx.profC.id))).status).toBe(200);
     });
   });
+  describe("notas da turma", () => {
+    const daTurma = (ctx: Ctx, turmaId: string) => request(app).get(`/simulados/turma/${turmaId}`).set(ctx.gestorHeader);
+    const enviarTudo = (ctx: Ctx, id: string, notas: Nota[]) => lancar(ctx.gestorHeader, id, notas, true);
+
+    it("lists only finalized simulados, ignoring absent, counting the automatic zero, with the overall average", async () => {
+      const ctx = await setup();
+      setNow("2026-11-01T12:00:00Z");
+      const velho = await criarSimulado(ctx, { titulo: "Antigo", data: "2026-11-03", pontuacaoMaxima: 50 });
+      const aberto = await criarSimulado(ctx, { titulo: "Aberto", data: "2026-11-07", horarioInicio: "13:00", horarioFim: "14:00" });
+      setNow(DEPOIS);
+      // Turma A: Ana 50%, Bia 80%, Gabi ausente (fica na Turma A). Turma B: Caio 0%.
+      await enviarTudo(ctx, velho, [nota(ctx.ana.id, 25), nota(ctx.bia.id, 40), nota(ctx.gabi.id, null, true), nota(ctx.caio.id, 0)]);
+      await lancar(ctx.gestorHeader, aberto, [nota(ctx.ana.id, 10)]);
+
+      const a = await daTurma(ctx, ctx.turmaA.id);
+      expect(a.status).toBe(200);
+      expect(a.body.turma).toEqual({ id: ctx.turmaA.id, nome: "Turma A" });
+      expect(a.body.simulados).toHaveLength(1);
+      // Média geral do simulado inclui a Turma B: (50 + 80 + 0) / 3.
+      expect(a.body.simulados[0]).toEqual({
+        id: velho, titulo: "Antigo", data: "2026-11-03", pontuacaoMaxima: 50,
+        mediaTurmaPercentual: 65, mediaGeralPercentual: 43.33, avaliados: 2, ausentes: 1
+      });
+      expect(a.body.media).toBe(65);
+
+      // Zero automático (prazo vencido) conta na média da turma.
+      setNow(VENCIDO);
+      const b = (await daTurma(ctx, ctx.turmaB.id)).body;
+      expect(b.simulados.map((s: any) => s.titulo)).toEqual(["Antigo", "Aberto"]);
+      expect(b.simulados[1]).toMatchObject({ mediaTurmaPercentual: 0, avaliados: 1, ausentes: 0 });
+    });
+
+    it("averages the per-simulado averages with equal weight, skipping simulados with everyone absent", async () => {
+      const ctx = await setup();
+      setNow("2026-11-01T12:00:00Z");
+      const s1 = await criarSimulado(ctx, { titulo: "S1", data: "2026-11-03", pontuacaoMaxima: 50 });
+      const s2 = await criarSimulado(ctx, { titulo: "S2", data: "2026-11-05", pontuacaoMaxima: 100 });
+      const s3 = await criarSimulado(ctx, { titulo: "S3", data: "2026-11-06", pontuacaoMaxima: 10 });
+      setNow(DEPOIS);
+      // S1: Ana 100%, Bia 50% -> 75%. S2: só Ana (20%), os outros ausentes -> 20%. S3: todos ausentes.
+      await enviarTudo(ctx, s1, [nota(ctx.ana.id, 50), nota(ctx.bia.id, 25), nota(ctx.gabi.id, null, true), nota(ctx.caio.id, null, true)]);
+      await enviarTudo(ctx, s2, [nota(ctx.ana.id, 20), nota(ctx.bia.id, null, true), nota(ctx.gabi.id, null, true), nota(ctx.caio.id, null, true)]);
+      await enviarTudo(ctx, s3, [nota(ctx.ana.id, null, true), nota(ctx.bia.id, null, true), nota(ctx.gabi.id, null, true), nota(ctx.caio.id, null, true)]);
+
+      const a = (await daTurma(ctx, ctx.turmaA.id)).body;
+      expect(a.simulados.map((s: any) => s.mediaTurmaPercentual)).toEqual([75, 20, null]);
+      expect(a.simulados[2]).toMatchObject({ mediaGeralPercentual: null, avaliados: 0, ausentes: 3 });
+      expect(a.simulados[1]).toMatchObject({ avaliados: 1, ausentes: 2 });
+      // (75 + 20) / 2, sem o simulado sem avaliados.
+      expect(a.media).toBe(47.5);
+    });
+
+    it("returns null average without finalized simulados, requires a token and an existing class", async () => {
+      const ctx = await setup();
+      expect((await daTurma(ctx, ctx.turmaC.id)).body).toMatchObject({ media: null, simulados: [] });
+      expect((await request(app).get(`/simulados/turma/${ctx.turmaA.id}`)).status).toBe(401);
+      expect((await request(app).get("/simulados/turma/inexistente").set(ctx.gestorHeader)).status).toBe(404);
+      expect((await request(app).get(`/simulados/turma/${ctx.turmaA.id}`).set(asTeacher(ctx.profC.id))).status).toBe(200);
+    });
+  });
 });

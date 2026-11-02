@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Bell, CalendarClock, CalendarX, ChevronRight, LogOut, Plus, User, UserMinus, UserX, Zap } from "lucide-react";
+import { Bell, CalendarClock, CalendarX, ChevronRight, ClipboardList, LogOut, Plus, Trophy, User, UserMinus, UserX, Zap } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { clearSession } from "@/lib/auth";
 import { eventTypeOf, toHHMM, type EventType, type MeetingDTO } from "@/components/meetings/meeting-types";
@@ -43,6 +43,22 @@ interface IndisponibilidadeNotice {
   eventoId?: string;
 }
 
+// Aviso para a gestão: o prazo de correção de um simulado venceu e alunos ficaram com zero automático.
+interface SimuladoEncerradoNotice {
+  id: string;
+  tipo: "SIMULADO";
+  titulo: string;
+  turma: string | null;
+  data: string;
+  horarioInicio: string;
+  horarioFim: string;
+  eventoId: string;
+  prazoCorrecao: string | null;
+  zerados: number;
+}
+
+type ManagementNotice = IndisponibilidadeNotice | SimuladoEncerradoNotice;
+
 // Avisos do próprio professor: aula em que foi escalado (precisa responder) e aula/evento de que foi retirado (só "Ciente").
 interface ConvocacaoNotice {
   id: string;
@@ -66,10 +82,26 @@ interface RetiradaNotice {
   horarioFim: string;
 }
 
+// Simulado que o professor corrige: já terminou e ainda não foi enviado nem encerrado.
+interface CorrecaoNotice {
+  eventoId: string;
+  titulo: string;
+  data: string;
+  horarioInicio: string;
+  horarioFim: string;
+  prazoCorrecao: string;
+  lancados: number;
+  total: number;
+}
+
 interface MyNotices {
   convocacoes: ConvocacaoNotice[];
   retiradas: RetiradaNotice[];
+  correcoes: CorrecaoNotice[];
 }
+
+const EMPTY_MY_NOTICES: MyNotices = { convocacoes: [], retiradas: [], correcoes: [] };
+const dayMonth = (data: string) => `${data.slice(8, 10)}/${data.slice(5, 7)}`;
 
 const NOTICE_GONE_MESSAGE = "Esta convocação não vale mais (a aula mudou ou já começou).";
 const REMOVAL_GONE_MESSAGE = "Este aviso não está mais disponível.";
@@ -97,26 +129,26 @@ export function DashboardScreen() {
   // Vazio até /auth/me responder, para professores não verem por um instante as ferramentas do gestor.
   const [userRole, setUserRole] = useState("");
   const [events, setEvents] = useState<MeetingDTO[]>([]);
-  const [notices, setNotices] = useState<IndisponibilidadeNotice[]>([]);
-  const [myNotices, setMyNotices] = useState<MyNotices>({ convocacoes: [], retiradas: [] });
+  const [notices, setNotices] = useState<ManagementNotice[]>([]);
+  const [myNotices, setMyNotices] = useState<MyNotices>(EMPTY_MY_NOTICES);
 
   useEffect(() => {
     api.get<DashboardSummary>("/dashboard/summary").then(setSummary).catch(() => setSummary(null));
     api.get<MeetingDTO[]>("/meetings").then(setEvents).catch(() => setEvents([]));
-    api.get<MyNotices>("/notices/mine").then(setMyNotices).catch(() => setMyNotices({ convocacoes: [], retiradas: [] }));
+    api.get<MyNotices>("/notices/mine").then(setMyNotices).catch(() => setMyNotices(EMPTY_MY_NOTICES));
     api
       .get<{ name: string; roles: ("GESTAO" | "PROFESSOR")[] }>("/auth/me")
       .then((me) => {
         setUserName(me.name);
         setUserRole(me.roles.includes("GESTAO") ? "gestão" : "professor");
-        if (me.roles.includes("GESTAO")) api.get<IndisponibilidadeNotice[]>("/notices").then(setNotices).catch(() => setNotices([]));
+        if (me.roles.includes("GESTAO")) api.get<ManagementNotice[]>("/notices").then(setNotices).catch(() => setNotices([]));
       })
       .catch(() => {});
   }, []);
 
   // "Ciente": a gestão dispensa o aviso. O card some já; se o servidor falhar, ele volta e aparece um erro.
   const [noticeError, setNoticeError] = useState<string | null>(null);
-  const dismissNotice = (notice: IndisponibilidadeNotice) => {
+  const dismissNotice = (notice: ManagementNotice) => {
     setNoticeError(null);
     setNotices((current) => current.filter((item) => item.id !== notice.id));
     api.post(`/notices/${notice.id}/ciente`).catch(() => {
@@ -191,7 +223,8 @@ export function DashboardScreen() {
     })
     .sort((a, b) => a.data.localeCompare(b.data) || a.horarioInicio.localeCompare(b.horarioInicio));
 
-  const noticeCount = invites.length + notices.length + myNotices.convocacoes.length + myNotices.retiradas.length;
+  const noticeCount =
+    invites.length + notices.length + myNotices.convocacoes.length + myNotices.retiradas.length + myNotices.correcoes.length;
 
 
   return (
@@ -271,6 +304,42 @@ export function DashboardScreen() {
           ) : (
             <div className="space-y-2.5">
               {notices.map((notice) => {
+                if (notice.tipo === "SIMULADO") {
+                  return (
+                    <div key={notice.id} className="rounded-2xl border border-rose-200 bg-rose-50 p-4 shadow-sm">
+                      <div className="flex items-start gap-3">
+                        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-rose-500 text-white">
+                          <Trophy size={18} />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm text-rose-900">
+                            <strong>Simulado {notice.titulo}</strong>: prazo encerrado, {notice.zerados}{" "}
+                            {notice.zerados === 1 ? "aluno ficou" : "alunos ficaram"} com zero por falta de correção
+                          </p>
+                          <p className="mt-0.5 text-xs text-rose-700">
+                            {notice.turma ? `${notice.turma} · ` : ""}
+                            {notice.prazoCorrecao ? `Prazo: ${dayMonth(notice.prazoCorrecao)}` : ""}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-3 flex gap-2">
+                        <Link
+                          href={`/simulados/${notice.eventoId}`}
+                          className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-rose-500 py-2.5 text-sm text-white transition-colors hover:bg-rose-600"
+                        >
+                          Ver notas <ChevronRight size={15} />
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => dismissNotice(notice)}
+                          className="rounded-xl border border-rose-300 bg-white px-5 py-2.5 text-sm text-rose-700 transition-colors hover:bg-rose-100"
+                        >
+                          Ciente
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
                 const date = new Date(`${notice.data}T00:00:00`).toLocaleDateString("pt-BR", {
                   weekday: "long",
                   day: "2-digit",
@@ -317,6 +386,29 @@ export function DashboardScreen() {
                   </div>
                 );
               })}
+              {myNotices.correcoes.map((correcao) => (
+                <div key={`correcao-${correcao.eventoId}`} className="rounded-2xl border border-orange-200 bg-orange-50 p-4 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-orange-500 text-white">
+                      <ClipboardList size={18} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm text-slate-800">
+                        <strong>Corrija o simulado {correcao.titulo}</strong> até {dayMonth(correcao.prazoCorrecao)}
+                      </p>
+                      <p className="mt-0.5 text-xs text-slate-600">
+                        {correcao.lancados} de {correcao.total} alunos lançados
+                      </p>
+                    </div>
+                  </div>
+                  <Link
+                    href={`/simulados/${correcao.eventoId}`}
+                    className="mt-3 flex w-full items-center justify-center gap-1 rounded-xl bg-orange-500 py-2.5 text-sm text-white transition-colors hover:bg-orange-600"
+                  >
+                    Lançar notas <ChevronRight size={15} />
+                  </Link>
+                </div>
+              ))}
               {myNotices.convocacoes.map((convocacao) => (
                 <div key={convocacao.id} className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
                   <div className="flex items-start gap-3">

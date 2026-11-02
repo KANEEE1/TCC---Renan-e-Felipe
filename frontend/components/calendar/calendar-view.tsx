@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { BookOpen, ChevronLeft, ChevronRight, Clock, GraduationCap, MapPin, Plus, Tag, User, Users, X } from "lucide-react";
+import Link from "next/link";
+import { BookOpen, CalendarCheck, ChevronLeft, ChevronRight, Clock, GraduationCap, MapPin, Plus, Tag, Trophy, User, UserCheck, Users, X } from "lucide-react";
 import { useSchedule, type ScheduleItem } from "@/components/schedule/schedule-context";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { getSessionUser } from "@/lib/auth";
 import { EventDialog } from "@/components/calendar/event-dialog";
 import { LessonDialog, type LessonOccurrence } from "@/components/calendar/lesson-dialog";
@@ -833,6 +834,33 @@ export function CalendarView() {
                   {selectedMeeting.turmas.map((t) => t.nome).join(", ")}
                 </li>
               )}
+              {selectedMeeting.tipo === "SIMULADO" && (
+                <>
+                  <li className="flex items-start gap-4">
+                    <UserCheck size={18} className="mt-0.5 shrink-0 text-slate-400" />
+                    <span>
+                      Corretores:{" "}
+                      {selectedMeeting.corretores.length > 0 ? selectedMeeting.corretores.map((c) => c.name).join(", ") : "não definidos"}
+                    </span>
+                  </li>
+                  <li className="flex items-center gap-4">
+                    <CalendarCheck size={18} className="shrink-0 text-slate-400" />
+                    Prazo da correção:{" "}
+                    {selectedMeeting.prazoCorrecao
+                      ? new Date(`${selectedMeeting.prazoCorrecao.slice(0, 10)}T00:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
+                      : "não definido"}
+                  </li>
+                  <li className="flex items-center gap-4">
+                    <Trophy size={18} className="shrink-0 text-slate-400" />
+                    Pontuação máxima: {selectedMeeting.pontuacaoMaxima ?? "não definida"}
+                  </li>
+                  <li className="pl-[34px]">
+                    <Link href={`/simulados/${selectedMeeting.id}`} className="text-sm text-blue-600 hover:underline">
+                      Ver notas
+                    </Link>
+                  </li>
+                </>
+              )}
               {selectedMeeting.participantes.length > 0 && (
                 <li className="flex items-start gap-4">
                   <Users size={18} className="mt-0.5 shrink-0 text-slate-400" />
@@ -859,8 +887,8 @@ export function CalendarView() {
                       await api.delete(`/meetings/${selectedMeeting.id}`);
                       setSelectedMeetingId(null);
                       loadMeetings();
-                    } catch {
-                      setMeetingError("Não foi possível excluir o evento.");
+                    } catch (err) {
+                      setMeetingError(err instanceof ApiError ? err.message : "Não foi possível excluir o evento.");
                     }
                   }}
                   className="rounded-full px-4 py-2 text-sm text-red-600 hover:bg-red-50"

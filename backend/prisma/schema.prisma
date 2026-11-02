@@ -26,29 +26,43 @@ enum TipoReuniao {
 }
 
 model Reuniao {
-  id            String      @id @default(cuid())
-  titulo        String
-  tipo          TipoReuniao
-  data          DateTime    @db.Date
-  horarioInicio DateTime    @db.Time(0)
-  horarioFim    DateTime    @db.Time(0)
-  local         String?
-  descricao     String?
-  criadoPorId   String?
-  criadoPor     User?       @relation("CriadorReunioes", fields: [criadoPorId], references: [id], onDelete: SetNull)
+  id                        String      @id @default(cuid())
+  titulo                    String
+  tipo                      TipoReuniao
+  data                      DateTime    @db.Date
+  horarioInicio             DateTime    @db.Time(0)
+  horarioFim                DateTime    @db.Time(0)
+  local                     String?
+  descricao                 String?
+  criadoPorId               String?
+  criadoPor                 User?       @relation("CriadorReunioes", fields: [criadoPorId], references: [id], onDelete: SetNull)
   // Matéria da aula/aulão (obrigatória nesses tipos e imutável depois de criado o evento).
-  disciplinaId  String?
-  disciplina    Disciplina? @relation("EventoDisciplina", fields: [disciplinaId], references: [id])
+  disciplinaId              String?
+  disciplina                Disciplina? @relation("EventoDisciplina", fields: [disciplinaId], references: [id])
   // A gestão marcou que o evento não precisa de professores (sem isso, exige ao menos um).
-  semProfessores Boolean    @default(false)
+  semProfessores            Boolean     @default(false)
   // Aula comum (tipo AULA) cuja presença é registrada pelo professor do evento, como numa aula da grade.
-  exigePresenca Boolean     @default(false)
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  exigePresenca             Boolean     @default(false)
+  // Simulado: pontuação máxima da prova e prazo (dia, em SP) para os corretores lançarem as notas. Anuláveis só por causa
+  // de simulados antigos (sem configuração); criar ou editar um simulado exige os dois.
+  pontuacaoMaxima           Float?
+  prazoCorrecao             DateTime?   @db.Date
+  // Correção enviada (entrega definitiva: fecha o lançamento para os professores) ou encerrada pelo prazo (zeros automáticos).
+  correcaoEnviadaEm         DateTime?
+  correcaoEnviadaPorId      String?
+  correcaoEnviadaPor        User?       @relation("CorrecoesEnviadas", fields: [correcaoEnviadaPorId], references: [id], onDelete: SetNull)
+  correcaoEncerradaEm       DateTime?
+  // A gestão deu "ciente" do aviso de encerramento pelo prazo.
+  correcaoEncerradaCienteEm DateTime?
+  createdAt                 DateTime    @default(now())
+  updatedAt                 DateTime    @updatedAt
 
   participacoes ParticipacaoReuniao[]
   turmas        Turma[]               @relation("EventoTurmas")
   presencas     Presenca[]
+  // Professores que lançam as notas do simulado (lista separada dos participantes, que aplicam a prova).
+  corretores    User[]                @relation("CorretoresSimulado")
+  notasSimulado NotaSimulado[]
 }
 
 enum StatusParticipacao {
@@ -58,16 +72,16 @@ enum StatusParticipacao {
 }
 
 model ParticipacaoReuniao {
-  id        String             @id @default(cuid())
-  reuniaoId String
-  userId    String
-  status    StatusParticipacao @default(PENDENTE)
+  id             String             @id @default(cuid())
+  reuniaoId      String
+  userId         String
+  status         StatusParticipacao @default(PENDENTE)
   // true quando o evento foi remarcado (data ou horário) e a pessoa ainda não respondeu de novo.
-  remarcado Boolean            @default(false)
+  remarcado      Boolean            @default(false)
   // Quando a gestão deu "ciente" da recusa (aviso na tela de início); zerado ao mudar a resposta.
   recusaCienteEm DateTime?
-  createdAt DateTime           @default(now())
-  updatedAt DateTime           @updatedAt
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
 
   reuniao Reuniao @relation(fields: [reuniaoId], references: [id], onDelete: Cascade)
   user    User    @relation("ParticipacoesReuniao", fields: [userId], references: [id], onDelete: Cascade)
@@ -105,6 +119,10 @@ model User {
 
   convocacoesAula ConvocacaoAula[] @relation("ProfessorConvocacoes")
   avisosProfessor AvisoProfessor[] @relation("AvisosDoProfessor")
+
+  simuladosCorrigidos Reuniao[]      @relation("CorretoresSimulado")
+  correcoesEnviadas   Reuniao[]      @relation("CorrecoesEnviadas")
+  notasLancadas       NotaSimulado[] @relation("NotasLancadas")
 }
 
 model Aluno {
@@ -119,13 +137,13 @@ model Aluno {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  matriculas Matricula[]
-  notas      Nota[]
-  presencas  Presenca[]
+  matriculas    Matricula[]
+  presencas     Presenca[]
+  notasSimulado NotaSimulado[]
 }
 
 model Turma {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   nome        String
   anoLetivo   Int
   turno       String?
@@ -134,15 +152,16 @@ model Turma {
   capacidade  Int?
   gradeInicio DateTime? @db.Date
   gradeFim    DateTime? @db.Date
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  aulas      Aula[]
-  eventos    Reuniao[] @relation("EventoTurmas")
+  aulas              Aula[]
+  eventos            Reuniao[]              @relation("EventoTurmas")
   presencasDeEventos Presenca[]
-  matriculas Matricula[]
-  cargas     CargaDisciplinaTurma[]
-  janelas    JanelaTurma[]
+  notasSimulado      NotaSimulado[]
+  matriculas         Matricula[]
+  cargas             CargaDisciplinaTurma[]
+  janelas            JanelaTurma[]
 
   @@unique([nome, anoLetivo])
 }
@@ -170,9 +189,8 @@ model Disciplina {
 
   aulas       Aula[]
   professores User[]                 @relation("ProfessorDisciplinas")
-  simulados   Simulado[]
   cargas      CargaDisciplinaTurma[]
-  eventos     Reuniao[]  @relation("EventoDisciplina")
+  eventos     Reuniao[]              @relation("EventoDisciplina")
 }
 
 model CargaDisciplinaTurma {
@@ -217,14 +235,14 @@ model Aula {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  disciplina Disciplina     @relation(fields: [disciplinaId], references: [id])
-  presencas  Presenca[]
-  ausencias  AusenciaAula[]
-  excecoes   AulaExcecao[]
+  disciplina         Disciplina              @relation(fields: [disciplinaId], references: [id])
+  presencas          Presenca[]
+  ausencias          AusenciaAula[]
+  excecoes           AulaExcecao[]
   indisponibilidades IndisponibilidadeAula[]
-  convocacoes ConvocacaoAula[]
-  professor  User           @relation("ProfessorAulas", fields: [professorId], references: [id])
-  turma      Turma          @relation(fields: [turmaId], references: [id])
+  convocacoes        ConvocacaoAula[]
+  professor          User                    @relation("ProfessorAulas", fields: [professorId], references: [id])
+  turma              Turma                   @relation(fields: [turmaId], references: [id])
 
   @@unique([turmaId, diaSemana, horarioInicio])
   @@unique([professorId, diaSemana, horarioInicio])
@@ -325,54 +343,51 @@ model Matricula {
 }
 
 model Presenca {
-  id        String   @id @default(cuid())
-  alunoId   String
+  id         String   @id @default(cuid())
+  alunoId    String
   // Presença de aula da grade (aulaId) OU de evento "Aula comum" com presença (reuniaoId); exatamente um dos dois.
-  aulaId    String?
-  reuniaoId String?
+  aulaId     String?
+  reuniaoId  String?
   // Turma do aluno naquele evento (os relatórios por turma); só nas presenças de evento.
-  turmaId   String?
-  presente  Boolean
-  automatica Boolean @default(false)
-  data      DateTime @db.Date
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  turmaId    String?
+  presente   Boolean
+  automatica Boolean  @default(false)
+  data       DateTime @db.Date
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  aluno Aluno @relation(fields: [alunoId], references: [id])
-  aula  Aula? @relation(fields: [aulaId], references: [id])
+  aluno   Aluno    @relation(fields: [alunoId], references: [id])
+  aula    Aula?    @relation(fields: [aulaId], references: [id])
   // Restrict: evento com presença registrada não pode ser excluído (o histórico de frequência é preservado).
   reuniao Reuniao? @relation(fields: [reuniaoId], references: [id], onDelete: Restrict)
-  turma Turma? @relation(fields: [turmaId], references: [id])
+  turma   Turma?   @relation(fields: [turmaId], references: [id])
 
   @@unique([alunoId, aulaId, data])
   @@unique([alunoId, reuniaoId])
 }
 
-model Simulado {
+// Nota de um aluno num simulado (evento SIMULADO): valor de 0 à pontuação máxima OU "Não presente" (ausente, sem valor).
+// `automatica`: zero dado pelo sistema porque o prazo da correção venceu sem nota. Sem registro = ainda não lançado.
+model NotaSimulado {
   id           String   @id @default(cuid())
-  nome         String
-  data         DateTime @db.Date
-  disciplinaId String?
+  reuniaoId    String
+  alunoId      String
+  // Turma do aluno no simulado (as médias por turma).
+  turmaId      String
+  valor        Float?
+  ausente      Boolean  @default(false)
+  automatica   Boolean  @default(false)
+  lancadaPorId String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  disciplina Disciplina? @relation(fields: [disciplinaId], references: [id])
-  notas      Nota[]
-}
+  // Restrict: simulado com notas não pode ser excluído (o histórico é preservado).
+  reuniao    Reuniao @relation(fields: [reuniaoId], references: [id], onDelete: Restrict)
+  aluno      Aluno   @relation(fields: [alunoId], references: [id])
+  turma      Turma   @relation(fields: [turmaId], references: [id])
+  lancadaPor User?   @relation("NotasLancadas", fields: [lancadaPorId], references: [id], onDelete: SetNull)
 
-model Nota {
-  id          String   @id @default(cuid())
-  alunoId     String
-  simuladoId  String
-  valor       Float
-  observacoes String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  aluno    Aluno    @relation(fields: [alunoId], references: [id])
-  simulado Simulado @relation(fields: [simuladoId], references: [id])
-
-  @@unique([alunoId, simuladoId])
+  @@unique([reuniaoId, alunoId])
 }
 
 model AusenciaAula {

@@ -14,7 +14,11 @@ export const createMeetingSchema = z.object({
   turmaIds: z.array(z.string().cuid()).optional(),
   disciplinaId: z.string().min(1).optional(),
   semProfessores: z.boolean().optional(),
-  exigePresenca: z.boolean().optional()
+  exigePresenca: z.boolean().optional(),
+  // Só no simulado (obrigatórios nele): quem lança as notas, até quando (data) e a nota máxima da prova.
+  corretorIds: z.array(z.string().min(1)).optional(),
+  prazoCorrecao: z.coerce.date().optional(),
+  pontuacaoMaxima: z.number().positive("A pontuação máxima precisa ser maior que zero").optional()
 });
 
 // A matéria não entra na edição: é definida na criação e não muda depois.

@@ -2,6 +2,7 @@ import type { Actor } from "../../shared/auth.js";
 import { agora } from "../../shared/clock.js";
 import { HttpError } from "../../shared/http.js";
 import { diaSemanaOfDateOnly, formatTimeHHMM, parseDateOnly, timeOfDayInSaoPaulo, todayInSaoPaulo } from "../../shared/time.js";
+import { turmaPorAluno } from "../matriculas/vigencia.js";
 import type { GradeHorariaRepository } from "../grade-horaria/grade-horaria.repository.js";
 import { dataNoPeriodo, gerarOcorrencias, isoDate, type Ocorrencia } from "../grade-horaria/ocorrencias.js";
 import type { AttendanceSummaryQuery, MarkAttendanceInput } from "./presenca.schemas.js";
@@ -66,20 +67,6 @@ function statusDaOcorrencia(ocorrencia: Pick<Ocorrencia, "horarioInicio" | "hora
   if (hora < ocorrencia.horarioInicio) return "AGUARDANDO";
   if (hora > ocorrencia.horarioFim) return "ENCERRADA";
   return "ABERTA";
-}
-
-// Matrícula vigente na data da aula: a data de matrícula (ou de criação) não é posterior a ela.
-const matriculaVigente = (m: { dataMatricula: Date | null; createdAt: Date }, data: string) => todayInSaoPaulo(m.dataMatricula ?? m.createdAt) <= data;
-
-// Aluno matriculado em mais de uma turma do evento: conta uma vez, atribuído à primeira turma por nome (critério determinístico).
-function turmaPorAluno(turmas: { id: string; matriculas: { alunoId: string; dataMatricula: Date | null; createdAt: Date }[] }[], data: string) {
-  const turmaDoAluno = new Map<string, string>();
-  for (const turma of turmas) {
-    for (const m of turma.matriculas) {
-      if (matriculaVigente(m, data) && !turmaDoAluno.has(m.alunoId)) turmaDoAluno.set(m.alunoId, turma.id);
-    }
-  }
-  return turmaDoAluno;
 }
 
 const chaveOcorrencia = (aulaId: string, dataOriginal: string) => `${aulaId}|${dataOriginal}`;

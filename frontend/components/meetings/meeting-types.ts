@@ -78,6 +78,11 @@ export interface MeetingDTO {
   // Aula comum cuja presença é registrada pelo professor do evento (como numa aula da grade).
   exigePresenca: boolean;
   participantes: { userId: string; name: string; status: ParticipationStatus }[];
+  // Só no simulado: quem lança as notas (lista separada dos participantes), prazo da correção (data) e nota máxima.
+  // Simulados antigos podem estar sem essa configuração (null / vazio).
+  corretores: { userId: string; name: string }[];
+  prazoCorrecao: string | null;
+  pontuacaoMaxima: number | null;
   meuStatus: ParticipationStatus | null;
   // O evento foi remarcado (data ou horário) e o usuário ainda não respondeu de novo.
   meuRemarcado: boolean;

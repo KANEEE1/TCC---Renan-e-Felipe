@@ -5,9 +5,6 @@ const alunoInclude = {
   matriculas: {
     include: { turma: true }
   },
-  notas: {
-    include: { simulado: true }
-  },
   presencas: true
 };
 

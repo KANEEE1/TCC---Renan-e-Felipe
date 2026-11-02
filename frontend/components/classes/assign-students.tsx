@@ -2,80 +2,45 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Check, Save, Search, UserMinus, UserPlus } from "lucide-react";
-import { api, ApiError } from "@/lib/api";
-import { getSessionUser } from "@/lib/auth";
+import { ArrowLeft, Search } from "lucide-react";
+import { api } from "@/lib/api";
 
 interface StudentRow {
   id: string;
   name: string;
   number: string;
-  assigned: boolean;
 }
 
 interface ClassDetail {
   nome: string;
   capacidade: number | null;
-  matriculas: { aluno: { id: string } }[];
+  matriculas: { aluno: { id: string; nome: string; numero: string | null } }[];
 }
 
+// Consulta dos alunos da turma, igual para gestão e professores: a turma de um aluno não é alterada por aqui.
 export function AssignStudents({ classId }: { classId: string }) {
   const [searchTerm, setSearchTerm] = useState("");
-  const [students, setStudents] = useState<StudentRow[]>([]);
+  const [students, setStudents] = useState<StudentRow[] | null>(null);
   const [className, setClassName] = useState("");
   const [capacity, setCapacity] = useState<number | null>(null);
-  const [initiallyAssigned, setInitiallyAssigned] = useState<Set<string>>(new Set());
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // Professor só consulta os alunos da turma; atribuir e remover é da gestão (o backend também exige GESTAO).
-  const [canEdit, setCanEdit] = useState(false);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
-    setCanEdit(!!getSessionUser()?.roles.includes("GESTAO"));
-  }, []);
-
-  useEffect(() => {
-    Promise.all([
-      api.get<ClassDetail>(`/classes/${classId}`),
-      api.get<{ id: string; nome: string; numero: string | null }[]>("/students")
-    ]).then(([cls, allStudents]) => {
-      setClassName(cls.nome);
-      setCapacity(cls.capacidade);
-      const assignedIds = new Set(cls.matriculas.map((m) => m.aluno.id));
-      setInitiallyAssigned(assignedIds);
-      setStudents(
-        allStudents.map((s) => ({ id: s.id, name: s.nome, number: s.numero ?? "-", assigned: assignedIds.has(s.id) }))
-      );
-    });
+    api
+      .get<ClassDetail>(`/classes/${classId}`)
+      .then((cls) => {
+        setClassName(cls.nome);
+        setCapacity(cls.capacidade);
+        setStudents(
+          cls.matriculas
+            .map((m) => ({ id: m.aluno.id, name: m.aluno.nome, number: m.aluno.numero ?? "-" }))
+            .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
+        );
+      })
+      .catch(() => setError(true));
   }, [classId]);
 
-  const toggleStudent = (studentId: string) => {
-    if (!canEdit) return;
-    setStudents((prev) => prev.map((student) => (student.id === studentId ? { ...student, assigned: !student.assigned } : student)));
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
-    setError(null);
-
-    const newlyAssigned = students.filter((s) => s.assigned && !initiallyAssigned.has(s.id)).map((s) => s.id);
-
-    try {
-      if (newlyAssigned.length > 0) {
-        await api.post(`/classes/${classId}/students`, { studentIds: newlyAssigned });
-      }
-      setInitiallyAssigned(new Set(students.filter((s) => s.assigned).map((s) => s.id)));
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Não foi possível salvar.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const filteredStudents = students.filter((student) => student.name.toLowerCase().includes(searchTerm.toLowerCase()));
-  const assignedCount = students.filter((s) => s.assigned).length;
-  const unassignedStudents = filteredStudents.filter((s) => !s.assigned);
-  const assignedStudents = filteredStudents.filter((s) => s.assigned);
+  const filteredStudents = (students ?? []).filter((student) => student.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
   return (
     <div className="flex flex-1 flex-col bg-gray-50">
@@ -84,7 +49,7 @@ export function AssignStudents({ classId }: { classId: string }) {
           <Link href="/classes" className="mr-3">
             <ArrowLeft size={24} />
           </Link>
-          <h1>{canEdit ? "Gerenciar Alunos" : "Alunos da Turma"}</h1>
+          <h1>Alunos da Turma</h1>
         </div>
 
         <div className="rounded-lg bg-indigo-500 p-3">
@@ -93,24 +58,7 @@ export function AssignStudents({ classId }: { classId: string }) {
         </div>
       </div>
 
-      <div className={`flex-1 overflow-y-auto p-4 ${canEdit ? "pb-32" : "pb-6"}`}>
-        {canEdit && (
-        <div className="mb-4 rounded-lg bg-white p-4 shadow">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-lg bg-green-50 p-3 text-center">
-              <UserPlus className="mx-auto mb-1 text-green-600" size={20} />
-              <div className="text-2xl text-green-900">{assignedCount}</div>
-              <div className="text-sm text-green-700">Atribuídos</div>
-            </div>
-            <div className="rounded-lg bg-gray-50 p-3 text-center">
-              <UserMinus className="mx-auto mb-1 text-gray-600" size={20} />
-              <div className="text-2xl text-gray-900">{students.length - assignedCount}</div>
-              <div className="text-sm text-gray-700">Disponíveis</div>
-            </div>
-          </div>
-        </div>
-        )}
-
+      <div className="flex-1 overflow-y-auto p-4 pb-6">
         <div className="relative mb-4">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 transform text-gray-400" size={20} />
           <input
@@ -122,28 +70,17 @@ export function AssignStudents({ classId }: { classId: string }) {
           />
         </div>
 
-        {assignedStudents.length > 0 && (
+        {filteredStudents.length > 0 && (
           <section className="mb-6">
-            <h3 className="mb-3 text-gray-800">Alunos da Turma ({assignedStudents.length})</h3>
+            <h3 className="mb-3 text-gray-800">Alunos da Turma ({filteredStudents.length})</h3>
             <div className="space-y-2">
-              {assignedStudents.map((student) => (
-                <div
-                  key={student.id}
-                  onClick={() => toggleStudent(student.id)}
-                  className={`rounded-lg border-l-4 border-green-500 bg-white p-4 shadow ${canEdit ? "cursor-pointer transition-shadow hover:shadow-md" : ""}`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex flex-1 items-center">
-                      <div className="mr-3 flex h-10 w-10 items-center justify-center rounded-full bg-green-100">
-                        <span className="text-green-700">{student.number}</span>
-                      </div>
-                      <h4 className="text-gray-800">{student.name}</h4>
+              {filteredStudents.map((student) => (
+                <div key={student.id} className="rounded-lg border-l-4 border-green-500 bg-white p-4 shadow">
+                  <div className="flex items-center">
+                    <div className="mr-3 flex h-10 w-10 items-center justify-center rounded-full bg-green-100">
+                      <span className="text-green-700">{student.number}</span>
                     </div>
-                    {canEdit && (
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500">
-                        <Check className="text-white" size={18} />
-                      </div>
-                    )}
+                    <h4 className="text-gray-800">{student.name}</h4>
                   </div>
                 </div>
               ))}
@@ -151,52 +88,11 @@ export function AssignStudents({ classId }: { classId: string }) {
           </section>
         )}
 
-        {canEdit && unassignedStudents.length > 0 && (
-          <section>
-            <h3 className="mb-3 text-gray-800">Alunos Disponíveis ({unassignedStudents.length})</h3>
-            <div className="space-y-2">
-              {unassignedStudents.map((student) => (
-                <div
-                  key={student.id}
-                  onClick={() => toggleStudent(student.id)}
-                  className="cursor-pointer rounded-lg border-l-4 border-gray-300 bg-white p-4 shadow transition-shadow hover:shadow-md"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex flex-1 items-center">
-                      <div className="mr-3 flex h-10 w-10 items-center justify-center rounded-full bg-gray-100">
-                        <span className="text-gray-600">{student.number}</span>
-                      </div>
-                      <h4 className="text-gray-800">{student.name}</h4>
-                    </div>
-                    <div className="h-8 w-8 rounded-full bg-gray-200" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
+        {students && filteredStudents.length === 0 && (
+          <p className="text-center text-sm text-gray-500">{searchTerm ? "Nenhum aluno encontrado." : "Nenhum aluno nesta turma."}</p>
         )}
-
-        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+        {error && <p className="mt-3 text-sm text-red-600">Não foi possível carregar os alunos.</p>}
       </div>
-
-      {!canEdit && students.length > 0 && assignedStudents.length === 0 && (
-        <p className="px-4 text-center text-sm text-gray-500">{searchTerm ? "Nenhum aluno encontrado." : "Nenhum aluno nesta turma."}</p>
-      )}
-
-      {canEdit && (
-      <div className="fixed bottom-16 left-0 right-0 z-40 border-t bg-white p-4">
-        <div className="mb-2 text-center text-sm text-gray-600">{assignedCount} alunos atribuídos</div>
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saving}
-          className="flex w-full items-center justify-center rounded-lg bg-indigo-600 py-3 text-white transition-colors hover:bg-indigo-700 disabled:opacity-60"
-        >
-          <Save size={20} className="mr-2" />
-          {saving ? "Salvando..." : "Salvar Alterações"}
-        </button>
-      </div>
-      )}
     </div>
   );
 }

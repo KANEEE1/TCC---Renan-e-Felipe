@@ -25,8 +25,13 @@ export class AlunosRepository {
     });
   }
 
-  create(data: CreateAlunoInput) {
-    return this.prisma.aluno.create({ data });
+  // Aluno e matrícula na mesma escrita: não existe aluno sem turma.
+  create({ turmaId, ...data }: CreateAlunoInput) {
+    return this.prisma.aluno.create({ data: { ...data, matriculas: { create: { turmaId } } } });
+  }
+
+  async turmaExists(id: string) {
+    return (await this.prisma.turma.count({ where: { id } })) > 0;
   }
 
   update(id: string, data: UpdateAlunoInput) {

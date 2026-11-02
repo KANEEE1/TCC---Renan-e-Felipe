@@ -19,7 +19,10 @@ export class AlunosService {
     return aluno;
   }
 
-  create(input: CreateAlunoInput) {
+  async create(input: CreateAlunoInput) {
+    if (!(await this.alunosRepository.turmaExists(input.turmaId))) {
+      throw new HttpError(400, "Turma não encontrada");
+    }
     return this.alunosRepository.create(input);
   }
 

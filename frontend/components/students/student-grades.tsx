@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { api } from "@/lib/api";
@@ -31,7 +31,6 @@ const fmtPct = (n: number) => `${Math.round(n)}%`;
 const fmtNum = (n: number) => String(Math.round(n * 100) / 100).replace(".", ",");
 const fmtData = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 const fmtDataCompleta = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
-const truncar = (t: string, n: number) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
 
 function notaReal(s: SimuladoNota) {
   if (s.ausente) return "Não presente";
@@ -40,120 +39,134 @@ function notaReal(s: SimuladoNota) {
   return s.automatica ? `${base} (sem correção)` : base;
 }
 
-// Geometria do gráfico (unidades do viewBox).
-const W = 360;
-const H = 300;
-const M = { top: 20, right: 18, bottom: 96, left: 40 };
-const PW = W - M.left - M.right;
-const PH = H - M.top - M.bottom;
-const yDe = (pct: number) => M.top + PH * (1 - pct / 100);
+// Geometria do gráfico, em pixels reais (o SVG acompanha a largura do card, então o texto não escala).
+const H = 180;
+const M = { top: 18, right: 14, bottom: 26, left: 42 };
+const yDe = (pct: number) => M.top + (H - M.top - M.bottom) * (1 - pct / 100);
+
+// Trechos contínuos de pontos existentes: a ausência quebra a linha.
+function caminhos(pontos: ({ x: number; y: number } | null)[]) {
+  const out: string[] = [];
+  let atual = "";
+  for (const p of pontos) {
+    if (!p) {
+      if (atual) out.push(atual);
+      atual = "";
+      continue;
+    }
+    atual += `${atual ? "L" : "M"}${p.x},${p.y}`;
+  }
+  if (atual) out.push(atual);
+  return out;
+}
 
 function Grafico({ simulados }: { simulados: SimuladoNota[] }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [W, setW] = useState(320);
   const [ativo, setAtivo] = useState<number | null>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new ResizeObserver(([e]) => setW(Math.max(240, Math.round(e.contentRect.width))));
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
   const n = simulados.length;
+  const PW = W - M.left - M.right;
   const larg = PW / n;
   const xDe = (i: number) => M.left + larg * (i + 0.5);
+  const base = H - M.bottom;
 
-  // Segmentos só entre pontos consecutivos existentes: a ausência quebra a linha.
-  const segmentos = (valor: (s: SimuladoNota) => number | null) => {
-    const out: { x1: number; y1: number; x2: number; y2: number }[] = [];
-    for (let i = 0; i < n - 1; i++) {
-      const a = valor(simulados[i]);
-      const b = valor(simulados[i + 1]);
-      if (a !== null && b !== null) out.push({ x1: xDe(i), y1: yDe(a), x2: xDe(i + 1), y2: yDe(b) });
-    }
-    return out;
-  };
+  const pontosAluno = simulados.map((s, i) => (s.percentual !== null ? { x: xDe(i), y: yDe(s.percentual) } : null));
+  const pontosTurma = simulados.map((s, i) => (s.mediaTurmaPercentual !== null ? { x: xDe(i), y: yDe(s.mediaTurmaPercentual) } : null));
 
   let ultimo = -1;
   simulados.forEach((s, i) => {
     if (s.percentual !== null) ultimo = i;
   });
+  // Com colunas estreitas, só a primeira e a última data (e a destacada) aparecem, para não colidir.
+  const mostraData = (i: number) => larg >= 44 || i === 0 || i === n - 1 || i === ativo;
 
   const sel = ativo !== null ? simulados[ativo] : null;
-  const tooltipEsquerda = ativo !== null ? Math.min(Math.max((xDe(ativo) / W) * 100, 22), 78) : 0;
+  const tooltipEsquerda = ativo !== null ? Math.min(Math.max(xDe(ativo), 80), W - 80) : 0;
 
   return (
     <div>
-      <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
+      <div className="mb-3 flex items-center justify-end gap-4 text-[11px] text-slate-500">
         <span className="flex items-center gap-1.5">
-          <svg width="22" height="8" aria-hidden="true"><line x1="0" y1="4" x2="22" y2="4" stroke={COR_ALUNO} strokeWidth="2" /><circle cx="11" cy="4" r="3" fill={COR_ALUNO} /></svg>
-          Aluno
+          <span className="h-0.5 w-3.5 rounded-full" style={{ background: COR_ALUNO }} /> Aluno
         </span>
         <span className="flex items-center gap-1.5">
-          <svg width="22" height="8" aria-hidden="true"><line x1="0" y1="4" x2="22" y2="4" stroke={COR_TURMA} strokeWidth="2" strokeDasharray="4 3" /><circle cx="11" cy="4" r="2.5" fill={COR_TURMA} /></svg>
+          <svg width="14" height="2" aria-hidden="true"><line x1="0" y1="1" x2="14" y2="1" stroke={COR_TURMA} strokeWidth="1.5" strokeDasharray="3 2" /></svg>
           Média da turma
         </span>
       </div>
 
-      <div className="relative">
-        <svg viewBox={`0 0 ${W} ${H}`} className="w-full touch-pan-y select-none" role="img" aria-label="Gráfico de notas em porcentagem por simulado; os mesmos dados estão na tabela abaixo">
-          {[0, 25, 50, 75, 100].map((v) => (
+      <div ref={ref} className="relative">
+        <svg width={W} height={H} className="block touch-pan-y select-none" role="img" aria-label="Gráfico de notas em porcentagem por simulado; os mesmos dados estão na lista abaixo">
+          {[0, 50, 100].map((v) => (
             <g key={v}>
-              <line x1={M.left} x2={W - M.right} y1={yDe(v)} y2={yDe(v)} stroke="#e2e8f0" strokeWidth="1" />
-              <text x={M.left - 6} y={yDe(v) + 3} textAnchor="end" fontSize="10" fill="#64748b">{v}%</text>
+              <line x1={M.left} x2={W - M.right} y1={yDe(v)} y2={yDe(v)} stroke="#f1f5f9" strokeWidth="1" />
+              <text x={M.left - 8} y={yDe(v) + 3.5} textAnchor="end" fontSize="10" fill="#94a3b8">{v}%</text>
             </g>
           ))}
 
-          {ativo !== null && <line x1={xDe(ativo)} x2={xDe(ativo)} y1={M.top} y2={M.top + PH} stroke="#94a3b8" strokeWidth="1" />}
+          {ativo !== null && <line x1={xDe(ativo)} x2={xDe(ativo)} y1={M.top} y2={base} stroke="#e2e8f0" strokeWidth="1" />}
 
-          {segmentos((s) => s.mediaTurmaPercentual).map((l, i) => (
-            <line key={i} {...l} stroke={COR_TURMA} strokeWidth="2" strokeDasharray="5 4" />
+          {caminhos(pontosTurma).map((d, i) => (
+            <path key={i} d={d} fill="none" stroke={COR_TURMA} strokeWidth="1.5" strokeDasharray="4 3" strokeLinecap="round" opacity="0.8" />
           ))}
-          {segmentos((s) => s.percentual).map((l, i) => (
-            <line key={i} {...l} stroke={COR_ALUNO} strokeWidth="2" />
-          ))}
-
-          {simulados.map((s, i) => (
-            <g key={s.id}>
-              {s.mediaTurmaPercentual !== null && <circle cx={xDe(i)} cy={yDe(s.mediaTurmaPercentual)} r="3" fill={COR_TURMA} stroke="#fff" strokeWidth="1.5" />}
-              {s.percentual !== null && <circle cx={xDe(i)} cy={yDe(s.percentual)} r="4.5" fill={COR_ALUNO} stroke="#fff" strokeWidth="2" />}
-            </g>
+          {caminhos(pontosAluno).map((d, i) => (
+            <path key={i} d={d} fill="none" stroke={COR_ALUNO} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
           ))}
 
-          {ultimo >= 0 && (
+          {simulados.map((s, i) =>
+            s.ausente ? (
+              <circle key={s.id} cx={xDe(i)} cy={base} r="3" fill="#fff" stroke="#cbd5e1" strokeWidth="1.5" />
+            ) : s.percentual !== null ? (
+              <circle key={s.id} cx={xDe(i)} cy={yDe(s.percentual)} r={ativo === i ? 5 : 3.5} fill={COR_ALUNO} stroke="#fff" strokeWidth="2" />
+            ) : null
+          )}
+          {ativo !== null && simulados[ativo].mediaTurmaPercentual !== null && (
+            <circle cx={xDe(ativo)} cy={yDe(simulados[ativo].mediaTurmaPercentual!)} r="3.5" fill={COR_TURMA} stroke="#fff" strokeWidth="2" />
+          )}
+
+          {ultimo >= 0 && ativo === null && (
             <text
               x={xDe(ultimo)}
               y={yDe(simulados[ultimo].percentual!) - 10}
-              textAnchor={xDe(ultimo) > W - M.right - 14 ? "end" : "middle"}
+              textAnchor={xDe(ultimo) > W - M.right - 16 ? "end" : "middle"}
               fontSize="11"
-              fontWeight="600"
+              fontWeight="500"
               fill="#334155"
             >
               {fmtPct(simulados[ultimo].percentual!)}
             </text>
           )}
 
-          {simulados.map((s, i) => {
-            const x = xDe(i);
-            const y = M.top + PH + 12;
-            return (
-              <g key={s.id}>
-                <text x={x} y={y} fontSize="9.5" fill="#475569" textAnchor="end" transform={`rotate(-45 ${x} ${y})`} dy="3">
-                  {fmtData(s.data)} · {truncar(s.titulo, 14)}
-                </text>
-                {s.ausente && (
-                  <text x={x} y={M.top + PH - 6} fontSize="9" fill="#94a3b8" textAnchor="start" transform={`rotate(-90 ${x} ${M.top + PH - 6})`} dy="3">
-                    Não presente
-                  </text>
-                )}
-              </g>
-            );
-          })}
+          {simulados.map((s, i) =>
+            mostraData(i) ? (
+              <text key={s.id} x={xDe(i)} y={H - 8} textAnchor="middle" fontSize="10" fill={ativo === i ? "#334155" : "#94a3b8"}>
+                {fmtData(s.data)}
+              </text>
+            ) : null
+          )}
 
           {/* Área de acerto: coluna inteira, mouse, toque e teclado. */}
           {simulados.map((s, i) => (
             <rect
               key={s.id}
               x={M.left + larg * i}
-              y={M.top}
+              y={0}
               width={larg}
-              height={PH + 4}
+              height={H}
               fill="transparent"
               tabIndex={0}
               role="img"
               aria-label={`${s.titulo}, ${fmtDataCompleta(s.data)}: ${s.ausente ? "Não presente" : s.percentual !== null ? `${fmtPct(s.percentual)} (${notaReal(s)})` : "sem nota"}. Média da turma: ${s.mediaTurmaPercentual !== null ? fmtPct(s.mediaTurmaPercentual) : "sem dados"}`}
-              className="outline-none focus-visible:stroke-indigo-500"
+              className="outline-none"
               onPointerMove={() => setAtivo(i)}
               onPointerDown={() => setAtivo(i)}
               onPointerLeave={(e) => e.pointerType === "mouse" && setAtivo(null)}
@@ -169,15 +182,13 @@ function Grafico({ simulados }: { simulados: SimuladoNota[] }) {
 
         {sel && (
           <div
-            className="pointer-events-none absolute top-0 z-10 w-44 -translate-x-1/2 rounded-lg border border-slate-200 bg-white p-2 text-xs text-slate-700 shadow-md"
-            style={{ left: `${tooltipEsquerda}%` }}
+            className="pointer-events-none absolute -top-2 z-10 w-40 -translate-x-1/2 -translate-y-full rounded-lg bg-slate-800 px-2.5 py-2 text-[11px] leading-snug text-white shadow-lg"
+            style={{ left: tooltipEsquerda }}
           >
-            <p className="truncate font-medium text-slate-800">{sel.titulo}</p>
-            <p className="text-slate-500">{fmtDataCompleta(sel.data)}</p>
-            <p className="mt-1">
-              {sel.ausente ? "Não presente" : sel.percentual !== null ? `${notaReal(sel)} · ${fmtPct(sel.percentual)}` : "—"}
-            </p>
-            <p>Média da turma: {sel.mediaTurmaPercentual !== null ? fmtPct(sel.mediaTurmaPercentual) : "—"}</p>
+            <p className="truncate font-medium">{sel.titulo}</p>
+            <p className="text-slate-300">{fmtDataCompleta(sel.data)}</p>
+            <p className="mt-1">{sel.ausente ? "Não presente" : sel.percentual !== null ? `${notaReal(sel)} · ${fmtPct(sel.percentual)}` : "—"}</p>
+            <p className="text-slate-300">Turma: {sel.mediaTurmaPercentual !== null ? fmtPct(sel.mediaTurmaPercentual) : "—"}</p>
           </div>
         )}
       </div>

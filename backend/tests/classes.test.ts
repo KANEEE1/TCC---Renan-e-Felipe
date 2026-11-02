@@ -80,7 +80,8 @@ describe("classes", () => {
   });
 
   it("returns 404 when assigning students to an unknown class", async () => {
-    const student = await request(app).post("/students").set(asGestao()).send({ nome: "Aluno Teste" });
+    const turma = await request(app).post("/classes").set(asGestao()).send({ nome: "Turma B", anoLetivo: 2026 });
+    const student = await request(app).post("/students").set(asGestao()).send({ nome: "Aluno Teste", turmaId: turma.body.id });
 
     const res = await request(app)
       .post("/classes/nonexistent-id/students").set(asGestao())
@@ -91,7 +92,8 @@ describe("classes", () => {
 
   it("assigns students to a class and is idempotent on repeat", async () => {
     const turma = await request(app).post("/classes").set(asGestao()).send({ nome: "Turma C", anoLetivo: 2026 });
-    const aluno = await request(app).post("/students").set(asGestao()).send({ nome: "Aluno Assign" });
+    const outra = await request(app).post("/classes").set(asGestao()).send({ nome: "Turma D", anoLetivo: 2026 });
+    const aluno = await request(app).post("/students").set(asGestao()).send({ nome: "Aluno Assign", turmaId: outra.body.id });
 
     const first = await request(app)
       .post(`/classes/${turma.body.id}/students`).set(asGestao())

@@ -81,9 +81,8 @@ describe("GET /attendance/summary", () => {
   it("filters by turmaId counting only that class's lessons", async () => {
     const c1 = await setupClass("A", "a@sum.com", "SEGUNDA");
     const c2 = await setupClass("B", "b@sum.com", "TERCA");
-    const aluno = await request(app).post("/students").set(asGestao()).send({ nome: "Aluno Sum" });
+    const aluno = await request(app).post("/students").set(asGestao()).send({ nome: "Aluno Sum", turmaId: c1.turmaId });
     const id = aluno.body.id;
-    await request(app).post(`/classes/${c1.turmaId}/students`).set(asGestao()).send({ studentIds: [id] });
     await request(app).post(`/classes/${c2.turmaId}/students`).set(asGestao()).send({ studentIds: [id] });
     const data = new Date("2026-09-01");
     await prisma.presenca.create({ data: { alunoId: id, aulaId: c1.aulaId, data, presente: true } });

@@ -50,6 +50,7 @@ export function StudentForm({ isEdit = false, studentId }: StudentFormProps) {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
+    if (!isEdit && !formData.classId) return setError("Selecione a turma do aluno.");
     setLoading(true);
 
     const payload = {
@@ -58,11 +59,14 @@ export function StudentForm({ isEdit = false, studentId }: StudentFormProps) {
     };
 
     try {
-      const id = isEdit && studentId ? studentId : undefined;
-      const student = id ? await api.put<{ id: string }>(`/students/${id}`, payload) : await api.post<{ id: string }>("/students", payload);
-
-      if (formData.classId) {
-        await api.post(`/classes/${formData.classId}/students`, { studentIds: [student.id] });
+      if (isEdit && studentId) {
+        await api.put(`/students/${studentId}`, payload);
+        if (formData.classId) {
+          await api.post(`/classes/${formData.classId}/students`, { studentIds: [studentId] });
+        }
+      } else {
+        // No cadastro a turma vai junto: o backend cria o aluno já matriculado.
+        await api.post("/students", { ...payload, turmaId: formData.classId });
       }
 
       router.push("/students");
@@ -115,6 +119,7 @@ export function StudentForm({ isEdit = false, studentId }: StudentFormProps) {
                 <label className="mb-2 block text-gray-700">Turma</label>
                 <select
                   value={formData.classId}
+                  required={!isEdit}
                   onChange={(e) => setFormData({ ...formData, classId: e.target.value })}
                   className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-black focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
@@ -125,6 +130,15 @@ export function StudentForm({ isEdit = false, studentId }: StudentFormProps) {
                     </option>
                   ))}
                 </select>
+                {!isEdit && classOptions.length === 0 && (
+                  <p className="mt-1 text-sm text-gray-500">
+                    Nenhuma turma cadastrada.{" "}
+                    <Link href="/classes/add" className="text-indigo-600 underline">
+                      Crie uma turma
+                    </Link>{" "}
+                    antes de adicionar alunos.
+                  </p>
+                )}
               </div>
             </div>
           </div>

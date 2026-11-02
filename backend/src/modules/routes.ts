@@ -10,7 +10,6 @@ import { disponibilidadeController } from "./disponibilidade/disponibilidade.mod
 import { gradeHorariaController } from "./grade-horaria/grade-horaria.module.js";
 import { matriculasController } from "./matriculas/matriculas.module.js";
 import { meetingsController } from "./meetings/meetings.module.js";
-import { notasController } from "./notas/notas.module.js";
 import { presencaController } from "./presenca/presenca.module.js";
 import { simuladosController } from "./simulados/simulados.module.js";
 import { substituicoesController } from "./substituicoes/substituicoes.module.js";
@@ -40,7 +39,5 @@ export function registerRoutes(app: Express) {
   app.use("/schedule", gradeHorariaController.router);
   app.use("/presencas", presencaController.router);
   app.use("/attendance", presencaController.router);
-  app.use("/simulados", simuladosController.router);
-  app.use("/notas", notasController.router);
-  app.use("/grades", notasController.router);
+  app.use("/simulados", requireAuth, simuladosController.router);
 }

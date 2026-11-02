@@ -1,5 +1,5 @@
-import { SimuladoList } from "@/components/simulados/simulado-list";
+import { SimuladosScreen } from "@/components/simulados/simulados-screen";
 
 export default function SimuladosPage() {
-  return <SimuladoList />;
+  return <SimuladosScreen />;
 }

@@ -1,9 +1,16 @@
 import { z } from "zod";
 
-export const createSimuladoSchema = z.object({
-  nome: z.string().min(1),
-  data: z.coerce.date(),
-  disciplinaId: z.string().cuid().optional()
+// Cada item: nota (valor) OU "Não presente" (ausente). Sem os dois = limpar o lançamento do aluno.
+export const lancarNotasSchema = z.object({
+  notas: z.array(
+    z.object({
+      alunoId: z.string().min(1),
+      valor: z.number().finite().nullable(),
+      ausente: z.boolean()
+    })
+  ),
+  // Entrega definitiva: exige todos os alunos lançados e fecha o simulado para os professores.
+  enviar: z.boolean().optional()
 });
 
-export type CreateSimuladoInput = z.infer<typeof createSimuladoSchema>;
+export type LancarNotasInput = z.infer<typeof lancarNotasSchema>;

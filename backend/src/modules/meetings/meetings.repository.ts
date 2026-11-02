@@ -7,10 +7,24 @@ const meetingInclude = {
   criadoPor: { select: { id: true, name: true } },
   participacoes: { include: { user: { select: { id: true, name: true, roles: true } } } },
   turmas: { select: { id: true, nome: true }, orderBy: { nome: "asc" } },
-  disciplina: { select: { id: true, nome: true } }
+  disciplina: { select: { id: true, nome: true } },
+  corretores: { select: { id: true, name: true }, orderBy: { name: "asc" } }
 } as const;
 
-type MeetingFields<T extends { participanteIds?: string[]; turmaIds?: string[] }> = Omit<T, "participanteIds" | "turmaIds">;
+type MeetingFields<T extends { participanteIds?: string[]; turmaIds?: string[]; corretorIds?: string[] }> = Omit<
+  T,
+  "participanteIds" | "turmaIds" | "corretorIds"
+>;
+
+// Na edição, os campos do simulado podem ser limpos (o evento deixou de ser simulado).
+export type UpdateMeetingFields = Omit<MeetingFields<UpdateMeetingInput>, "pontuacaoMaxima" | "prazoCorrecao"> & {
+  pontuacaoMaxima?: number | null;
+  prazoCorrecao?: Date | null;
+  correcaoEnviadaEm?: null;
+  correcaoEnviadaPorId?: null;
+  correcaoEncerradaEm?: null;
+  correcaoEncerradaCienteEm?: null;
+};
 
 export class MeetingsRepository {
   constructor(private readonly prisma: PrismaClient) {}
@@ -47,6 +61,11 @@ export class MeetingsRepository {
     return users.map((user) => user.id);
   }
 
+  async findActiveProfessorIds(ids: string[]) {
+    const users = await this.prisma.user.findMany({ where: { id: { in: ids }, ativo: true, roles: { has: "PROFESSOR" } }, select: { id: true } });
+    return users.map((user) => user.id);
+  }
+
   async findProfessorIds(ids: string[]) {
     const users = await this.prisma.user.findMany({ where: { id: { in: ids }, roles: { has: "PROFESSOR" } }, select: { id: true } });
     return users.map((user) => user.id);
@@ -54,6 +73,10 @@ export class MeetingsRepository {
 
   countPresencas(reuniaoId: string) {
     return this.prisma.presenca.count({ where: { reuniaoId } });
+  }
+
+  countNotasSimulado(reuniaoId: string) {
+    return this.prisma.notaSimulado.count({ where: { reuniaoId } });
   }
 
   async disciplinaExiste(id: string) {
@@ -64,7 +87,7 @@ export class MeetingsRepository {
     return this.prisma.turma.count({ where: { id: { in: ids } } });
   }
 
-  create(data: MeetingFields<CreateMeetingInput>, criadoPorId: string, convidadoIds: string[], turmaIds: string[]) {
+  create(data: MeetingFields<CreateMeetingInput>, criadoPorId: string, convidadoIds: string[], turmaIds: string[], corretorIds: string[] = []) {
     return this.prisma.reuniao.create({
       data: {
         ...data,
@@ -75,7 +98,8 @@ export class MeetingsRepository {
         participacoes: {
           create: convidadoIds.map((userId) => ({ userId, status: userId === criadoPorId ? "CONFIRMADO" : "PENDENTE" }))
         },
-        turmas: { connect: turmaIds.map((id) => ({ id })) }
+        turmas: { connect: turmaIds.map((id) => ({ id })) },
+        corretores: { connect: corretorIds.map((id) => ({ id })) }
       },
       include: meetingInclude
     });
@@ -83,14 +107,15 @@ export class MeetingsRepository {
 
   update(
     id: string,
-    data: MeetingFields<UpdateMeetingInput>,
+    data: UpdateMeetingFields,
     editorId: string,
     participanteIds?: string[],
     turmaIds?: string[],
     // Participantes que já estavam no evento antes de uma remarcação: voltam a "pendente" e recebem aviso.
     remarcarIds: string[] = [],
     // Participantes removidos que recebem aviso de retirada (já filtrados: evento futuro, sem o editor).
-    retiradosIds: string[] = []
+    retiradosIds: string[] = [],
+    corretorIds?: string[]
   ) {
     return this.prisma.$transaction(async (tx) => {
       if (remarcarIds.length > 0) {
@@ -122,7 +147,8 @@ export class MeetingsRepository {
           ...data,
           horarioInicio: data.horarioInicio ? parseTimeToDate(data.horarioInicio) : undefined,
           horarioFim: data.horarioFim ? parseTimeToDate(data.horarioFim) : undefined,
-          turmas: turmaIds ? { set: turmaIds.map((turmaId) => ({ id: turmaId })) } : undefined
+          turmas: turmaIds ? { set: turmaIds.map((turmaId) => ({ id: turmaId })) } : undefined,
+          corretores: corretorIds ? { set: corretorIds.map((userId) => ({ id: userId })) } : undefined
         },
         include: meetingInclude
       });

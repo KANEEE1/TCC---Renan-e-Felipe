@@ -3,6 +3,7 @@ import { agora } from "../../shared/clock.js";
 import { HttpError } from "../../shared/http.js";
 import { formatTimeHHMM, parseDateOnly, todayInSaoPaulo } from "../../shared/time.js";
 import { addDays, isoDate, jaComecou, resolverOcorrencia, type Ocorrencia } from "../grade-horaria/ocorrencias.js";
+import type { CorrecaoPendente, SimuladosService } from "../simulados/simulados.service.js";
 import type { AvisosProfessorRepository } from "./avisos-professor.repository.js";
 
 export interface AvisosDoProfessor {
@@ -26,6 +27,8 @@ export interface AvisosDoProfessor {
     horarioInicio: string;
     horarioFim: string;
   }[];
+  // Simulados que o professor corrige, já terminados e ainda sem envio nem encerramento.
+  correcoes: CorrecaoPendente[];
 }
 
 type Convocacao = NonNullable<Awaited<ReturnType<AvisosProfessorRepository["findConvocacao"]>>>;
@@ -40,14 +43,18 @@ function ocorrenciaVigente(convocacao: Convocacao, excecao: Excecao | undefined,
 }
 
 export class AvisosProfessorService {
-  constructor(private readonly avisosProfessorRepository: AvisosProfessorRepository) {}
+  constructor(
+    private readonly avisosProfessorRepository: AvisosProfessorRepository,
+    private readonly simuladosService: Pick<SimuladosService, "correcoesPendentes">
+  ) {}
 
   async listMine(actor: Actor): Promise<AvisosDoProfessor> {
     const now = agora();
     const hoje = todayInSaoPaulo(now);
-    const [convocacoes, retiradas] = await Promise.all([
+    const [convocacoes, retiradas, correcoes] = await Promise.all([
       this.convocacoesVigentes(actor.id, hoje, now),
-      this.avisosProfessorRepository.listRetiradasPendentes(actor.id, parseDateOnly(hoje))
+      this.avisosProfessorRepository.listRetiradasPendentes(actor.id, parseDateOnly(hoje)),
+      this.simuladosService.correcoesPendentes(actor.id)
     ]);
 
     return {
@@ -63,7 +70,8 @@ export class AvisosProfessorService {
           horarioFim: formatTimeHHMM(aviso.horarioFim)
         }))
         .filter((aviso) => !jaComecou(aviso, now))
-        .sort(porDataEHorario)
+        .sort(porDataEHorario),
+      correcoes
     };
   }
 

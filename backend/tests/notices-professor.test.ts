@@ -243,8 +243,8 @@ describe("avisos do professor: convocação e retirada", () => {
       const ctx = await setup();
       await editar(ctx, ctx.profB.id);
       setNow(QUARTA_0830);
-      expect(await meus(ctx.profB.id)).toEqual({ convocacoes: [], retiradas: [] });
-      expect(await meus(ctx.profA.id)).toEqual({ convocacoes: [], retiradas: [] });
+      expect(await meus(ctx.profB.id)).toEqual({ convocacoes: [], retiradas: [], correcoes: [] });
+      expect(await meus(ctx.profA.id)).toEqual({ convocacoes: [], retiradas: [], correcoes: [] });
       const [convocacao] = await prisma.convocacaoAula.findMany();
       expect((await responder(convocacao!.id, ctx.profB.id, "CONFIRMADO")).status).toBe(409);
     });

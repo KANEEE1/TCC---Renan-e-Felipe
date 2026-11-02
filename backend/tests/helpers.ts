@@ -9,7 +9,7 @@ export const app = createApp();
 export async function resetDb() {
   await prisma.$transaction([
     prisma.presenca.deleteMany(),
-    prisma.nota.deleteMany(),
+    prisma.notaSimulado.deleteMany(),
     prisma.matricula.deleteMany(),
     prisma.substituicao.deleteMany(),
     prisma.ausenciaAula.deleteMany(),
@@ -19,7 +19,6 @@ export async function resetDb() {
     prisma.aulaExcecao.deleteMany(),
     prisma.aula.deleteMany(),
     prisma.disponibilidade.deleteMany(),
-    prisma.simulado.deleteMany(),
     prisma.cargaDisciplinaTurma.deleteMany(),
     prisma.janelaTurma.deleteMany(),
     prisma.disciplina.deleteMany(),

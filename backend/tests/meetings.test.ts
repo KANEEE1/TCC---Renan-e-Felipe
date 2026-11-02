@@ -34,7 +34,7 @@ describe("meetings (eventos)", () => {
   });
 
   it("only GESTAO creates, updates and deletes; teachers get 403", async () => {
-    const { tokens } = await setup();
+    const { p1, tokens } = await setup();
     expect((await request(app).post("/meetings").set(auth(tokens.p1)).send(payload)).status).toBe(403);
 
     const created = await request(app).post("/meetings").set(auth(tokens.gestor)).send(payload);
@@ -46,7 +46,11 @@ describe("meetings (eventos)", () => {
     expect((await request(app).put(`/meetings/${id}`).set(auth(tokens.p1)).send({ titulo: "X" })).status).toBe(403);
     expect((await request(app).delete(`/meetings/${id}`).set(auth(tokens.p1))).status).toBe(403);
 
-    const upd = await request(app).put(`/meetings/${id}`).set(auth(tokens.gestor)).send({ titulo: "Novo", tipo: "SIMULADO" });
+    // Virar simulado exige a configuração dele (turmas, corretores, prazo e pontuação máxima).
+    const turma = await prisma.turma.create({ data: { nome: "Turma S", anoLetivo: 2026 } });
+    const simulado = { turmaIds: [turma.id], corretorIds: [p1.id], prazoCorrecao: "2026-11-12", pontuacaoMaxima: 10 };
+    expect((await request(app).put(`/meetings/${id}`).set(auth(tokens.gestor)).send({ tipo: "SIMULADO" })).status).toBe(400);
+    const upd = await request(app).put(`/meetings/${id}`).set(auth(tokens.gestor)).send({ titulo: "Novo", tipo: "SIMULADO", ...simulado });
     expect(upd.status).toBe(200);
     expect(upd.body.titulo).toBe("Novo");
     expect(upd.body.tipo).toBe("SIMULADO");
@@ -123,7 +127,10 @@ describe("meetings (eventos)", () => {
     const reuniao = await post({ tipo: "REUNIAO" });
     expect(reuniao.body.disciplina).toBeNull();
     expect((await request(app).put(`/meetings/${reuniao.body.id}`).set(auth(tokens.gestor)).send({ tipo: "AULAO" })).status).toBe(400);
-    expect((await request(app).put(`/meetings/${reuniao.body.id}`).set(auth(tokens.gestor)).send({ tipo: "SIMULADO" })).status).toBe(200);
+    const turma = await prisma.turma.create({ data: { nome: "Turma S", anoLetivo: 2026 } });
+    const p1 = await prisma.user.findUniqueOrThrow({ where: { email: "p1@test.com" } });
+    const simulado = { tipo: "SIMULADO", turmaIds: [turma.id], corretorIds: [p1.id], prazoCorrecao: "2026-11-12", pontuacaoMaxima: 10 };
+    expect((await request(app).put(`/meetings/${reuniao.body.id}`).set(auth(tokens.gestor)).send(simulado)).status).toBe(200);
   });
 
   it("links classes: returns them, replaces on update, rejects unknown", async () => {

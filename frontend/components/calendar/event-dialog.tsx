@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { BookOpen, ClipboardCheck, Clock, GraduationCap, MapPin, Users, X } from "lucide-react";
+import { BookOpen, CalendarCheck, ClipboardCheck, Clock, GraduationCap, MapPin, Trophy, UserCheck, Users, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { TeacherPicker, type PickerTeacher } from "@/components/calendar/teacher-picker";
 import { EVENT_TYPES, toHHMM, type EventType, type MeetingDTO } from "@/components/meetings/meeting-types";
@@ -51,6 +51,10 @@ export function EventDialog({ event, defaultDate, onClose, onSaved }: Props) {
   const [noTeachers, setNoTeachers] = useState(event?.semProfessores ?? false);
   const [classIds, setClassIds] = useState<string[]>(event?.turmas.map((t) => t.id) ?? []);
   const [needsAttendance, setNeedsAttendance] = useState(event?.exigePresenca ?? false);
+  // Simulado: corretores (lançam as notas; lista separada dos participantes, que aplicam a prova), prazo e nota máxima.
+  const [graderIds, setGraderIds] = useState<string[]>(event?.corretores?.map((c) => c.userId) ?? []);
+  const [deadline, setDeadline] = useState(event?.prazoCorrecao?.slice(0, 10) ?? "");
+  const [maxScore, setMaxScore] = useState(event?.pontuacaoMaxima != null ? String(event.pontuacaoMaxima) : "");
 
   const [users, setUsers] = useState<Option[]>([]);
   const [classes, setClasses] = useState<ClassOption[]>([]);
@@ -71,6 +75,7 @@ export function EventDialog({ event, defaultDate, onClose, onSaved }: Props) {
   // Só a aula comum tem presença: 1 professor e ao menos 1 turma. Depois que a aula começa, presença,
   // professor e turmas ficam travados (o backend responde 409).
   const attendance = type === "AULA" && needsAttendance;
+  const simulado = type === "SIMULADO";
   const started = isEdit && event.tipo === "AULA" && new Date(`${event.data.slice(0, 10)}T${toHHMM(event.horarioInicio)}:00`) <= new Date();
   const lockAttendance = started;
   const lockPeople = started && event.exigePresenca;
@@ -119,6 +124,16 @@ export function EventDialog({ event, defaultDate, onClose, onSaved }: Props) {
       if (classIds.length === 0) return setError("Escolha ao menos uma turma para a aula com presença.");
     }
     if (!hasTeacher && !noTeachers) return setError("Inclua pelo menos um professor ou marque que o evento não precisa de professores.");
+    // Mesmas regras (e mensagens) do backend.
+    const score = Number(maxScore.replace(",", "."));
+    if (simulado) {
+      if (classIds.length === 0) return setError("Um simulado precisa de ao menos uma turma.");
+      if (graderIds.length === 0) return setError("Escolha ao menos um corretor para o simulado.");
+      if (!deadline) return setError("Informe o prazo da correção do simulado.");
+      if (deadline < date) return setError("O prazo da correção não pode ser antes da data do simulado.");
+      if (!maxScore.trim() || !Number.isFinite(score)) return setError("Informe a pontuação máxima do simulado.");
+      if (score <= 0) return setError("A pontuação máxima precisa ser maior que zero.");
+    }
 
     setError(null);
     setSaving(true);
@@ -133,7 +148,8 @@ export function EventDialog({ event, defaultDate, onClose, onSaved }: Props) {
         participanteIds: participantIds,
         semProfessores: attendance ? false : noTeachers,
         turmaIds: classIds,
-        exigePresenca: attendance
+        exigePresenca: attendance,
+        ...(simulado ? { corretorIds: graderIds, prazoCorrecao: deadline, pontuacaoMaxima: score } : {})
       };
       if (event) await api.put(`/meetings/${event.id}`, payload);
       else await api.post("/meetings", { ...payload, disciplinaId: needsSubject(type) ? subjectId : undefined });
@@ -299,7 +315,9 @@ export function EventDialog({ event, defaultDate, onClose, onSaved }: Props) {
           <div className="flex items-start gap-4">
             <GraduationCap size={18} className="mt-1.5 shrink-0 text-slate-400" />
             <div className="flex flex-1 flex-wrap gap-1.5">
-              {classes.length === 0 && <span className="py-1 text-sm text-slate-400">{attendance ? "Turmas (obrigatório)" : "Turmas (opcional)"}</span>}
+              {classes.length === 0 && (
+                <span className="py-1 text-sm text-slate-400">{attendance || simulado ? "Turmas (obrigatório)" : "Turmas (opcional)"}</span>
+              )}
               {classes.map((c) => {
                 const active = classIds.includes(c.id);
                 return (
@@ -318,6 +336,67 @@ export function EventDialog({ event, defaultDate, onClose, onSaved }: Props) {
               })}
             </div>
           </div>
+
+          {simulado && (
+            <>
+              <div className="flex items-start gap-4">
+                <UserCheck size={18} className="mt-2.5 shrink-0 text-slate-400" />
+                <div className="min-w-0 flex-1">
+                  <p className="mb-1 text-sm text-slate-800">Corretores</p>
+                  <p className="mb-2 text-xs text-slate-400">
+                    Professores que lançam as notas. Podem ser diferentes de quem aplica a prova (participantes).
+                  </p>
+                  <TeacherPicker
+                    teachers={teachers}
+                    mode="multiple"
+                    selectedIds={graderIds}
+                    onChange={setGraderIds}
+                    nameFallback={(id) => event?.corretores?.find((c) => c.userId === id)?.name}
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-4">
+                <CalendarCheck size={18} className="shrink-0 text-slate-400" />
+                <label className="flex flex-1 flex-wrap items-center gap-2 text-sm text-slate-700">
+                  Prazo da correção
+                  <input
+                    type="date"
+                    value={deadline}
+                    min={date || undefined}
+                    onChange={(e) => setDeadline(e.target.value)}
+                    aria-label="Prazo da correção"
+                    className={inputClass}
+                  />
+                </label>
+              </div>
+
+              <div className="flex items-start gap-4">
+                <Trophy size={18} className="mt-2 shrink-0 text-slate-400" />
+                <div className="min-w-0 flex-1">
+                  <label className="flex flex-wrap items-center gap-2 text-sm text-slate-700">
+                    Pontuação máxima
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      step="any"
+                      value={maxScore}
+                      onChange={(e) => setMaxScore(e.target.value)}
+                      placeholder="Ex.: 90"
+                      aria-label="Pontuação máxima"
+                      className={`${inputClass} w-28`}
+                    />
+                  </label>
+                  {isEdit && (
+                    <p className="mt-1 text-xs text-slate-400">
+                      Com notas lançadas, a pontuação, as turmas, a data e o horário não mudam mais.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
 
           <div className="flex items-center gap-4">
             <MapPin size={18} className="shrink-0 text-slate-400" />

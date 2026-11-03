@@ -20,6 +20,10 @@ export class AlunosRepository {
     });
   }
 
+  async listIdsAtivos() {
+    return (await this.prisma.aluno.findMany({ where: alunoAtivo, select: { id: true } })).map((a) => a.id);
+  }
+
   findById(id: string) {
     return this.prisma.aluno.findUnique({
       where: { id },

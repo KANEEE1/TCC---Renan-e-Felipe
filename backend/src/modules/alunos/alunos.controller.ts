@@ -12,6 +12,10 @@ export class AlunosController {
       res.json(await this.alunosService.list());
     }));
 
+    this.router.get("/indicadores", requireAuth, asyncHandler(async (_req, res) => {
+      res.json(await this.alunosService.indicadores());
+    }));
+
     this.router.get("/:id", asyncHandler(async (req, res) => {
       res.json(await this.alunosService.getById(req.params.id as string));
     }));

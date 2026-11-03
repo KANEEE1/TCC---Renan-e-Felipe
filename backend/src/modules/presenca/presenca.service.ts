@@ -366,6 +366,19 @@ export class PresencaService {
     return new Map(Array.from(counts, ([id, c]) => [id, Math.round((c.presentes / c.total) * 1000) / 10] as const));
   }
 
+  // Frequência (%) de cada aluno ativo, igual à do report: presenças / registros dele. Sem registros fica fora do mapa.
+  async frequenciaPorAluno() {
+    await this.consolidarPresencasPendentes();
+    const counts = new Map<string, { total: number; presentes: number }>();
+    for (const p of await this.presencaRepository.listPresencasDosAlunosAtivos()) {
+      const c = counts.get(p.alunoId) ?? { total: 0, presentes: 0 };
+      c.total += 1;
+      if (p.presente) c.presentes += 1;
+      counts.set(p.alunoId, c);
+    }
+    return new Map(Array.from(counts, ([id, c]) => [id, Math.round((c.presentes / c.total) * 100)] as const));
+  }
+
   async report(alunoId: string) {
     await this.consolidarPresencasPendentes(await this.presencaRepository.listTurmaIdsOfAluno(alunoId));
     const presencas = await this.presencaRepository.listByAluno(alunoId);

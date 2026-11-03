@@ -89,6 +89,14 @@ function media(notas: Nota[]) {
 
 const duasCasas = (valor: number) => Math.abs(Math.round(valor * 100) - valor * 100) < 1e-6;
 
+const arredonda = (n: number) => Math.round(n * 100) / 100;
+// Nota em % da pontuação máxima; ausente ou sem valor não tem percentual.
+const percentualDaNota = (valor: number | null, ausente: boolean, maxima: number) =>
+  !ausente && valor !== null ? arredonda((valor / maxima) * 100) : null;
+// Média dos percentuais por simulado (regra única do aluno: telas individuais e indicadores da lista).
+const mediaDosPercentuais = (percentuais: number[]) =>
+  percentuais.length > 0 ? arredonda(percentuais.reduce((s, p) => s + p, 0) / percentuais.length) : null;
+
 export class SimuladosService {
   constructor(private readonly simuladosRepository: SimuladosRepository) {}
 
@@ -121,7 +129,6 @@ export class SimuladosService {
     const doAluno = await this.simuladosRepository.listNotasFinalizadasDoAluno(alunoId);
     const todas = await this.simuladosRepository.listNotasDosSimulados(doAluno.map((n) => n.reuniao.id));
     const percentual = (valor: number, maxima: number) => (valor / maxima) * 100;
-    const arredonda = (n: number) => Math.round(n * 100) / 100;
 
     const simulados = doAluno
       .sort((a, b) => a.reuniao.data.getTime() - b.reuniao.data.getTime() || a.reuniao.horarioInicio.getTime() - b.reuniao.horarioInicio.getTime())
@@ -138,14 +145,24 @@ export class SimuladosService {
           valor: n.valor,
           ausente: n.ausente,
           automatica: n.automatica,
-          percentual: !n.ausente && n.valor !== null ? arredonda(percentual(n.valor, maxima)) : null,
+          percentual: percentualDaNota(n.valor, n.ausente, maxima),
           mediaTurmaPercentual: pontos.length > 0 ? arredonda(pontos.reduce((s, p) => s + p, 0) / pontos.length) : null,
           turma: n.turma
         };
       });
     const percentuais = simulados.flatMap((s) => (s.percentual === null ? [] : [s.percentual]));
-    const mediaGeral = percentuais.length > 0 ? arredonda(percentuais.reduce((s, p) => s + p, 0) / percentuais.length) : null;
-    return { aluno, media: mediaGeral, simulados };
+    return { aluno, media: mediaDosPercentuais(percentuais), simulados };
+  }
+
+  // Média dos simulados finalizados de todos os alunos ativos de uma vez (mesma regra de notasDoAluno). Sem nota fica fora do mapa.
+  async mediasPorAluno() {
+    await this.consolidarPrazos();
+    const percentuais = new Map<string, number[]>();
+    for (const n of await this.simuladosRepository.listNotasFinalizadasDosAlunosAtivos()) {
+      const p = percentualDaNota(n.valor, n.ausente, n.reuniao.pontuacaoMaxima!);
+      if (p !== null) percentuais.set(n.alunoId, [...(percentuais.get(n.alunoId) ?? []), p]);
+    }
+    return new Map(Array.from(percentuais, ([alunoId, ps]) => [alunoId, mediaDosPercentuais(ps)!] as const));
   }
 
   // Médias da turma em cada simulado finalizado (e a geral do simulado); a média final pesa cada simulado igual.

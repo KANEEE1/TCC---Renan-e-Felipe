@@ -2,9 +2,29 @@ import { agora } from "../../shared/clock.js";
 import { HttpError } from "../../shared/http.js";
 import type { CreateAlunoInput, UpdateAlunoInput } from "./alunos.schemas.js";
 import type { AlunosRepository } from "./alunos.repository.js";
+import type { PresencaService } from "../presenca/presenca.service.js";
+import type { SimuladosService } from "../simulados/simulados.service.js";
 
 export class AlunosService {
-  constructor(private readonly alunosRepository: AlunosRepository) {}
+  constructor(
+    private readonly alunosRepository: AlunosRepository,
+    private readonly presencaService: PresencaService,
+    private readonly simuladosService: SimuladosService
+  ) {}
+
+  // Frequência e média dos simulados de todos os alunos ativos de uma vez (null = sem dados).
+  async indicadores() {
+    const [ids, frequencias, medias] = await Promise.all([
+      this.alunosRepository.listIdsAtivos(),
+      this.presencaService.frequenciaPorAluno(),
+      this.simuladosService.mediasPorAluno()
+    ]);
+    return ids.map((alunoId) => ({
+      alunoId,
+      frequenciaPercentual: frequencias.get(alunoId) ?? null,
+      mediaSimuladosPercentual: medias.get(alunoId) ?? null
+    }));
+  }
 
   list() {
     return this.alunosRepository.list();

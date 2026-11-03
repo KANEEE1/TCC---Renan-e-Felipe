@@ -68,6 +68,10 @@ export class PresencaRepository {
     });
   }
 
+  listPresencasDosAlunosAtivos() {
+    return this.prisma.presenca.findMany({ where: { aluno: alunoAtivo }, select: { alunoId: true, presente: true } });
+  }
+
   findAulaForMark(aulaId: string) {
     return this.prisma.aula.findUnique({
       where: { id: aulaId },

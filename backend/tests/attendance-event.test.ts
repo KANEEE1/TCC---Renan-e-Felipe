@@ -364,4 +364,33 @@ describe("aula comum com presença", () => {
       expect(summaryC[0]).toMatchObject({ alunoId: ctx.c1.id, semRegistros: true });
     });
   });
+
+  describe("aluno removido", () => {
+    const remover = (ctx: Ctx, alunoId: string) => request(app).delete(`/students/${alunoId}`).set(ctx.gestorHeader);
+
+    it("ignores the removed student's entry and does not fill him in", async () => {
+      const ctx = await setup();
+      const evento = await criarEvento(ctx);
+      setNow(QUARTA_0830);
+      await remover(ctx, ctx.a2.id);
+      const res = await mark(asTeacher(ctx.prof.id), {
+        eventoId: evento.id,
+        entries: [{ alunoId: ctx.a1.id, presente: false }, { alunoId: ctx.a2.id, presente: false }]
+      });
+      expect(res.status).toBe(201);
+      const rows = await prisma.presenca.findMany({ where: { reuniaoId: evento.id } });
+      expect(rows.map((r) => r.alunoId).sort()).toEqual([ctx.a1.id, ctx.b1.id].sort());
+    });
+
+    it("does not consolidate the event for a student removed before it", async () => {
+      const ctx = await setup();
+      const evento = await criarEvento(ctx);
+      setNow(ANTES);
+      await remover(ctx, ctx.a2.id);
+      setNow(QUARTA_1001);
+      await request(app).get("/attendance");
+      const rows = await prisma.presenca.findMany({ where: { reuniaoId: evento.id } });
+      expect(rows.map((r) => r.alunoId).sort()).toEqual([ctx.a1.id, ctx.b1.id].sort());
+    });
+  });
 });

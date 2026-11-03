@@ -38,6 +38,7 @@ interface AlunoDoSimulado {
   alunoId: string;
   nome: string;
   turmaId: string;
+  removido: boolean;
 }
 
 type Nota = SimuladoRow["notasSimulado"][number];
@@ -62,16 +63,19 @@ function estadoDe(s: SimuladoRow, now: Date): EstadoSimulado {
   return terminou(s, now) ? "EM_CORRECAO" : "AGENDADO";
 }
 
-// Alunos das turmas com matrícula vigente na data, mais quem já tem nota (o histórico não some se a matrícula mudar).
+// Alunos das turmas com matrícula vigente na data, mais quem já tem nota (o histórico não some se a matrícula mudar ou
+// o aluno for removido; removidos só chegam por aqui).
 function alunosDoSimulado(s: SimuladoRow) {
   const nomes = new Map<string, string>();
   for (const turma of s.turmas) for (const m of turma.matriculas) nomes.set(m.alunoId, m.aluno.nome);
   const alunos = new Map<string, AlunoDoSimulado>();
   for (const [alunoId, turmaId] of turmaPorAluno(s.turmas, isoDate(s.data))) {
-    alunos.set(alunoId, { alunoId, nome: nomes.get(alunoId) ?? "", turmaId });
+    alunos.set(alunoId, { alunoId, nome: nomes.get(alunoId) ?? "", turmaId, removido: false });
   }
   for (const nota of s.notasSimulado) {
-    if (!alunos.has(nota.alunoId)) alunos.set(nota.alunoId, { alunoId: nota.alunoId, nome: nota.aluno.nome, turmaId: nota.turmaId });
+    if (!alunos.has(nota.alunoId)) {
+      alunos.set(nota.alunoId, { alunoId: nota.alunoId, nome: nota.aluno.nome, turmaId: nota.turmaId, removido: !!nota.aluno.removidoEm });
+    }
   }
   return alunos;
 }
@@ -227,6 +231,7 @@ export class SimuladosService {
         if (vistos.has(item.alunoId)) throw new HttpError(400, "Há aluno repetido na lista de notas");
         vistos.add(item.alunoId);
         if (!alunos.has(item.alunoId)) throw new HttpError(400, "Há aluno que não está nas turmas do simulado");
+        if (alunos.get(item.alunoId)!.removido) throw new HttpError(400, "A nota de aluno removido não pode ser alterada");
         if (item.ausente && item.valor !== null) throw new HttpError(400, "Informe a nota ou marque Não presente, não os dois");
         if (item.valor !== null && (item.valor < 0 || item.valor > maxima)) throw new HttpError(400, `A nota precisa estar entre 0 e ${maxima}`);
         if (item.valor !== null && !duasCasas(item.valor)) throw new HttpError(400, "A nota pode ter no máximo duas casas decimais");
@@ -343,6 +348,7 @@ export class SimuladosService {
             return {
               alunoId: aluno.alunoId,
               nome: aluno.nome,
+              removido: aluno.removido,
               valor: nota?.valor ?? null,
               ausente: nota?.ausente ?? false,
               automatica: nota?.automatica ?? false,

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Save } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
+import { getSessionUser } from "@/lib/auth";
 
 interface ClassOption {
   id: string;
@@ -14,6 +15,7 @@ interface ClassOption {
 interface StudentDetail {
   nome: string;
   numero: string | null;
+  removidoEm: string | null;
   matriculas: { turma: { id: string } }[];
 }
 
@@ -31,6 +33,13 @@ export function StudentForm({ isEdit = false, studentId }: StudentFormProps) {
   const [formData, setFormData] = useState(EMPTY);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [isManagement, setIsManagement] = useState(false);
+  const [removidoEm, setRemovidoEm] = useState<string | null>(null);
+
+  useEffect(() => {
+    setIsManagement(!!getSessionUser()?.roles.includes("GESTAO"));
+  }, []);
 
   useEffect(() => {
     api.get<ClassOption[]>("/classes").then(setClassOptions).catch(() => setClassOptions([]));
@@ -44,6 +53,7 @@ export function StudentForm({ isEdit = false, studentId }: StudentFormProps) {
         number: student.numero ?? "",
         classId: student.matriculas[0]?.turma.id ?? ""
       });
+      setRemovidoEm(student.removidoEm);
     });
   }, [isEdit, studentId]);
 
@@ -72,6 +82,25 @@ export function StudentForm({ isEdit = false, studentId }: StudentFormProps) {
       setError(err instanceof ApiError ? err.message : "Não foi possível salvar. Tente novamente.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Exclusão lógica: o histórico (presenças e notas de simulados finalizados) fica.
+  const handleDelete = async () => {
+    if (!studentId) return;
+    const nome = formData.name || "este aluno";
+    const aviso =
+      `Excluir ${nome}? Ele sai da turma, das listas de presença e dos simulados ainda não finalizados ` +
+      "(notas lançadas neles são apagadas). Presenças e notas de simulados finalizados continuam no histórico.";
+    if (!confirm(aviso)) return;
+    setError(null);
+    setDeleting(true);
+    try {
+      await api.delete(`/students/${studentId}`);
+      router.push("/students");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Não foi possível excluir o aluno. Tente novamente.");
+      setDeleting(false);
     }
   };
 
@@ -143,13 +172,29 @@ export function StudentForm({ isEdit = false, studentId }: StudentFormProps) {
             </div>
           </div>
 
+          {removidoEm && (
+            <p className="mt-3 text-sm text-gray-600">
+              Este aluno foi removido em {new Date(removidoEm).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}.
+            </p>
+          )}
           {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
         </div>
+
+        {isEdit && isManagement && (
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={deleting || loading || !!removidoEm}
+            className="rounded-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-60"
+          >
+            {deleting ? "Excluindo..." : "Excluir aluno"}
+          </button>
+        )}
 
         <div className="fixed bottom-16 left-0 right-0 z-40 border-t bg-white p-4">
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || deleting || !!removidoEm}
             className="flex w-full items-center justify-center rounded-lg bg-indigo-600 py-3 text-white transition-colors hover:bg-indigo-700 disabled:opacity-60"
           >
             <Save size={20} className="mr-2" />

@@ -204,9 +204,10 @@ export function SimuladoDetail({ simuladoId }: { simuladoId: string }) {
                   <li key={aluno.alunoId} className="flex items-center gap-3 px-4 py-2.5">
                     <span className="min-w-0 flex-1 truncate text-sm text-slate-700">
                       {aluno.nome}
+                      {aluno.removido && <span className="ml-1.5 text-xs text-slate-400">(removido)</span>}
                       {podeLancar && aluno.automatica && <span className="ml-1.5 text-xs text-red-600">0 automático (sem correção)</span>}
                     </span>
-                    {podeLancar ? (
+                    {podeLancar && !aluno.removido ? (
                       <>
                         <input
                           type="text"

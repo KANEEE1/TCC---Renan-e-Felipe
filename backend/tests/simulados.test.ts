@@ -478,6 +478,68 @@ describe("simulados", () => {
     });
   });
 
+  describe("aluno removido", () => {
+    const remover = (ctx: Ctx, alunoId: string) => request(app).delete(`/students/${alunoId}`).set(ctx.gestorHeader);
+
+    it("leaves a simulado still in correction: grade deleted, does not block sending", async () => {
+      const ctx = await setup();
+      setNow(ANTES);
+      const id = await criarSimulado(ctx);
+      setNow(DEPOIS);
+      const profA = asTeacher(ctx.profA.id);
+      await lancar(profA, id, [nota(ctx.ana.id, 70), nota(ctx.caio.id, 50)]);
+
+      expect((await remover(ctx, ctx.caio.id)).status).toBe(204);
+      expect(await prisma.notaSimulado.count({ where: { alunoId: ctx.caio.id } })).toBe(0);
+      const body = await detalhe(ctx, id);
+      expect(alunoNoDetalhe(body, ctx.caio.id)).toBeUndefined();
+      expect(body).toMatchObject({ lancados: 1, total: 3 });
+      expect((await lancar(profA, id, [nota(ctx.caio.id, 40)])).status).toBe(400);
+
+      const enviado = await lancar(profA, id, [nota(ctx.bia.id, 30), nota(ctx.gabi.id, 20)], true);
+      expect(enviado.status).toBe(200);
+      expect(enviado.body.estado).toBe("ENVIADO");
+    });
+
+    it("gets no automatic zero when the deadline closes after the removal", async () => {
+      const ctx = await setup();
+      setNow(ANTES);
+      const id = await criarSimulado(ctx);
+      setNow(DEPOIS);
+      await remover(ctx, ctx.caio.id);
+      setNow(VENCIDO);
+      const body = await detalhe(ctx, id);
+      expect(body.estado).toBe("ENCERRADO");
+      expect(alunoNoDetalhe(body, ctx.caio.id)).toBeUndefined();
+      expect(await prisma.notaSimulado.count({ where: { reuniaoId: id } })).toBe(3);
+      expect(await prisma.notaSimulado.count({ where: { alunoId: ctx.caio.id } })).toBe(0);
+    });
+
+    it("keeps the grade in a finalized simulado, marked as removed and read-only", async () => {
+      const ctx = await setup();
+      setNow(ANTES);
+      const id = await criarSimulado(ctx);
+      setNow(DEPOIS);
+      await lancar(asTeacher(ctx.profA.id), id, [nota(ctx.ana.id, 70), nota(ctx.bia.id, 30), nota(ctx.gabi.id, 20), nota(ctx.caio.id, 50)], true);
+
+      const medias = async () => ({
+        turmaA: (await request(app).get(`/simulados/turma/${ctx.turmaA.id}`).set(ctx.gestorHeader)).body,
+        turmaB: (await request(app).get(`/simulados/turma/${ctx.turmaB.id}`).set(ctx.gestorHeader)).body,
+        caio: (await request(app).get(`/simulados/aluno/${ctx.caio.id}`).set(ctx.gestorHeader)).body
+      });
+      const antes = await medias();
+      expect(antes.caio.media).not.toBeNull();
+
+      await remover(ctx, ctx.caio.id);
+      expect(await medias()).toEqual(antes);
+      const body = await detalhe(ctx, id);
+      expect(alunoNoDetalhe(body, ctx.caio.id)).toMatchObject({ nome: "Caio", valor: 50, removido: true });
+      expect(alunoNoDetalhe(body, ctx.ana.id).removido).toBe(false);
+      expect(body).toMatchObject({ lancados: 4, total: 4, media: 42.5 });
+      expect((await lancar(ctx.gestorHeader, id, [nota(ctx.caio.id, 60)])).status).toBe(400);
+    });
+  });
+
   describe("notas do aluno", () => {
     const notasDe = (ctx: Ctx, alunoId: string) => request(app).get(`/simulados/aluno/${alunoId}`).set(ctx.gestorHeader);
     const enviarTudo = (ctx: Ctx, id: string, notas: Nota[]) => lancar(ctx.gestorHeader, id, notas, true);

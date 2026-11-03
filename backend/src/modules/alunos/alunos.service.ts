@@ -1,3 +1,4 @@
+import { agora } from "../../shared/clock.js";
 import { HttpError } from "../../shared/http.js";
 import type { CreateAlunoInput, UpdateAlunoInput } from "./alunos.schemas.js";
 import type { AlunosRepository } from "./alunos.repository.js";
@@ -27,7 +28,13 @@ export class AlunosService {
   }
 
   async update(id: string, input: UpdateAlunoInput) {
-    await this.getById(id);
+    if ((await this.getById(id)).removidoEm) throw new HttpError(409, "Aluno removido");
     return this.alunosRepository.update(id, input);
+  }
+
+  // Idempotente: aluno já removido mantém a data da primeira remoção.
+  async remove(id: string) {
+    const aluno = await this.getById(id);
+    if (!aluno.removidoEm) await this.alunosRepository.remover(id, agora());
   }
 }

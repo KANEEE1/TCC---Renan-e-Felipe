@@ -2,7 +2,7 @@ import type { Actor } from "../../shared/auth.js";
 import { agora } from "../../shared/clock.js";
 import { HttpError } from "../../shared/http.js";
 import { diaSemanaOfDateOnly, formatTimeHHMM, parseDateOnly, timeOfDayInSaoPaulo, todayInSaoPaulo } from "../../shared/time.js";
-import { turmaPorAluno } from "../matriculas/vigencia.js";
+import { matriculaVigente, turmaPorAluno } from "../matriculas/vigencia.js";
 import type { GradeHorariaRepository } from "../grade-horaria/grade-horaria.repository.js";
 import { dataNoPeriodo, gerarOcorrencias, isoDate, type Ocorrencia } from "../grade-horaria/ocorrencias.js";
 import type { AttendanceSummaryQuery, MarkAttendanceInput } from "./presenca.schemas.js";
@@ -134,10 +134,8 @@ export class PresencaService {
       if (oc.data === hoje && hora <= oc.horarioFim) continue;
       // Aula criada no próprio dia depois do fim da janela: esse dia não consolida.
       if (oc.dataOriginal === todayInSaoPaulo(aula.createdAt) && timeOfDayInSaoPaulo(aula.createdAt) >= oc.horarioFim) continue;
-      // Só alunos com matrícula vigente na data em que a aula acontece.
-      const alunoIds = aula.turma.matriculas
-        .filter((m) => todayInSaoPaulo(m.dataMatricula ?? m.createdAt) <= oc.data)
-        .map((m) => m.alunoId);
+      // Só alunos com matrícula vigente na data em que a aula acontece (removidos ficam de fora a partir da remoção).
+      const alunoIds = aula.turma.matriculas.filter((m) => matriculaVigente(m, oc.data)).map((m) => m.alunoId);
       // O registro de presença usa a data original da ocorrência como chave.
       if (alunoIds.length > 0) candidatas.push({ aulaId: aula.id, data: oc.dataOriginal, alunoIds });
     }
@@ -198,14 +196,15 @@ export class PresencaService {
     if (statusDaOcorrencia(ocorrencia, timeOfDayInSaoPaulo(now)) !== "ABERTA") throw new HttpError(409, "Fora do horário da aula");
 
     const matriculados = new Set(aula.turma.matriculas.map((m) => m.alunoId));
-    if (input.entries.some((e) => !matriculados.has(e.alunoId))) {
+    const enviadas = await this.semRemovidos(input.entries);
+    if (enviadas.some((e) => !matriculados.has(e.alunoId))) {
       throw new HttpError(400, "Há aluno que não está matriculado na turma da aula");
     }
 
     // Matriculados que o professor não enviou ficam presentes (registro do professor, não automático).
-    const enviados = new Set(input.entries.map((e) => e.alunoId));
+    const enviados = new Set(enviadas.map((e) => e.alunoId));
     const entries = [
-      ...input.entries,
+      ...enviadas,
       ...Array.from(matriculados).filter((id) => !enviados.has(id)).map((alunoId) => ({ alunoId, presente: true }))
     ];
     return this.presencaRepository.markBulk(aula.id, parseDateOnly(dataOriginal), entries);
@@ -229,17 +228,24 @@ export class PresencaService {
     if (statusDaOcorrencia(ocorrencia, timeOfDayInSaoPaulo(now)) !== "ABERTA") throw new HttpError(409, "Fora do horário da aula");
 
     const turmaDoAluno = turmaPorAluno(evento.turmas, hoje);
-    if (input.entries.some((e) => !turmaDoAluno.has(e.alunoId))) {
+    const enviadas = await this.semRemovidos(input.entries);
+    if (enviadas.some((e) => !turmaDoAluno.has(e.alunoId))) {
       throw new HttpError(400, "Há aluno que não está matriculado nas turmas da aula");
     }
 
     // Matriculados que o professor não enviou ficam presentes (registro do professor, não automático).
-    const enviados = new Set(input.entries.map((e) => e.alunoId));
+    const enviados = new Set(enviadas.map((e) => e.alunoId));
     const entries = [
-      ...input.entries,
+      ...enviadas,
       ...Array.from(turmaDoAluno.keys()).filter((id) => !enviados.has(id)).map((alunoId) => ({ alunoId, presente: true }))
     ].map((e) => ({ ...e, turmaId: turmaDoAluno.get(e.alunoId)! }));
     return this.presencaRepository.markEventoBulk(evento.id, evento.data, entries);
+  }
+
+  // Aluno removido com a lista já aberta no professor: a entrada dele é ignorada, sem perder o resto do registro.
+  private async semRemovidos<T extends { alunoId: string }>(entries: T[]) {
+    const removidos = await this.presencaRepository.listAlunoIdsRemovidos(entries.map((e) => e.alunoId));
+    return entries.filter((e) => !removidos.has(e.alunoId));
   }
 
   // Aulas comuns com presença do dia, no mesmo formato das aulas da grade (kind "EVENTO", id do evento em eventoId).

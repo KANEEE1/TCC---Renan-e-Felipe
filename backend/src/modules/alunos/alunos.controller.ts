@@ -16,7 +16,7 @@ export class AlunosController {
       res.json(await this.alunosService.getById(req.params.id as string));
     }));
 
-    // Cadastrar e editar alunos é da gestão; a leitura continua aberta.
+    // Cadastrar, editar e excluir alunos é da gestão; a leitura continua aberta.
     this.router.post("/", requireAuth, requireRole("GESTAO"), asyncHandler(async (req, res) => {
       const input = createAlunoSchema.parse(req.body);
       res.status(201).json(await this.alunosService.create(input));
@@ -25,6 +25,12 @@ export class AlunosController {
     this.router.put("/:id", requireAuth, requireRole("GESTAO"), asyncHandler(async (req, res) => {
       const input = updateAlunoSchema.parse(req.body);
       res.json(await this.alunosService.update(req.params.id as string, input));
+    }));
+
+    // Exclusão lógica (some das listas atuais; o histórico fica).
+    this.router.delete("/:id", requireAuth, requireRole("GESTAO"), asyncHandler(async (req, res) => {
+      await this.alunosService.remove(req.params.id as string);
+      res.status(204).end();
     }));
   }
 }

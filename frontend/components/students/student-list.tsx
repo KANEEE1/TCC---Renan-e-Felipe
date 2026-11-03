@@ -19,6 +19,26 @@ function getInitials(name: string) {
   return name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
 }
 
+interface Indicadores {
+  alunoId: string;
+  frequenciaPercentual: number | null;
+  mediaSimuladosPercentual: number | null;
+}
+
+const formatPercent = (v: number | null) => (v === null ? "—" : `${Math.round(v)}%`);
+
+// Frequência abaixo disso sinaliza risco (badge vermelha).
+const FREQUENCIA_MINIMA = 75;
+
+const SORT_OPTIONS = [
+  { value: "nome", label: "Nome (A–Z)" },
+  { value: "media-desc", label: "Maior média" },
+  { value: "media-asc", label: "Menor média" },
+  { value: "freq-desc", label: "Maior frequência" },
+  { value: "freq-asc", label: "Menor frequência" }
+] as const;
+type SortKey = (typeof SORT_OPTIONS)[number]["value"];
+
 interface Student {
   id: string;
   nome: string;
@@ -32,6 +52,8 @@ export function StudentList() {
   const [classes, setClasses] = useState<{ id: string; nome: string }[]>([]);
   // Filtro por turma (id), combinado com a busca por texto.
   const [selectedClass, setSelectedClass] = useState("all");
+  const [indicadores, setIndicadores] = useState<Map<string, Indicadores>>(new Map());
+  const [sortBy, setSortBy] = useState<SortKey>("nome");
   // Cadastrar e editar alunos é da gestão; professores só consultam.
   const [isManagement, setIsManagement] = useState(false);
 
@@ -42,6 +64,10 @@ export function StudentList() {
       .get<{ id: string; nome: string }[]>("/classes")
       .then((list) => setClasses([...list].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"))))
       .catch(() => setClasses([]));
+    api
+      .get<Indicadores[]>("/students/indicadores")
+      .then((list) => setIndicadores(new Map(list.map((i) => [i.alunoId, i]))))
+      .catch(() => setIndicadores(new Map()));
   }, []);
 
   const withClass = students.map((s) => ({ ...s, className: s.matriculas[0]?.turma.nome ?? "Sem turma" }));
@@ -52,6 +78,17 @@ export function StudentList() {
       (s.nome.toLowerCase().includes(searchTerm.toLowerCase()) || s.className.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
+  // Sem o dado ordenado ("—") vai sempre para o fim; empate por nome.
+  const sortField = sortBy.startsWith("media") ? "mediaSimuladosPercentual" : "frequenciaPercentual";
+  const sortDir = sortBy.endsWith("asc") ? 1 : -1;
+  const sorted = [...filtered].sort((a, b) => {
+    const nameOrder = a.nome.localeCompare(b.nome, "pt-BR");
+    if (sortBy === "nome") return nameOrder;
+    const va = indicadores.get(a.id)?.[sortField] ?? null;
+    const vb = indicadores.get(b.id)?.[sortField] ?? null;
+    if (va === null || vb === null) return va === vb ? nameOrder : va === null ? 1 : -1;
+    return (va - vb) * sortDir || nameOrder;
+  });
 
   return (
     <div className="flex flex-1 flex-col bg-slate-50">
@@ -107,12 +144,27 @@ export function StudentList() {
         </div>
       )}
 
-      <div className="mb-3 px-4">
+      <div className="mb-3 flex items-center justify-between gap-3 px-4">
         <p className="text-xs text-slate-400">{filtered.length} aluno(s) encontrado(s)</p>
+        <label className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-slate-400">
+          Ordenar por
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as SortKey)}
+            className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-normal normal-case tracking-normal text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          >
+            {SORT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </label>
       </div>
 
       <div className="flex-1 space-y-2.5 overflow-y-auto px-4 pb-6">
-        {filtered.map((student, idx) => (
+        {sorted.map((student, idx) => {
+          const ind = indicadores.get(student.id);
+          const emRisco = ind?.frequenciaPercentual != null && ind.frequenciaPercentual < FREQUENCIA_MINIMA;
+          return (
           <div key={student.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md">
             <div className="p-4">
               <div className="mb-3 flex items-center gap-3">
@@ -124,6 +176,18 @@ export function StudentList() {
                     <p className="truncate text-sm text-slate-800">{student.nome}</p>
                     <span className="mt-0.5 inline-block rounded-full border border-indigo-100 bg-indigo-50 px-2 py-0.5 text-xs text-indigo-600">{student.className}</span>
                   </div>
+                </div>
+                {/* Indicadores do aluno, no formato da turma; frequência abaixo do mínimo fica vermelha. */}
+                <div className="flex shrink-0 gap-1.5">
+                  {[
+                    { value: formatPercent(ind?.frequenciaPercentual ?? null), label: "frequência", color: emRisco ? "from-red-500 to-rose-600" : "from-sky-500 to-blue-600" },
+                    { value: formatPercent(ind?.mediaSimuladosPercentual ?? null), label: "notas", color: "from-orange-500 to-amber-500" }
+                  ].map(({ value, label, color }) => (
+                    <div key={label} className={`rounded-xl bg-gradient-to-br px-2 py-1.5 text-center ${color}`}>
+                      <p className="text-lg leading-tight text-white">{value}</p>
+                      <p className="text-[10px] text-white/70">{label}</p>
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -153,7 +217,8 @@ export function StudentList() {
               </div>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

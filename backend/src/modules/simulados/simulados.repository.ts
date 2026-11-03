@@ -92,6 +92,17 @@ export class SimuladosRepository {
     });
   }
 
+  // Notas dos alunos ativos nos simulados com correção finalizada (base da média de cada aluno).
+  listNotasFinalizadasDosAlunosAtivos() {
+    return this.db.notaSimulado.findMany({
+      where: {
+        aluno: alunoAtivo,
+        reuniao: { tipo: "SIMULADO", pontuacaoMaxima: { not: null }, OR: [{ correcaoEnviadaEm: { not: null } }, { correcaoEncerradaEm: { not: null } }] }
+      },
+      select: { alunoId: true, valor: true, ausente: true, reuniao: { select: { pontuacaoMaxima: true } } }
+    });
+  }
+
   // Notas de todos os alunos nos simulados dados (base da média da turma).
   listNotasDosSimulados(reuniaoIds: string[]) {
     return this.db.notaSimulado.findMany({

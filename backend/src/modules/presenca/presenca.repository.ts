@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import { alunoAtivo, matriculaVigenciaSelect } from "../matriculas/vigencia.js";
 
 const presencaInclude = {
   aluno: true,
@@ -44,7 +45,7 @@ export class PresencaRepository {
 
   listMatriculasForSummary(turmaIds?: string[]) {
     return this.prisma.matricula.findMany({
-      where: turmaIds ? { turmaId: { in: turmaIds } } : undefined,
+      where: { aluno: alunoAtivo, ...(turmaIds ? { turmaId: { in: turmaIds } } : {}) },
       select: {
         alunoId: true,
         aluno: { select: { nome: true } },
@@ -79,7 +80,7 @@ export class PresencaRepository {
         horarioInicio: true,
         horarioFim: true,
         turma: {
-          select: { id: true, gradeInicio: true, gradeFim: true, matriculas: { select: { alunoId: true } } }
+          select: { id: true, gradeInicio: true, gradeFim: true, matriculas: { where: { aluno: alunoAtivo }, select: { alunoId: true } } }
         }
       }
     });
@@ -107,6 +108,13 @@ export class PresencaRepository {
     return new Set(rows.map((r) => `${r.ausencia.aulaId}|${r.ausencia.data.toISOString().slice(0, 10)}`));
   }
 
+  // Dentre os alunos dados, os removidos (exclusão lógica).
+  async listAlunoIdsRemovidos(alunoIds: string[]) {
+    if (alunoIds.length === 0) return new Set<string>();
+    const rows = await this.prisma.aluno.findMany({ where: { id: { in: alunoIds }, removidoEm: { not: null } }, select: { id: true } });
+    return new Set(rows.map((r) => r.id));
+  }
+
   async listTurmaIdsOfAluno(alunoId: string) {
     const rows = await this.prisma.matricula.findMany({ where: { alunoId }, select: { turmaId: true } });
     return rows.map((r) => r.turmaId);
@@ -125,7 +133,7 @@ export class PresencaRepository {
         horarioFim: true,
         createdAt: true,
         turma: {
-          select: { gradeInicio: true, gradeFim: true, matriculas: { select: { alunoId: true, dataMatricula: true, createdAt: true } } }
+          select: { gradeInicio: true, gradeFim: true, matriculas: { select: matriculaVigenciaSelect } }
         }
       }
     });
@@ -142,7 +150,7 @@ export class PresencaRepository {
         horarioFim: true,
         createdAt: true,
         turmas: {
-          select: { id: true, matriculas: { select: { alunoId: true, dataMatricula: true, createdAt: true } } },
+          select: { id: true, matriculas: { select: matriculaVigenciaSelect } },
           orderBy: { nome: "asc" }
         }
       }
@@ -160,7 +168,7 @@ export class PresencaRepository {
         horarioFim: true,
         participacoes: { select: { userId: true } },
         turmas: {
-          select: { id: true, matriculas: { select: { alunoId: true, dataMatricula: true, createdAt: true } } },
+          select: { id: true, matriculas: { select: matriculaVigenciaSelect } },
           orderBy: { nome: "asc" }
         }
       }

@@ -1,6 +1,10 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
+import { alunoAtivo } from "../matriculas/vigencia.js";
 
-const matriculaSelect = { alunoId: true, dataMatricula: true, createdAt: true, aluno: { select: { id: true, nome: true } } } as const;
+const matriculaSelect = { alunoId: true, dataMatricula: true, createdAt: true, aluno: { select: { id: true, nome: true, removidoEm: true } } } as const;
+// Aluno removido sai das listas de todos os simulados (as notas dele nos não finalizados são apagadas na remoção);
+// nos finalizados ele continua pelas notas.
+const matriculasAtivas = { where: { aluno: alunoAtivo }, select: matriculaSelect } as const;
 
 const simuladoSelect = {
   id: true,
@@ -15,10 +19,10 @@ const simuladoSelect = {
   correcaoEncerradaEm: true,
   correcaoEnviadaPor: { select: { id: true, name: true } },
   // Ordenadas por nome: o aluno em duas turmas fica na primeira (turmaPorAluno).
-  turmas: { select: { id: true, nome: true, matriculas: { select: matriculaSelect } }, orderBy: { nome: "asc" } },
+  turmas: { select: { id: true, nome: true, matriculas: matriculasAtivas }, orderBy: { nome: "asc" } },
   corretores: { select: { id: true, name: true }, orderBy: { name: "asc" } },
   notasSimulado: {
-    select: { alunoId: true, turmaId: true, valor: true, ausente: true, automatica: true, aluno: { select: { id: true, nome: true } }, turma: { select: { nome: true } } }
+    select: { alunoId: true, turmaId: true, valor: true, ausente: true, automatica: true, aluno: { select: { id: true, nome: true, removidoEm: true } }, turma: { select: { nome: true } } }
   }
 } as const;
 
@@ -103,7 +107,7 @@ export class SimuladosRepository {
       select: {
         id: true,
         data: true,
-        turmas: { select: { id: true, matriculas: { select: matriculaSelect } }, orderBy: { nome: "asc" } },
+        turmas: { select: { id: true, matriculas: matriculasAtivas }, orderBy: { nome: "asc" } },
         notasSimulado: { select: { alunoId: true } }
       }
     });

@@ -134,6 +134,8 @@ model Aluno {
   dataNascimento DateTime? @db.Date
   cpf            String?   @unique
   endereco       String?
+  // Exclusão lógica: some das listas atuais; presenças e notas antigas ficam no histórico.
+  removidoEm     DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 

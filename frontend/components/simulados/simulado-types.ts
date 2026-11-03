@@ -29,6 +29,8 @@ export interface SimuladoAluno {
   // Zero dado pelo sistema porque o prazo venceu sem correção.
   automatica: boolean;
   lancado: boolean;
+  // Aluno excluído: só aparece nos simulados finalizados em que tem nota, sem edição.
+  removido: boolean;
 }
 
 export interface SimuladoDetalhe extends SimuladoResumo {

@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { parseTimeToDate } from "../../shared/time.js";
+import { alunoAtivo } from "../matriculas/vigencia.js";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -49,7 +50,7 @@ export class TurmasRepository {
   }
 
   async contarAlunosPorTurma() {
-    const grupos = await this.db.matricula.groupBy({ by: ["turmaId"], _count: { _all: true } });
+    const grupos = await this.db.matricula.groupBy({ by: ["turmaId"], where: { aluno: alunoAtivo }, _count: { _all: true } });
     return new Map(grupos.map((g) => [g.turmaId, g._count._all]));
   }
 
@@ -57,7 +58,7 @@ export class TurmasRepository {
     return this.db.turma.findUnique({
       where: { id },
       include: {
-        matriculas: { include: { aluno: true } },
+        matriculas: { where: { aluno: alunoAtivo }, include: { aluno: true } },
         ...cargasInclude
       }
     });

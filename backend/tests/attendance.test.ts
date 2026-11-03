@@ -341,4 +341,68 @@ describe("attendance", () => {
       expect(res.body).toEqual({ totalClasses: 0, present: 0, absent: 0, percentage: 0, history: [] });
     });
   });
+
+  describe("aluno removido", () => {
+    const remover = (alunoId: string) => request(app).delete(`/students/${alunoId}`).set(asGestao());
+
+    it("is left out of the attendance list and of the registration from the removal on", async () => {
+      const { turma, aula, prof, alunos } = await setup();
+      setNow(QUARTA_0830);
+      expect((await remover(alunos[0].id)).status).toBe(204);
+
+      const lista = await request(app).get(`/classes/${turma.id}`);
+      expect(lista.body.matriculas.map((m: { alunoId: string }) => m.alunoId)).toEqual([alunos[1].id]);
+
+      const send = (entries: { alunoId: string; presente: boolean }[]) =>
+        request(app).post("/attendance/mark").set(asTeacher(prof.id)).send({ aulaId: aula.id, entries });
+      // Lista aberta antes da remoção: a entrada do removido é ignorada e o resto é gravado.
+      expect((await send([{ alunoId: alunos[0].id, presente: false }, { alunoId: alunos[1].id, presente: false }])).status).toBe(201);
+      // O removido não é gravado nem preenchido como presente.
+      expect((await prisma.presenca.findMany({ where: { aulaId: aula.id } })).map((p) => p.alunoId)).toEqual([alunos[1].id]);
+    });
+
+    it("keeps old attendance in the report and class frequency, without consolidating after the removal", async () => {
+      const { turma, alunos } = await setup({ gradeInicio: "2026-10-14" });
+      await prisma.presenca.create({
+        data: { alunoId: alunos[0].id, aulaId: (await prisma.aula.findFirstOrThrow()).id, data: new Date("2026-10-14"), presente: false }
+      });
+      setNow("2026-10-27T15:00:00Z"); // terça: consolida 21/10 para os dois
+      const frequencia = async () =>
+        (await request(app).get("/classes/indicadores").set(asGestao())).body.find((r: { turmaId: string }) => r.turmaId === turma.id)
+          .frequenciaPercentual;
+      const antes = await frequencia();
+      await remover(alunos[0].id);
+      expect(await frequencia()).toBe(antes);
+
+      setNow("2026-11-05T15:00:00Z"); // quinta: 28/10 e 04/11 já passaram, só para o aluno ativo
+      await request(app).get("/attendance");
+      const datas = (await prisma.presenca.findMany({ where: { alunoId: alunos[0].id }, orderBy: { data: "asc" } })).map((p) =>
+        p.data.toISOString().slice(0, 10)
+      );
+      expect(datas).toEqual(["2026-10-14", "2026-10-21"]);
+      expect(await prisma.presenca.count({ where: { alunoId: alunos[1].id } })).toBe(3);
+
+      const report = await request(app).get(`/attendance/report/${alunos[0].id}`);
+      expect(report.body).toMatchObject({ totalClasses: 2, present: 1, absent: 1, percentage: 50 });
+      // Frequência da turma: 4 presentes de 5 registros (a falta antiga continua contando).
+      const indicadores = await request(app).get("/classes/indicadores").set(asGestao());
+      expect(indicadores.body.find((r: { turmaId: string }) => r.turmaId === turma.id).frequenciaPercentual).toBe(80);
+      // A lista de frequência por aluno é atual: o removido não aparece.
+      const summary = await request(app).get("/attendance/summary");
+      expect(summary.body.items.map((i: { alunoId: string }) => i.alunoId)).toEqual([alunos[1].id]);
+    });
+
+    it("uses the removal day in SP: removed at 22:00 SP, the same SP day no longer counts but the previous one does", async () => {
+      const { aula, alunos } = await setup({ gradeInicio: "2026-10-27" });
+      // Mais uma aula na terça 27/10 (a da setup é na quarta 28/10); nenhuma consolidada ainda.
+      const { turmaId, disciplinaId, professorId, horarioInicio, horarioFim, createdAt } = aula;
+      await prisma.aula.create({ data: { turmaId, disciplinaId, professorId, horarioInicio, horarioFim, createdAt, diaSemana: "TERCA" } });
+      setNow("2026-10-29T01:00:00Z"); // quarta 22:00 SP (já quinta em UTC)
+      await remover(alunos[0].id);
+      await request(app).get("/attendance");
+      const datas = (await prisma.presenca.findMany({ where: { alunoId: alunos[0].id } })).map((p) => p.data.toISOString().slice(0, 10));
+      expect(datas).toEqual(["2026-10-27"]);
+      expect(await prisma.presenca.count({ where: { alunoId: alunos[1].id } })).toBe(2);
+    });
+  });
 });

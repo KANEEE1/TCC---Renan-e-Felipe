@@ -30,6 +30,7 @@ interface Teacher {
   email: string;
   celular: string | null;
   ativo: boolean;
+  emailConfirmado: boolean;
   disciplinas: { id: string; nome: string }[];
 }
 
@@ -159,6 +160,14 @@ export function TeacherList() {
                   >
                     {teacher.ativo ? "Ativo" : "Inativo"}
                   </span>
+                  {!teacher.emailConfirmado && (
+                    <span
+                      title="O professor ainda não clicou no link de confirmação enviado por e-mail"
+                      className="ml-1 shrink-0 rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-xs text-amber-700"
+                    >
+                      E-mail pendente
+                    </span>
+                  )}
                 </div>
                 <div className="mt-1.5 flex flex-wrap gap-1">
                   {teacher.disciplinas.map((subject) => (

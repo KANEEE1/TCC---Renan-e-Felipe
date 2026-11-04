@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum Role {
@@ -97,6 +98,7 @@ model User {
   passwordHash String
   roles        Role[]
   ativo        Boolean  @default(true)
+  emailConfirmado Boolean @default(true)
   departamento String?
   bio          String?
   createdAt    DateTime @default(now())

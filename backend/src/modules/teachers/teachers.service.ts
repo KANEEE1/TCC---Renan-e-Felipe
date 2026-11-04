@@ -1,7 +1,11 @@
 import bcrypt from "bcryptjs";
 import { HttpError } from "../../shared/http.js";
+import { signPurposeToken } from "../../shared/auth.js";
+import { sendEmail } from "../../shared/email.js";
 import type { CreateTeacherInput, UpdateTeacherInput } from "./teachers.schemas.js";
 import type { TeachersRepository } from "./teachers.repository.js";
+
+const CONFIRM_EMAIL_PURPOSE = "confirm-email";
 
 const SALT_ROUNDS = 10;
 
@@ -32,12 +36,28 @@ export class TeachersService {
     const { password, disciplinaIds, ...rest } = input;
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
-    return this.teachersRepository.create({
+    const teacher = await this.teachersRepository.create({
       ...rest,
       passwordHash,
       roles: ["PROFESSOR"],
+      emailConfirmado: false,
       disciplinas: disciplinaIds ? { connect: disciplinaIds.map((id) => ({ id })) } : undefined
     });
+
+    await this.sendConfirmationEmail(teacher.id, teacher.email, teacher.name);
+
+    return teacher;
+  }
+
+  private async sendConfirmationEmail(userId: string, email: string, name: string) {
+    const token = signPurposeToken(CONFIRM_EMAIL_PURPOSE, userId, "7d");
+    const link = `${process.env.FRONTEND_URL}/confirmar-email?token=${token}`;
+
+    await sendEmail(
+      email,
+      "Confirme seu e-mail - Cursinho Popular",
+      `<p>Olá, ${name}.</p><p>Sua conta de professor foi criada. Confirme seu e-mail clicando no link abaixo:</p><p><a href="${link}">${link}</a></p><p>Esse link expira em 7 dias.</p>`
+    );
   }
 
   async update(id: string, input: UpdateTeacherInput) {

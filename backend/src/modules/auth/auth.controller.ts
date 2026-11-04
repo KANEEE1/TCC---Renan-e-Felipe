@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { asyncHandler } from "../../shared/http.js";
 import { requireAuth } from "../../shared/auth.js";
-import { changePasswordSchema, loginSchema, setupSchema, updateMeSchema } from "./auth.schemas.js";
+import { changePasswordSchema, confirmEmailSchema, loginSchema, setupSchema, updateMeSchema } from "./auth.schemas.js";
 import type { AuthService } from "./auth.service.js";
 
 export class AuthController {
@@ -26,6 +26,12 @@ export class AuthController {
     this.router.post("/setup", asyncHandler(async (req, res) => {
       const input = setupSchema.parse(req.body);
       res.status(201).json(await this.authService.setup(input));
+    }));
+
+    this.router.post("/confirm-email", asyncHandler(async (req, res) => {
+      const input = confirmEmailSchema.parse(req.body);
+      await this.authService.confirmEmail(input);
+      res.status(204).send();
     }));
 
     this.router.get("/me", requireAuth, asyncHandler(async (req, res) => {

@@ -38,19 +38,25 @@ export function TeacherList() {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   // "Editar" (disciplinas e status) é da gestão. "Disponibilidade" é visível a todos; só o próprio professor a altera.
   const [isManagement, setIsManagement] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   useEffect(() => {
-    setIsManagement(!!getSessionUser()?.roles.includes("GESTAO"));
+    const user = getSessionUser();
+    setIsManagement(!!user?.roles.includes("GESTAO"));
+    setCurrentUserId(user?.id ?? null);
     api.get<Teacher[]>("/teachers").then(setTeachers).catch(() => setTeachers([]));
   }, []);
 
   const actionCount = isManagement ? 3 : 2;
 
-  const filteredTeachers = teachers.filter(
-    (teacher) =>
-      teacher.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      teacher.disciplinas.some((subject) => subject.nome.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  // O professor logado vem primeiro (e destacado); os demais mantêm a ordem da API.
+  const filteredTeachers = teachers
+    .filter(
+      (teacher) =>
+        teacher.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        teacher.disciplinas.some((subject) => subject.nome.toLowerCase().includes(searchTerm.toLowerCase()))
+    )
+    .sort((a, b) => Number(b.id === currentUserId) - Number(a.id === currentUserId));
 
   return (
     <div className="flex flex-1 flex-col bg-slate-50">
@@ -92,8 +98,15 @@ export function TeacherList() {
       </div>
 
       <div className="flex-1 space-y-3 overflow-y-auto px-4 pb-6">
-        {filteredTeachers.map((teacher, idx) => (
-          <div key={teacher.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md">
+        {filteredTeachers.map((teacher, idx) => {
+          const isMe = teacher.id === currentUserId;
+          return (
+          <div
+            key={teacher.id}
+            className={`overflow-hidden rounded-2xl border bg-white shadow-sm transition-shadow hover:shadow-md ${
+              isMe ? "border-blue-300 ring-2 ring-blue-100" : "border-slate-200"
+            }`}
+          >
             <div className="flex items-center gap-3 p-4 pb-3">
               <div
                 className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br shadow-sm ${AVATAR_GRADIENTS[idx % AVATAR_GRADIENTS.length]}`}
@@ -102,7 +115,10 @@ export function TeacherList() {
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between">
-                  <h3 className="truncate text-slate-800">{teacher.name}</h3>
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <h3 className="truncate text-slate-800">{teacher.name}</h3>
+                    {isMe && <span className="shrink-0 rounded-full bg-blue-600 px-2 py-0.5 text-xs text-white">Você</span>}
+                  </div>
                   <span
                     className={`ml-2 shrink-0 rounded-full border px-2 py-0.5 text-xs ${
                       teacher.ativo ? "border-emerald-200 bg-emerald-100 text-emerald-700" : "border-slate-200 bg-slate-100 text-slate-500"
@@ -158,7 +174,8 @@ export function TeacherList() {
               </Link>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

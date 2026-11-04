@@ -67,7 +67,9 @@ export class SubstituicoesRepository {
             diaSemana: true,
             horarioInicio: true,
             horarioFim: true,
-            excecoes: { select: excecaoDaAulaSelect }
+            excecoes: { select: excecaoDaAulaSelect },
+            turma: { select: { nome: true } },
+            disciplina: { select: { nome: true } }
           }
         }
       }
@@ -76,6 +78,10 @@ export class SubstituicoesRepository {
 
   findUserById(id: string) {
     return this.db.user.findUnique({ where: { id }, select: { id: true, ativo: true, roles: true } });
+  }
+
+  findUserEmail(id: string) {
+    return this.db.user.findUnique({ where: { id }, select: { name: true, email: true } });
   }
 
   findById(id: string) {

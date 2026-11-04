@@ -1,6 +1,7 @@
 import { hasRole, type Actor } from "../../shared/auth.js";
 import { HttpError } from "../../shared/http.js";
 import type { StatusSubstituicao } from "@prisma/client";
+import { sendEmail } from "../../shared/email.js";
 import { diaSemanaOfDateOnly, formatTimeHHMM, parseTimeToDate, todayInSaoPaulo } from "../../shared/time.js";
 import { overlaps } from "../grade-horaria/grade-horaria.allocator.js";
 import { gerarOcorrencias, isoDate, valoresEfetivos, type ExcecaoOcorrencia } from "../grade-horaria/ocorrencias.js";
@@ -10,13 +11,34 @@ import type { CreateSubstituicaoInput, RespondSubstituicaoInput } from "./substi
 
 type Horario = { horarioInicio: Date; horarioFim: Date };
 type ExcecaoDaAula = Pick<ExcecaoOcorrencia, "dataOriginal" | "cancelada" | "data" | "horarioInicio" | "horarioFim" | "professorId">;
-type AusenciaBruta = { id: string; data: Date; aula: Horario & { professorId: string; disciplinaId: string; excecoes: ExcecaoDaAula[] } };
+type AusenciaBruta = {
+  id: string;
+  data: Date;
+  aula: Horario & { professorId: string; disciplinaId: string; excecoes: ExcecaoDaAula[]; turma: { nome: string }; disciplina: { nome: string } };
+};
 // Falta vista pela ocorrência efetiva: data, horário e professor já com a exceção aplicada (data = data efetiva).
-type Ausencia = Horario & { id: string; data: Date; professorId: string; disciplinaId: string };
+type Ausencia = Horario & { id: string; data: Date; professorId: string; disciplinaId: string; turma: string; disciplina: string };
 
 function efetivar(ausencia: AusenciaBruta): Ausencia {
   const { aula } = ausencia;
-  return { id: ausencia.id, disciplinaId: aula.disciplinaId, ...valoresEfetivos(aula, aula.excecoes, ausencia.data) };
+  return {
+    id: ausencia.id,
+    disciplinaId: aula.disciplinaId,
+    turma: aula.turma.nome,
+    disciplina: aula.disciplina.nome,
+    ...valoresEfetivos(aula, aula.excecoes, ausencia.data)
+  };
+}
+
+// E-mail enviado depois que a transação commitar (nunca aguardamos uma chamada de rede com a transação aberta).
+function emailPedidoSubstituicao(destinatario: { email: string; name: string }, ausencia: Ausencia) {
+  const link = `${process.env.FRONTEND_URL}/substitutions`;
+  return () =>
+    sendEmail(
+      destinatario.email,
+      "Pedido de substituição - Cursinho Popular",
+      `<p>Olá, ${destinatario.name}.</p><p>Você foi indicado para substituir a aula de ${ausencia.disciplina} (${ausencia.turma}) em ${isoDate(ausencia.data)}, das ${formatTimeHHMM(ausencia.horarioInicio)} às ${formatTimeHHMM(ausencia.horarioFim)}. Entre no sistema para aceitar ou recusar.</p><p><a href="${link}">${link}</a></p>`
+    );
 }
 
 // Compromissos em que a falta registrada tem data efetiva igual a `data` (substituições ativas do professor).
@@ -34,8 +56,10 @@ type Substituto = { id: string; ativo: boolean; roles: string[] };
 export class SubstituicoesService {
   constructor(private readonly substituicoesRepository: SubstituicoesRepository) {}
 
-  create(input: CreateSubstituicaoInput, designadoPorId: string) {
-    return this.substituicoesRepository.transaction(async (repository) => {
+  async create(input: CreateSubstituicaoInput, designadoPorId: string) {
+    let aviso: (() => Promise<void>) | undefined;
+
+    const criada = await this.substituicoesRepository.transaction(async (repository) => {
       const bruta = await repository.findAusenciaById(input.ausenciaId);
 
       if (!bruta) {
@@ -55,8 +79,17 @@ export class SubstituicoesService {
         throw motivo;
       }
 
+      const destinatario = await repository.findUserEmail(input.substitutoId);
+      if (destinatario) {
+        aviso = emailPedidoSubstituicao(destinatario, ausencia);
+      }
+
       return repository.create({ ausenciaId: ausencia.id, substitutoId: input.substitutoId }, designadoPorId);
     });
+
+    if (aviso) await aviso();
+
+    return criada;
   }
 
   findMine(status: StatusSubstituicao | undefined, actor: Actor) {

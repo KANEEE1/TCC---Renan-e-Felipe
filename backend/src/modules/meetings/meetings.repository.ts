@@ -5,7 +5,7 @@ import type { CreateMeetingInput, UpdateMeetingInput } from "./meetings.schemas.
 
 const meetingInclude = {
   criadoPor: { select: { id: true, name: true } },
-  participacoes: { include: { user: { select: { id: true, name: true, roles: true } } } },
+  participacoes: { include: { user: { select: { id: true, name: true, email: true, roles: true } } } },
   turmas: { select: { id: true, nome: true }, orderBy: { nome: "asc" } },
   disciplina: { select: { id: true, nome: true } },
   corretores: { select: { id: true, name: true }, orderBy: { name: "asc" } }

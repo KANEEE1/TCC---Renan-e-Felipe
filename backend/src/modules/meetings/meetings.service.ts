@@ -1,4 +1,5 @@
 import { agora } from "../../shared/clock.js";
+import { sendEmail } from "../../shared/email.js";
 import { formatTimeHHMM, todayInSaoPaulo } from "../../shared/time.js";
 import { hasRole, type Actor } from "../../shared/auth.js";
 import { HttpError } from "../../shared/http.js";
@@ -42,6 +43,25 @@ export class MeetingsService {
     private readonly simuladosService: Pick<SimuladosService, "consolidarPrazos">
   ) {}
 
+  // Enviado depois que o repositório já commitou (create/update/remove fazem sua própria transação).
+  private async emailAviso(
+    destinatario: { email: string; name: string },
+    assunto: string,
+    mensagem: string
+  ) {
+    const link = `${process.env.FRONTEND_URL}/dashboard`;
+    await sendEmail(
+      destinatario.email,
+      `${assunto} - Cursinho Popular`,
+      `<p>Olá, ${destinatario.name}.</p><p>${mensagem}</p><p><a href="${link}">${link}</a></p>`
+    );
+  }
+
+  private detalhes(meeting: { titulo: string; turmas: { nome: string }[]; data: Date; horarioInicio: Date; horarioFim: Date }) {
+    const turma = meeting.turmas.length > 0 ? ` (${meeting.turmas.map((t) => t.nome).join(", ")})` : "";
+    return `${meeting.titulo}${turma} em ${isoDate(meeting.data)}, das ${formatTimeHHMM(meeting.horarioInicio)} às ${formatTimeHHMM(meeting.horarioFim)}`;
+  }
+
   listParticipantOptions() {
     return this.meetingsRepository.listParticipantOptions();
   }
@@ -82,7 +102,19 @@ export class MeetingsService {
     if (input.exigePresenca) this.assertComecaNoFuturo(isoDate(input.data), input.horarioInicio);
     const semProfessores = await this.resolveSemProfessores(convidadoIds, input.semProfessores ?? false);
 
-    return this.toResponse(await this.meetingsRepository.create({ ...fields, semProfessores }, actor.id, convidadoIds, turmas, corretores), actor);
+    const meeting = await this.meetingsRepository.create({ ...fields, semProfessores }, actor.id, convidadoIds, turmas, corretores);
+
+    for (const participacao of meeting.participacoes) {
+      if (participacao.status === "PENDENTE" && participacao.user.email) {
+        await this.emailAviso(
+          participacao.user,
+          "Novo evento com a sua participação",
+          `Você foi convidado(a) para ${this.detalhes(meeting)}. Confirme sua presença no sistema.`
+        );
+      }
+    }
+
+    return this.toResponse(meeting, actor);
   }
 
   async update(id: string, input: UpdateMeetingInput, actor: Actor) {
@@ -108,11 +140,13 @@ export class MeetingsService {
     const { participanteIds, turmaIds, corretorIds, ...rest } = input;
     const fields: UpdateMeetingFields = rest;
     let syncedIds: string[] | undefined;
+    let novosIds: string[] = [];
 
     if (participanteIds) {
       syncedIds = [...new Set(participanteIds)];
       const atuais = new Set(current.participacoes.map((participacao) => participacao.userId));
-      await this.assertActiveUsers(syncedIds.filter((userId) => !atuais.has(userId)));
+      novosIds = syncedIds.filter((userId) => !atuais.has(userId));
+      await this.assertActiveUsers(novosIds);
     }
 
     const turmas = turmaIds ? [...new Set(turmaIds)] : undefined;
@@ -150,10 +184,38 @@ export class MeetingsService {
             .filter((userId) => userId !== actor.id && !syncedIds.includes(userId))
         : [];
 
-    return this.toResponse(
-      await this.meetingsRepository.update(id, fields, actor.id, syncedIds, turmas, remarcarIds, retiradosIds, corretoresFinais),
-      actor
-    );
+    const atualizada = await this.meetingsRepository.update(id, fields, actor.id, syncedIds, turmas, remarcarIds, retiradosIds, corretoresFinais);
+
+    const porId = new Map(atualizada.participacoes.map((participacao) => [participacao.userId, participacao]));
+    for (const userId of novosIds) {
+      const participacao = porId.get(userId);
+      if (participacao?.user.email) {
+        await this.emailAviso(
+          participacao.user,
+          "Novo evento com a sua participação",
+          `Você foi convidado(a) para ${this.detalhes(atualizada)}. Confirme sua presença no sistema.`
+        );
+      }
+    }
+    for (const userId of remarcarIds) {
+      if (userId === actor.id || retiradosIds.includes(userId) || novosIds.includes(userId)) continue;
+      const participacao = porId.get(userId);
+      if (participacao?.user.email) {
+        await this.emailAviso(
+          participacao.user,
+          "Evento remarcado",
+          `${this.detalhes(atualizada)}. A data ou o horário mudou. Confirme se você continua disponível.`
+        );
+      }
+    }
+    for (const userId of retiradosIds) {
+      const participacao = current.participacoes.find((p) => p.userId === userId);
+      if (participacao?.user.email) {
+        await this.emailAviso(participacao.user, "Você foi removido de um evento", `Você não está mais em ${this.detalhes(current)}.`);
+      }
+    }
+
+    return this.toResponse(atualizada, actor);
   }
 
   async respond(id: string, input: RsvpInput, actor: Actor) {
@@ -193,6 +255,13 @@ export class MeetingsService {
           }));
 
     await this.meetingsRepository.remove(id, avisos);
+
+    for (const aviso of avisos) {
+      const participacao = current.participacoes.find((p) => p.userId === aviso.userId);
+      if (participacao?.user.email) {
+        await this.emailAviso(participacao.user, "Evento cancelado", `${this.detalhes(current)} foi cancelado.`);
+      }
+    }
   }
 
   private async findOrThrow(id: string) {

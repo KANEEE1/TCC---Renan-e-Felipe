@@ -11,7 +11,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "pretest": "DATABASE_URL=\"postgresql://postgres:postgres@localhost:5433/tcc_test?schema=public\" prisma db push --accept-data-loss --skip-generate",
+    "pretest": "DATABASE_URL=\"postgresql://postgres:postgres@localhost:5433/tcc_test?schema=public\" DIRECT_URL=\"postgresql://postgres:postgres@localhost:5433/tcc_test?schema=public\" prisma db push --accept-data-loss --skip-generate",
     "test": "vitest run"
   },
   "dependencies": {

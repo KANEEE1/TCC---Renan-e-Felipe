@@ -95,9 +95,16 @@ export function LoginCard({ roleLabel, accent, showChangePassword = false }: Log
         </button>
       </form>
 
+      <p className="mt-4 text-center text-sm text-slate-500">
+        Esqueceu a senha?{" "}
+        <Link href="/esqueci-senha" className="font-semibold text-blue-600 transition hover:text-blue-700">
+          Redefinir senha
+        </Link>
+      </p>
+
       {showChangePassword && (
-        <p className="mt-4 text-center text-sm text-slate-500">
-          Quer trocar a senha?{" "}
+        <p className="mt-2 text-center text-sm text-slate-500">
+          Sabe a senha atual?{" "}
           <Link href="/trocar-senha" className="font-semibold text-blue-600 transition hover:text-blue-700">
             Trocar senha
           </Link>

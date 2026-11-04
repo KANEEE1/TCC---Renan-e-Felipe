@@ -28,6 +28,14 @@ function erroDaNota(texto: string, maxima: number) {
   return null;
 }
 
+// Filtro da correção pelo que já está salvo no servidor (nota, Não presente ou zero automático).
+const FILTROS = [
+  { value: "todos", label: "Todos" },
+  { value: "sem", label: "Sem nota" },
+  { value: "com", label: "Com nota" }
+] as const;
+type Filtro = (typeof FILTROS)[number]["value"];
+
 function motivoSemLancamento(s: SimuladoDetalhe) {
   switch (s.estado) {
     case "CONFIGURACAO_PENDENTE":
@@ -50,6 +58,7 @@ export function SimuladoDetail({ simuladoId }: { simuladoId: string }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [filtro, setFiltro] = useState<Filtro>("todos");
 
   // `editados`: campos que o usuário mudou e ainda não salvou (preservados ao recarregar depois de um conflito).
   const aplicar = (detalhe: SimuladoDetalhe, editados: Record<string, Lancamento> = {}) => {
@@ -78,6 +87,13 @@ export function SimuladoDetail({ simuladoId }: { simuladoId: string }) {
     return !!item && (item.ausente || item.valor.trim() !== "");
   };
   const lancados = alunos.filter((aluno) => preenchido(aluno.alunoId)).length;
+
+  // Usa o estado salvo (não o digitado): o aluno só muda de grupo depois de Salvar.
+  const contagem = { todos: alunos.length, com: alunos.filter((a) => a.lancado).length, sem: alunos.filter((a) => !a.lancado).length };
+  const noFiltro = (aluno: SimuladoAluno) => filtro === "todos" || aluno.lancado === (filtro === "com");
+  const turmasVisiveis = (simulado?.turmasComAlunos ?? [])
+    .map((turma) => ({ ...turma, alunos: turma.alunos.filter(noFiltro) }))
+    .filter((turma) => filtro === "todos" || turma.alunos.length > 0);
 
   const atualizar = (alunoId: string, mudanca: Partial<Lancamento>) => {
     setFeedback(null);
@@ -190,7 +206,33 @@ export function SimuladoDetail({ simuladoId }: { simuladoId: string }) {
           </p>
         )}
 
-        {simulado?.turmasComAlunos.map((turma) => (
+        {podeLancar && alunos.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {FILTROS.map(({ value, label }) => {
+              const active = filtro === value;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setFiltro(value)}
+                  aria-pressed={active}
+                  className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+                    active ? "border-orange-200 bg-orange-50 text-orange-700" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  {label} ({contagem[value]})
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {podeLancar && filtro !== "todos" && turmasVisiveis.length === 0 && (
+          <p className="rounded-2xl border border-dashed border-slate-200 bg-white p-4 text-center text-sm text-slate-400">
+            {filtro === "sem" ? "Todos os alunos já têm nota salva." : "Nenhum aluno com nota salva ainda."}
+          </p>
+        )}
+
+        {(podeLancar ? turmasVisiveis : simulado?.turmasComAlunos ?? []).map((turma) => (
           <section key={turma.id} className="rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
               <h2 className="text-sm text-slate-800">{turma.nome}</h2>

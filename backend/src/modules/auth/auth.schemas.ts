@@ -20,6 +20,10 @@ export const setupSchema = z.object({
   password: z.string().min(8)
 });
 
+export const confirmEmailSchema = z.object({
+  token: z.string().min(1)
+});
+
 export const changePasswordSchema = z
   .object({
     email: z.string().email(),
@@ -34,4 +38,5 @@ export const changePasswordSchema = z
 export type LoginInput = z.infer<typeof loginSchema>;
 export type UpdateMeInput = z.infer<typeof updateMeSchema>;
 export type SetupInput = z.infer<typeof setupSchema>;
+export type ConfirmEmailInput = z.infer<typeof confirmEmailSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;

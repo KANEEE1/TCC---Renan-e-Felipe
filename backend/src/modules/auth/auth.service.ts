@@ -1,8 +1,8 @@
 import bcrypt from "bcryptjs";
 import type { Role } from "@prisma/client";
 import { HttpError } from "../../shared/http.js";
-import { signAuthToken } from "../../shared/auth.js";
-import type { ChangePasswordInput, LoginInput, SetupInput, UpdateMeInput } from "./auth.schemas.js";
+import { signAuthToken, verifyPurposeToken } from "../../shared/auth.js";
+import type { ChangePasswordInput, ConfirmEmailInput, LoginInput, SetupInput, UpdateMeInput } from "./auth.schemas.js";
 import type { UsersRepository } from "../users/users.repository.js";
 
 const SALT_ROUNDS = 10;
@@ -43,6 +43,11 @@ export class AuthService {
     }
 
     return user;
+  }
+
+  async confirmEmail(input: ConfirmEmailInput) {
+    const userId = verifyPurposeToken("confirm-email", input.token);
+    await this.usersRepository.update(userId, { emailConfirmado: true });
   }
 
   async setupStatus() {

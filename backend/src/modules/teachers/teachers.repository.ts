@@ -7,6 +7,7 @@ const teacherSelect = {
   celular: true,
   roles: true,
   ativo: true,
+  emailConfirmado: true,
   disciplinas: true,
   createdAt: true,
   updatedAt: true

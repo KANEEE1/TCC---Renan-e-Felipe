@@ -18,13 +18,15 @@ export interface TodayItem {
     turmas: { id: string; nome: string }[];
     professor: { id: string; name: string };
   };
-  status: "AGUARDANDO" | "ABERTA" | "ENCERRADA";
+  // A chamada abre no início da aula e fica aberta até o fim do dia; depois, sem registro, todos ficam presentes.
+  status: "AGUARDANDO" | "ABERTA";
   registrada: boolean;
-  automatica: boolean;
   responsavel: boolean;
   podeRegistrar: boolean;
   presentes: number;
   total: number;
+  // Alunos já registrados como ausentes hoje (a tela de registro abre com eles desmarcados).
+  ausentes: string[];
 }
 
 interface PresencaDTO {
@@ -109,7 +111,7 @@ export function AttendanceList() {
 
           <div className="space-y-2.5">
             {todayClasses.map((item, idx) => {
-              const { aula, status, registrada, automatica, responsavel, podeRegistrar, presentes, total } = item;
+              const { aula, status, registrada, podeRegistrar, presentes, total } = item;
               return (
               <div key={`${item.kind}-${aula.id}`} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <div className="flex">
@@ -131,31 +133,41 @@ export function AttendanceList() {
                     {status === "AGUARDANDO" && (
                       <div className="w-full rounded-xl bg-slate-100 py-2.5 text-center text-sm text-slate-400">Abre às {aula.horarioInicio}</div>
                     )}
-                    {status === "ABERTA" &&
-                      (podeRegistrar ? (
-                        <Link
-                          href={markHref(item)}
-                          className="block w-full rounded-xl bg-emerald-600 py-2.5 text-center text-sm text-white transition-colors hover:bg-emerald-700"
-                        >
-                          Registrar presença
-                        </Link>
-                      ) : (
-                        <div className="w-full rounded-xl bg-slate-100 py-2.5 text-center text-sm text-slate-500">
-                          {responsavel ? "Em andamento" : "Somente o professor responsável registra"}
-                        </div>
-                      ))}
-                    {status === "ENCERRADA" && (
-                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-slate-600">
-                            Encerrada · {registrada ? "Presença registrada" : automatica ? "Presença automática (todos presentes)" : "Sem registro"}
-                          </span>
-                          {total > 0 && (
-                            <span className="text-slate-600">
-                              {presentes}/{total}
+                    {status === "ABERTA" && (
+                      <div className="space-y-2">
+                        {registrada && (
+                          <div className="flex items-center justify-between rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+                            <span className="flex items-center gap-1.5">
+                              <CheckCircle size={14} /> Presença registrada
                             </span>
-                          )}
-                        </div>
+                            {total > 0 && (
+                              <span>
+                                {presentes}/{total}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        {podeRegistrar ? (
+                          <>
+                            <Link
+                              href={markHref(item)}
+                              className={`block w-full rounded-xl py-2.5 text-center text-sm transition-colors ${
+                                registrada
+                                  ? "border border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                                  : "bg-emerald-600 text-white hover:bg-emerald-700"
+                              }`}
+                            >
+                              {registrada ? "Editar presença" : "Registrar presença"}
+                            </Link>
+                            <p className="text-center text-[11px] text-slate-400">A chamada fica aberta até o fim do dia.</p>
+                          </>
+                        ) : (
+                          !registrada && (
+                            <div className="w-full rounded-xl bg-slate-100 py-2.5 text-center text-sm text-slate-500">
+                              Somente o professor responsável registra
+                            </div>
+                          )
+                        )}
                       </div>
                     )}
                   </div>

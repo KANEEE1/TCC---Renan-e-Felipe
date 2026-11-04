@@ -11,6 +11,9 @@ const QUARTA_0830 = "2026-10-28T11:30:00Z";
 const QUARTA_1000 = "2026-10-28T13:00:00Z";
 const QUARTA_1001 = "2026-10-28T13:01:00Z";
 const QUINTA_0830 = "2026-10-29T11:30:00Z";
+// A chamada fica aberta até o fim do dia (SP): 23:59 de quarta ainda é quarta; 00:01 já é quinta.
+const QUARTA_2359 = "2026-10-29T02:59:00Z";
+const QUINTA_0001 = "2026-10-29T03:01:00Z";
 
 function setNow(iso: string) {
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -252,17 +255,21 @@ describe("aula comum com presença", () => {
       expect(await prisma.presenca.count()).toBe(0);
     });
 
-    it("accepts the window boundaries and rejects outside of them with 409", async () => {
+    it("opens at the start of the event and stays open until the end of the day (409 outside)", async () => {
       const ctx = await setup();
       const evento = await criarEvento(ctx);
       const send = () => mark(asTeacher(ctx.prof.id), { eventoId: evento.id, entries: [{ alunoId: ctx.a1.id, presente: true }] });
       setNow(QUARTA_0759);
-      expect((await send()).status).toBe(409);
+      const cedo = await send();
+      expect(cedo.status).toBe(409);
+      expect(cedo.body.message).toBe("A chamada abre no início da aula");
       setNow(QUARTA_1000);
       expect((await send()).status).toBe(201);
       setNow(QUARTA_1001);
-      expect((await send()).status).toBe(409);
-      setNow(QUINTA_0830);
+      expect((await send()).status).toBe(201);
+      setNow(QUARTA_2359);
+      expect((await send()).status).toBe(201);
+      setNow(QUINTA_0001);
       const outroDia = await send();
       expect(outroDia.status).toBe(409);
       expect(outroDia.body.message).toBe("A aula não é hoje");
@@ -292,38 +299,42 @@ describe("aula comum com presença", () => {
   });
 
   describe("consolidação e relatórios", () => {
-    it("marks every enrolled student of the event's classes present after the window, once", async () => {
+    it("marks every enrolled student of the event's classes present on the next day, once", async () => {
       const ctx = await setup();
       const evento = await criarEvento(ctx);
       await ctx.matricular("Eva tardia", ctx.turmaA.id, "2026-10-30T12:00:00Z");
 
-      setNow(QUARTA_1000);
+      setNow(QUARTA_1001);
+      await request(app).get(`/attendance/report/${ctx.a1.id}`);
+      setNow(QUARTA_2359);
       await request(app).get(`/attendance/report/${ctx.a1.id}`);
       expect(await prisma.presenca.count({ where: { reuniaoId: evento.id } })).toBe(0);
+      const aberta = (await request(app).get("/attendance/today").set(asTeacher(ctx.prof.id))).body[0];
+      expect(aberta).toMatchObject({ status: "ABERTA", registrada: false, podeRegistrar: true, total: 0 });
 
-      setNow(QUARTA_1001);
+      setNow(QUINTA_0001);
       await request(app).get(`/attendance/report/${ctx.a1.id}`);
       await request(app).get(`/attendance/report/${ctx.a1.id}`);
       const rows = await prisma.presenca.findMany({ where: { reuniaoId: evento.id } });
       expect(rows.map((r) => r.alunoId).sort()).toEqual([ctx.a1.id, ctx.a2.id, ctx.b1.id].sort());
       expect(rows.every((r) => r.automatica && r.presente && r.aulaId === null)).toBe(true);
       expect(rows.find((r) => r.alunoId === ctx.b1.id)?.turmaId).toBe(ctx.turmaB.id);
-
-      const item = (await request(app).get("/attendance/today").set(asTeacher(ctx.prof.id))).body[0];
-      expect(item).toMatchObject({ status: "ENCERRADA", registrada: false, automatica: true, presentes: 3, total: 3 });
     });
 
-    it("does not consolidate over a teacher's registration nor an event created after it ended", async () => {
+    it("does not consolidate over a teacher's registration nor an event created after its day", async () => {
       const ctx = await setup();
       const marcado = await criarEvento(ctx);
-      const tardio = await criarEvento(ctx, { createdAt: new Date("2026-10-28T14:00:00Z") });
+      // Criado no dia, depois do fim: ainda dava para registrar até o fim do dia, então consolida.
+      const mesmoDia = await criarEvento(ctx, { createdAt: new Date("2026-10-28T14:00:00Z") });
+      const diaSeguinte = await criarEvento(ctx, { createdAt: new Date("2026-10-29T12:00:00Z") });
       setNow(QUARTA_0830);
       await mark(asTeacher(ctx.prof.id), { eventoId: marcado.id, entries: [{ alunoId: ctx.a1.id, presente: false }] });
-      setNow("2026-10-28T15:00:00Z");
+      setNow("2026-10-29T15:00:00Z");
       await request(app).get(`/attendance/report/${ctx.a1.id}`);
       expect(await prisma.presenca.count({ where: { reuniaoId: marcado.id } })).toBe(3);
       expect(await prisma.presenca.count({ where: { reuniaoId: marcado.id, automatica: true } })).toBe(0);
-      expect(await prisma.presenca.count({ where: { reuniaoId: tardio.id } })).toBe(0);
+      expect(await prisma.presenca.count({ where: { reuniaoId: mesmoDia.id, automatica: true } })).toBe(3);
+      expect(await prisma.presenca.count({ where: { reuniaoId: diaSeguinte.id } })).toBe(0);
     });
 
     it("counts event attendance in the class and student reports together with grid lessons", async () => {
@@ -387,7 +398,7 @@ describe("aula comum com presença", () => {
       const evento = await criarEvento(ctx);
       setNow(ANTES);
       await remover(ctx, ctx.a2.id);
-      setNow(QUARTA_1001);
+      setNow(QUINTA_0001);
       await request(app).get("/attendance");
       const rows = await prisma.presenca.findMany({ where: { reuniaoId: evento.id } });
       expect(rows.map((r) => r.alunoId).sort()).toEqual([ctx.a1.id, ctx.b1.id].sort());

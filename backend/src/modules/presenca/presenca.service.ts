@@ -60,13 +60,11 @@ export function buildAttendanceSummary(matriculas: SummaryMatricula[], presencas
   return { limite, items };
 }
 
-type StatusAula = "AGUARDANDO" | "ABERTA" | "ENCERRADA";
+type StatusAula = "AGUARDANDO" | "ABERTA";
 
-// Status da ocorrência (pelo horário efetivo) em "agora".
-function statusDaOcorrencia(ocorrencia: Pick<Ocorrencia, "horarioInicio" | "horarioFim">, hora: string): StatusAula {
-  if (hora < ocorrencia.horarioInicio) return "AGUARDANDO";
-  if (hora > ocorrencia.horarioFim) return "ENCERRADA";
-  return "ABERTA";
+// Status da ocorrência de hoje (pelo horário efetivo) em "agora": a chamada abre no início da aula e fica aberta até o fim do dia.
+function statusDaOcorrencia(ocorrencia: Pick<Ocorrencia, "horarioInicio">, hora: string): StatusAula {
+  return hora < ocorrencia.horarioInicio ? "AGUARDANDO" : "ABERTA";
 }
 
 const chaveOcorrencia = (aulaId: string, dataOriginal: string) => `${aulaId}|${dataOriginal}`;
@@ -77,16 +75,14 @@ export class PresencaService {
     private readonly gradeHorariaRepository: GradeHorariaRepository
   ) {}
 
-  // Ocorrências (aulas da grade e eventos com presença) cuja janela já passou sem nenhum registro: todos os matriculados ficam presentes. Idempotente.
+  // Ocorrências (aulas da grade e eventos com presença) de dias anteriores (a janela fecha no fim do dia) sem nenhum registro: todos os matriculados ficam presentes. Idempotente.
   async consolidarPresencasPendentes(turmaIds?: string[]) {
     await this.consolidarAulas(turmaIds);
     await this.consolidarEventos(turmaIds);
   }
 
   private async consolidarEventos(turmaIds?: string[]) {
-    const now = agora();
-    const hoje = todayInSaoPaulo(now);
-    const hora = timeOfDayInSaoPaulo(now);
+    const hoje = todayInSaoPaulo(agora());
     // Só eventos sem nenhum registro dos últimos 60 dias (o que ficou para trás disso não é mais consolidado).
     const de = new Date(parseDateOnly(hoje).getTime() - 60 * 24 * 60 * 60 * 1000);
     const eventos = await this.presencaRepository.listEventosForConsolidation(de, parseDateOnly(hoje), turmaIds);
@@ -95,11 +91,9 @@ export class PresencaService {
     const rows: Parameters<PresencaRepository["createManyPresencas"]>[0] = [];
     for (const evento of eventos) {
       const data = isoDate(evento.data);
-      const fim = formatTimeHHMM(evento.horarioFim);
-      if (data === hoje && hora <= fim) continue;
-      // Evento criado depois do fim da janela: ninguém chegou a poder registrar, então não consolida.
-      const criada = todayInSaoPaulo(evento.createdAt);
-      if (criada > data || (criada === data && timeOfDayInSaoPaulo(evento.createdAt) >= fim)) continue;
+      if (data === hoje) continue;
+      // Evento criado depois do dia dele: ninguém chegou a poder registrar, então não consolida.
+      if (todayInSaoPaulo(evento.createdAt) > data) continue;
       // Só alunos com matrícula vigente na data.
       for (const [alunoId, turmaId] of turmaPorAluno(evento.turmas, data)) {
         rows.push({ alunoId, reuniaoId: evento.id, turmaId, data: evento.data, presente: true, automatica: true });
@@ -109,9 +103,7 @@ export class PresencaService {
   }
 
   private async consolidarAulas(turmaIds?: string[]) {
-    const now = agora();
-    const hoje = todayInSaoPaulo(now);
-    const hora = timeOfDayInSaoPaulo(now);
+    const hoje = todayInSaoPaulo(agora());
     const aulas = (await this.presencaRepository.listAulasForConsolidation(turmaIds)).filter((aula) => aula.turma.matriculas.length > 0);
     if (aulas.length === 0) return;
 
@@ -131,9 +123,7 @@ export class PresencaService {
     for (const oc of gerarOcorrencias(aulas, excecoes, de, hoje)) {
       const aula = porAula.get(oc.aulaId)!;
       if (oc.dataOriginal < inicioDaAula.get(aula.id)!) continue;
-      if (oc.data === hoje && hora <= oc.horarioFim) continue;
-      // Aula criada no próprio dia depois do fim da janela: esse dia não consolida.
-      if (oc.dataOriginal === todayInSaoPaulo(aula.createdAt) && timeOfDayInSaoPaulo(aula.createdAt) >= oc.horarioFim) continue;
+      if (oc.data === hoje) continue;
       // Só alunos com matrícula vigente na data em que a aula acontece (removidos ficam de fora a partir da remoção).
       const alunoIds = aula.turma.matriculas.filter((m) => matriculaVigente(m, oc.data)).map((m) => m.alunoId);
       // O registro de presença usa a data original da ocorrência como chave.
@@ -193,7 +183,7 @@ export class PresencaService {
       if (diaSemanaOfDateOnly(hoje) === aula.diaSemana && !dataNoPeriodo(aula.turma, hoje)) throw new HttpError(409, "Fora do período da grade");
       throw new HttpError(409, "A aula não é hoje");
     }
-    if (statusDaOcorrencia(ocorrencia, timeOfDayInSaoPaulo(now)) !== "ABERTA") throw new HttpError(409, "Fora do horário da aula");
+    if (statusDaOcorrencia(ocorrencia, timeOfDayInSaoPaulo(now)) !== "ABERTA") throw new HttpError(409, "A chamada abre no início da aula");
 
     const matriculados = new Set(aula.turma.matriculas.map((m) => m.alunoId));
     const enviadas = await this.semRemovidos(input.entries);
@@ -224,8 +214,7 @@ export class PresencaService {
     if (input.data && input.data !== hoje) throw new HttpError(400, "A presença só pode ser registrada para a data de hoje");
 
     if (isoDate(evento.data) !== hoje) throw new HttpError(409, "A aula não é hoje");
-    const ocorrencia = { horarioInicio: formatTimeHHMM(evento.horarioInicio), horarioFim: formatTimeHHMM(evento.horarioFim) };
-    if (statusDaOcorrencia(ocorrencia, timeOfDayInSaoPaulo(now)) !== "ABERTA") throw new HttpError(409, "Fora do horário da aula");
+    if (statusDaOcorrencia({ horarioInicio: formatTimeHHMM(evento.horarioInicio) }, timeOfDayInSaoPaulo(now)) !== "ABERTA") throw new HttpError(409, "A chamada abre no início da aula");
 
     const turmaDoAluno = turmaPorAluno(evento.turmas, hoje);
     const enviadas = await this.semRemovidos(input.entries);
@@ -256,7 +245,7 @@ export class PresencaService {
       if (!professor) return [];
       const horarioInicio = formatTimeHHMM(evento.horarioInicio);
       const horarioFim = formatTimeHHMM(evento.horarioFim);
-      const status = statusDaOcorrencia({ horarioInicio, horarioFim }, hora);
+      const status = statusDaOcorrencia({ horarioInicio }, hora);
       const manual = evento.presencas.some((p) => !p.automatica);
       const responsavel = professor.id === actor.id;
       return [
@@ -277,11 +266,12 @@ export class PresencaService {
           alterada: false,
           status,
           registrada: manual,
-          automatica: status === "ENCERRADA" && evento.presencas.length > 0 && !manual,
           responsavel,
           podeRegistrar: responsavel && status === "ABERTA",
           presentes: evento.presencas.filter((p) => p.presente).length,
-          total: evento.presencas.length
+          total: evento.presencas.length,
+          // Para a tela de registro abrir com o que já foi registrado (a chamada pode ser editada até o fim do dia).
+          ausentes: evento.presencas.filter((p) => !p.presente).map((p) => p.alunoId)
         }
       ];
     });
@@ -331,11 +321,11 @@ export class PresencaService {
         alterada: oc.alterada,
         status,
         registrada: manual,
-        automatica: status === "ENCERRADA" && rows.length > 0 && !manual,
         responsavel,
         podeRegistrar: responsavel && status === "ABERTA",
         presentes: rows.filter((p) => p.presente).length,
-        total: rows.length
+        total: rows.length,
+        ausentes: rows.filter((p) => !p.presente).map((p) => p.alunoId)
       };
     });
     return [...daGrade, ...eventos].sort((a, b) => a.aula.horarioInicio.localeCompare(b.aula.horarioInicio));

@@ -35,8 +35,19 @@ export const changePasswordSchema = z
     path: ["novaSenha"]
   });
 
+export const forgotPasswordSchema = z.object({
+  email: z.string().email()
+});
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(1),
+  novaSenha: z.string().min(8)
+});
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type UpdateMeInput = z.infer<typeof updateMeSchema>;
 export type SetupInput = z.infer<typeof setupSchema>;
 export type ConfirmEmailInput = z.infer<typeof confirmEmailSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;

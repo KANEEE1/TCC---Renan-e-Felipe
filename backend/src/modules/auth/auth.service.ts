@@ -1,11 +1,21 @@
 import bcrypt from "bcryptjs";
 import type { Role } from "@prisma/client";
 import { HttpError } from "../../shared/http.js";
-import { signAuthToken, verifyPurposeToken } from "../../shared/auth.js";
-import type { ChangePasswordInput, ConfirmEmailInput, LoginInput, SetupInput, UpdateMeInput } from "./auth.schemas.js";
+import { signAuthToken, signPurposeToken, verifyPurposeToken } from "../../shared/auth.js";
+import { sendEmail } from "../../shared/email.js";
+import type {
+  ChangePasswordInput,
+  ConfirmEmailInput,
+  ForgotPasswordInput,
+  LoginInput,
+  ResetPasswordInput,
+  SetupInput,
+  UpdateMeInput
+} from "./auth.schemas.js";
 import type { UsersRepository } from "../users/users.repository.js";
 
 const SALT_ROUNDS = 10;
+const RESET_PASSWORD_PURPOSE = "reset-password";
 
 export class AuthService {
   constructor(private readonly usersRepository: UsersRepository) {}
@@ -48,6 +58,31 @@ export class AuthService {
   async confirmEmail(input: ConfirmEmailInput) {
     const userId = verifyPurposeToken("confirm-email", input.token);
     await this.usersRepository.update(userId, { emailConfirmado: true });
+  }
+
+  // Sempre resolve sem erro, exista ou não o e-mail, para não revelar quais contas existem.
+  async forgotPassword(input: ForgotPasswordInput) {
+    const user = await this.usersRepository.findByEmail(input.email);
+
+    if (!user) {
+      return;
+    }
+
+    const token = signPurposeToken(RESET_PASSWORD_PURPOSE, user.id, "1h");
+    const link = `${process.env.FRONTEND_URL}/redefinir-senha?token=${token}`;
+
+    await sendEmail(
+      user.email,
+      "Redefinir senha - Cursinho Popular",
+      `<p>Olá, ${user.name}.</p><p>Recebemos um pedido para redefinir sua senha. Clique no link abaixo para escolher uma nova:</p><p><a href="${link}">${link}</a></p><p>Esse link expira em 1 hora. Se você não pediu isso, pode ignorar este e-mail.</p>`
+    );
+  }
+
+  async resetPassword(input: ResetPasswordInput) {
+    const userId = verifyPurposeToken(RESET_PASSWORD_PURPOSE, input.token);
+    const passwordHash = await bcrypt.hash(input.novaSenha, SALT_ROUNDS);
+
+    await this.usersRepository.update(userId, { passwordHash });
   }
 
   async setupStatus() {

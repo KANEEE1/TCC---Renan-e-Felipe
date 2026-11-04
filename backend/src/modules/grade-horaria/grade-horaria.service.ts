@@ -2,6 +2,7 @@ import { createHash, randomInt } from "node:crypto";
 import type { Actor } from "../../shared/auth.js";
 import { HttpError } from "../../shared/http.js";
 import { agora } from "../../shared/clock.js";
+import { sendEmail } from "../../shared/email.js";
 import { diaSemanaOfDateOnly, formatTimeHHMM, parseDateOnly, parseTimeToDate, todayInSaoPaulo } from "../../shared/time.js";
 import type { DisponibilidadeService } from "../disponibilidade/disponibilidade.service.js";
 import { allocate, overlaps } from "./grade-horaria.allocator.js";
@@ -83,6 +84,18 @@ export class GradeHorariaService {
     private readonly disponibilidadeService: DisponibilidadeService
   ) {}
 
+  // Monta o envio do e-mail para depois da transação commitar (nunca aguardamos uma chamada de rede
+  // com a transação aberta). Link sempre para o dashboard, onde o professor vê e responde o aviso.
+  private emailAviso(destinatario: { email: string; name: string }, assunto: string, mensagem: string) {
+    const link = `${process.env.FRONTEND_URL}/dashboard`;
+    return () =>
+      sendEmail(
+        destinatario.email,
+        `${assunto} - Cursinho Popular`,
+        `<p>Olá, ${destinatario.name}.</p><p>${mensagem}</p><p><a href="${link}">${link}</a></p>`
+      );
+  }
+
   // Indisponibilidades só aparecem enquanto valem (ocorrência não cancelada, mesmo professor, sem alteração posterior).
   private withExcecoes<T extends AulaOcorrivel & { excecoes: ExcecaoComProfessor[]; indisponibilidades: IndisponibilidadeRow[] }>(aulas: T[]) {
     return aulas.map((aula) => ({
@@ -158,8 +171,10 @@ export class GradeHorariaService {
 
   // Altera uma única ocorrência da série (data, horário e/ou professor). Grava um snapshot completo.
   // Se o professor efetivo muda (e a ocorrência ainda não começou), o novo é convocado e o anterior é avisado da retirada.
-  editarOcorrencia(id: string, dataOriginal: string, input: UpdateOcorrenciaInput, actor: Actor) {
-    return this.gradeHorariaRepository.transaction(async (repository) => {
+  async editarOcorrencia(id: string, dataOriginal: string, input: UpdateOcorrenciaInput, actor: Actor) {
+    const emails: (() => Promise<void>)[] = [];
+
+    const resultado = await this.gradeHorariaRepository.transaction(async (repository) => {
       const aula = await repository.findAulaParaOcorrencia(id);
       if (!aula) throw new HttpError(404, "Class schedule entry not found");
 
@@ -221,11 +236,29 @@ export class GradeHorariaService {
         const remarcou = data !== atual.data || horarioInicio !== atual.horarioInicio || horarioFim !== atual.horarioFim;
         if (remarcou && professorId !== actor.id && !jaComecou(efetiva, agora())) {
           await repository.convocarProfessor(id, original, professorId, true);
+          if (professor) {
+            emails.push(
+              this.emailAviso(
+                professor,
+                "Aula remarcada",
+                `Sua aula de ${aula.disciplina.nome} (${aula.turma.nome}) foi remarcada para ${data}, das ${horarioInicio} às ${horarioFim}. Confirme se você continua disponível.`
+              )
+            );
+          }
         }
       } else {
         // O próprio editor não é notificado das mudanças que ele mesmo fez.
         if (professorId !== actor.id && !jaComecou(efetiva, agora())) {
           await repository.convocarProfessor(id, original, professorId);
+          if (professor) {
+            emails.push(
+              this.emailAviso(
+                professor,
+                "Você foi escalado para uma aula",
+                `Você foi escalado para a aula de ${aula.disciplina.nome} (${aula.turma.nome}) em ${data}, das ${horarioInicio} às ${horarioFim}. Confirme se você vai dar esta aula.`
+              )
+            );
+          }
         }
         if (atual.professorId !== actor.id) {
           await repository.avisarRetirada({
@@ -238,6 +271,16 @@ export class GradeHorariaService {
             aulaId: id,
             dataOriginal: original
           });
+          const professorAnterior = await repository.findProfessor(atual.professorId);
+          if (professorAnterior) {
+            emails.push(
+              this.emailAviso(
+                professorAnterior,
+                "Você foi removido de uma aula",
+                `Você não vai mais dar a aula de ${aula.disciplina.nome} (${aula.turma.nome}) em ${atual.data}, das ${atual.horarioInicio} às ${atual.horarioFim}.`
+              )
+            );
+          }
         }
       }
 
@@ -251,11 +294,17 @@ export class GradeHorariaService {
         alterada: true
       };
     });
+
+    for (const enviar of emails) await enviar();
+
+    return resultado;
   }
 
   // Cancela uma única ocorrência da série (ex.: feriado). Presença registrada pelo professor impede.
-  cancelarOcorrencia(id: string, dataOriginal: string, actor: Actor) {
-    return this.gradeHorariaRepository.transaction(async (repository) => {
+  async cancelarOcorrencia(id: string, dataOriginal: string, actor: Actor) {
+    const emails: (() => Promise<void>)[] = [];
+
+    await this.gradeHorariaRepository.transaction(async (repository) => {
       const aula = await repository.findAulaParaOcorrencia(id);
       if (!aula) throw new HttpError(404, "Class schedule entry not found");
 
@@ -289,8 +338,20 @@ export class GradeHorariaService {
           aulaId: id,
           dataOriginal: data
         });
+        const professor = await repository.findProfessor(efetiva.professorId);
+        if (professor) {
+          emails.push(
+            this.emailAviso(
+              professor,
+              "Aula cancelada",
+              `Sua aula de ${aula.disciplina.nome} (${aula.turma.nome}) em ${efetiva.data}, das ${efetiva.horarioInicio} às ${efetiva.horarioFim}, foi cancelada.`
+            )
+          );
+        }
       }
     });
+
+    for (const enviar of emails) await enviar();
   }
 
   // O professor efetivo da ocorrência responde Vou (CONFIRMADO) / Não vou (RECUSADO) até a aula começar; pode trocar.

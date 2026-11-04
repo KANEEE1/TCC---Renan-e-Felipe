@@ -233,7 +233,7 @@ export class GradeHorariaRepository {
   }
 
   findProfessor(id: string) {
-    return this.db.user.findUnique({ where: { id }, select: { id: true, name: true, ativo: true, roles: true } });
+    return this.db.user.findUnique({ where: { id }, select: { id: true, name: true, email: true, ativo: true, roles: true } });
   }
 
   carregarFontesDoDia(data: string) {

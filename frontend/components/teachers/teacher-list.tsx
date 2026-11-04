@@ -39,12 +39,19 @@ export function TeacherList() {
   // "Editar" (disciplinas e status) é da gestão. "Disponibilidade" é visível a todos; só o próprio professor a altera.
   const [isManagement, setIsManagement] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [subjects, setSubjects] = useState<{ id: string; nome: string }[]>([]);
+  // Filtro por matéria (id), combinado com a busca por texto.
+  const [selectedSubject, setSelectedSubject] = useState("all");
 
   useEffect(() => {
     const user = getSessionUser();
     setIsManagement(!!user?.roles.includes("GESTAO"));
     setCurrentUserId(user?.id ?? null);
     api.get<Teacher[]>("/teachers").then(setTeachers).catch(() => setTeachers([]));
+    api
+      .get<{ id: string; nome: string }[]>("/disciplinas")
+      .then((list) => setSubjects([...list].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"))))
+      .catch(() => setSubjects([]));
   }, []);
 
   const actionCount = isManagement ? 3 : 2;
@@ -53,8 +60,9 @@ export function TeacherList() {
   const filteredTeachers = teachers
     .filter(
       (teacher) =>
-        teacher.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        teacher.disciplinas.some((subject) => subject.nome.toLowerCase().includes(searchTerm.toLowerCase()))
+        (selectedSubject === "all" || teacher.disciplinas.some((subject) => subject.id === selectedSubject)) &&
+        (teacher.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        teacher.disciplinas.some((subject) => subject.nome.toLowerCase().includes(searchTerm.toLowerCase())))
     )
     .sort((a, b) => Number(b.id === currentUserId) - Number(a.id === currentUserId));
 
@@ -92,6 +100,31 @@ export function TeacherList() {
           />
         </div>
       </div>
+
+      {subjects.length > 0 && (
+        <div className="mb-3 overflow-x-auto px-4">
+          <div className="flex min-w-max items-center gap-1.5">
+            <span className="w-14 shrink-0 text-[11px] font-medium uppercase tracking-wide text-slate-400">Matéria</span>
+            {[{ id: "all", nome: "Todas" }, ...subjects].map(({ id, nome }) => {
+              const active = selectedSubject === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setSelectedSubject(id)}
+                  aria-pressed={active}
+                  className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors ${
+                    active ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  {id === "all" ? <BookOpen size={12} /> : null}
+                  {nome}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="mb-3 px-4">
         <p className="text-xs text-slate-400">{filteredTeachers.length} professor(es) encontrado(s)</p>

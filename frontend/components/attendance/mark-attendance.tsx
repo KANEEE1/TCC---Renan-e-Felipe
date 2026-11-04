@@ -20,7 +20,7 @@ interface StudentRow {
 function reason(item: TodayItem) {
   if (!item.responsavel) return "Somente o professor responsável pela aula registra a presença.";
   if (item.status === "AGUARDANDO") return `A chamada abre às ${item.aula.horarioInicio}.`;
-  return "A janela de registro desta aula já encerrou.";
+  return "A chamada desta aula já fechou: ela fica aberta só até o fim do dia da aula.";
 }
 
 // `alvo` é o parâmetro da rota: o id da aula da grade, ou "evento-<id>" para uma aula comum com presença.
@@ -44,9 +44,10 @@ export function MarkAttendance({ alvo }: { alvo: string }) {
           // Aula comum pode ter várias turmas: junta os alunos de todas (sem repetir).
           Promise.all(found.aula.turmas.map((t) => api.get<ClassDetail>(`/classes/${t.id}`)))
             .then((classes) => {
+              const ausentes = new Set(found.ausentes);
               const byId = new Map<string, StudentRow>();
               for (const m of classes.flatMap((cls) => cls.matriculas)) {
-                byId.set(m.aluno.id, { id: m.aluno.id, name: m.aluno.nome, number: m.aluno.numero ?? "-", present: true });
+                byId.set(m.aluno.id, { id: m.aluno.id, name: m.aluno.nome, number: m.aluno.numero ?? "-", present: !ausentes.has(m.aluno.id) });
               }
               setStudents(Array.from(byId.values()));
             })

@@ -8,6 +8,7 @@ const QUARTA_0830 = "2026-10-28T11:30:00Z";
 const QUARTA_1030 = "2026-10-28T13:30:00Z";
 const QUINTA_1500 = "2026-10-29T18:00:00Z"; // dentro de 14:00-16:00
 const QUINTA_1601 = "2026-10-29T19:01:00Z";
+const SEXTA_0001 = "2026-10-30T03:01:00Z"; // a chamada da quinta fecha no fim do dia
 const QUINTA_1700 = "2026-10-29T20:00:00Z";
 
 function setNow(iso: string) {
@@ -350,8 +351,11 @@ describe("single-occurrence edits", () => {
       expect(rows).toHaveLength(2);
       expect(rows.every((r) => r.data.toISOString().slice(0, 10) === "2026-10-28")).toBe(true);
 
-      setNow(QUINTA_1700);
-      expect((await mark(ctx.profB.id)).status).toBe(409);
+      setNow(QUINTA_1700); // depois do fim, ainda no dia: aberta
+      expect((await mark(ctx.profB.id)).status).toBe(201);
+      // No dia seguinte a ocorrência não é mais de hoje: o professor efetivo deixa de poder registrar.
+      setNow(SEXTA_0001);
+      expect((await mark(ctx.profB.id)).status).toBe(403);
     });
 
     it("lets the accepted substitute of the original date register on the effective date", async () => {
@@ -365,7 +369,7 @@ describe("single-occurrence edits", () => {
       expect(res.body[0]).toMatchObject({ responsavel: true, podeRegistrar: true });
     });
 
-    it("consolidates at the effective time, not at the original one", async () => {
+    it("consolidates after the effective day, not after the original one", async () => {
       const ctx = await setup();
       await moverParaQuinta(ctx);
       const original = () => prisma.presenca.count({ where: { aulaId: ctx.aula.id, data: day("2026-10-28") } });
@@ -378,7 +382,11 @@ describe("single-occurrence edits", () => {
       await request(app).get("/attendance");
       expect(await original()).toBe(0);
 
-      setNow(QUINTA_1601);
+      setNow(QUINTA_1601); // fim da aula efetiva, mas ainda no dia: não consolida
+      await request(app).get("/attendance");
+      expect(await original()).toBe(0);
+
+      setNow(SEXTA_0001);
       await request(app).get("/attendance");
       expect(await original()).toBe(2);
       expect(await prisma.presenca.count({ where: { aulaId: ctx.aula.id, data: day("2026-10-29") } })).toBe(0);

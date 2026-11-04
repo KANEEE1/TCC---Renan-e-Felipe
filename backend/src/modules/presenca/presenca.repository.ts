@@ -191,7 +191,7 @@ export class PresencaRepository {
         disciplina: { select: { id: true, nome: true } },
         turmas: { select: { id: true, nome: true }, orderBy: { nome: "asc" } },
         participacoes: { select: { user: { select: { id: true, name: true } } } },
-        presencas: { select: { presente: true, automatica: true } }
+        presencas: { select: { alunoId: true, presente: true, automatica: true } }
       }
     });
   }
@@ -214,7 +214,7 @@ export class PresencaRepository {
     if (ocorrencias.length === 0) return Promise.resolve([]);
     return this.prisma.presenca.findMany({
       where: { OR: ocorrencias.map(({ aulaId, dataOriginal }) => ({ aulaId, data: dataOriginal })) },
-      select: { aulaId: true, data: true, presente: true, automatica: true }
+      select: { aulaId: true, alunoId: true, data: true, presente: true, automatica: true }
     });
   }
 

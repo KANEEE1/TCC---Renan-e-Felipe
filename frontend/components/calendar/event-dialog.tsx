@@ -234,7 +234,7 @@ export function EventDialog({ event, defaultDate, onClose, onSaved }: Props) {
                   />
                   Essa aula precisa de presença
                 </label>
-                <p className="mt-0.5 text-xs text-slate-400">O professor registra a presença no horário da aula, como nas aulas da grade.</p>
+                <p className="mt-0.5 text-xs text-slate-400">O professor registra a presença do início da aula até o fim do dia, como nas aulas da grade.</p>
                 {lockAttendance && (
                   <p className="mt-1 text-xs text-amber-700">
                     A aula já começou: a presença{event.exigePresenca ? ", o professor, as turmas e o horário" : ""} não pode mais ser alterada.

@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { DndContext, PointerSensor, useDraggable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { CSS } from "@dnd-kit/utilities";
 
 // Semana no estilo de agenda: colunas por dia, linhas de 30 minutos entre START_HOUR e END_HOUR.
 export const DAYS = [
@@ -33,6 +35,8 @@ export interface Interval {
 export type Grid = boolean[][];
 
 export interface WeekGridEvent {
+  // Obrigatório só quando a grade é editável (arrastar/clicar); dispensável no uso read-only comum.
+  id?: string;
   day: number;
   from: number;
   to: number;
@@ -91,15 +95,83 @@ interface WeekGridProps {
   ready?: boolean;
   className?: string;
   children?: React.ReactNode;
+  // Blocos de `events` passam a ser arrastáveis (mover de dia/horário) e clicáveis, em vez de só visuais.
+  editableEvents?: boolean;
+  // Chamado ao soltar um bloco arrastado numa célula válida (dia + meia-hora inicial).
+  onEventMove?: (id: string, day: number, slot: number) => void;
+  // Chamado ao clicar num bloco (sem ter arrastado).
+  onEventClick?: (id: string) => void;
 }
 
-export function WeekGrid({ value, onChange, readOnly = false, events, ready = true, className = "", children }: WeekGridProps) {
+// Um bloco arrastável: usa o transform ao vivo do dnd-kit pra seguir o ponteiro, sem precisar de portal.
+function DraggableEvent({
+  event,
+  style,
+  onClick
+}: {
+  event: WeekGridEvent;
+  style: React.CSSProperties;
+  onClick?: (id: string) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: event.id! });
+
+  return (
+    <div
+      ref={setNodeRef}
+      data-testid={`proposta-${event.id}`}
+      data-day={event.day}
+      data-from={event.from}
+      data-slot={event.from}
+      {...listeners}
+      {...attributes}
+      onClick={() => !isDragging && onClick?.(event.id!)}
+      className="absolute left-0.5 right-0.5 cursor-grab touch-none overflow-hidden rounded-md px-1 py-0.5 text-[10px] leading-tight text-white shadow-sm active:cursor-grabbing"
+      style={{
+        ...style,
+        backgroundColor: event.color,
+        zIndex: isDragging ? 30 : 10,
+        opacity: isDragging ? 0.85 : 1,
+        // Enquanto arrasta, o próprio bloco não pode "tapar" o alvo embaixo do cursor na hora de soltar.
+        pointerEvents: isDragging ? "none" : undefined,
+        transform: transform ? CSS.Translate.toString(transform) : undefined
+      }}
+    >
+      <span className="block truncate font-semibold">{event.title}</span>
+      {event.subtitle && <span className="block truncate opacity-90">{event.subtitle}</span>}
+    </div>
+  );
+}
+
+export function WeekGrid({
+  value,
+  onChange,
+  readOnly = false,
+  events,
+  ready = true,
+  className = "",
+  children,
+  editableEvents = false,
+  onEventMove,
+  onEventClick
+}: WeekGridProps) {
   const editable = !readOnly && !!onChange;
   const drag = useRef<{ day: number; from: number; mode: boolean; base: boolean[] } | null>(null);
   // Registrado no pointerdown: o evento de clique nem sempre informa se veio de toque (Safari antigo).
   const lastPointerType = useRef<string>("mouse");
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrolledOnce = useRef(false);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+
+  // Mapeia o ponto final do arrasto (posição do pointerdown + deslocamento) pra célula de baixo, igual à
+  // pintura de disponibilidade logo acima — mesma técnica, sem precisar de 300+ zonas "droppable".
+  const handleDragEnd = (dragEvent: DragEndEvent) => {
+    const activator = dragEvent.activatorEvent as PointerEvent;
+    const clientX = activator.clientX + dragEvent.delta.x;
+    const clientY = activator.clientY + dragEvent.delta.y;
+    const cell = (document.elementFromPoint(clientX, clientY) as HTMLElement | null)?.closest<HTMLElement>("[data-slot]");
+    if (!cell) return;
+    onEventMove?.(String(dragEvent.active.id), Number(cell.dataset.day), Number(cell.dataset.slot));
+  };
 
   useEffect(() => {
     if (!ready || scrolledOnce.current || !scrollRef.current) return;
@@ -152,6 +224,7 @@ export function WeekGrid({ value, onChange, readOnly = false, events, ready = tr
   };
 
   return (
+    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
     <div ref={scrollRef} className={`overflow-y-auto ${className}`} onPointerMove={handlePointerMove}>
       <div className="sticky top-0 z-20 grid grid-cols-[44px_repeat(7,minmax(0,1fr))] border-b border-slate-200 bg-white">
         <div />
@@ -199,20 +272,29 @@ export function WeekGrid({ value, onChange, readOnly = false, events, ready = tr
               {events
                 ? events
                     .filter((event) => event.day === dayIndex)
-                    .map((event, index) => (
-                      <div
-                        key={`${event.from}-${index}`}
-                        className="pointer-events-none absolute left-0.5 right-0.5 overflow-hidden rounded-md px-1 py-0.5 text-[10px] leading-tight text-white shadow-sm"
-                        style={{
-                          top: event.from * ROW_HEIGHT + 1,
-                          height: (event.to - event.from) * ROW_HEIGHT - 2,
-                          backgroundColor: event.color
-                        }}
-                      >
-                        <span className="block truncate font-semibold">{event.title}</span>
-                        {event.subtitle && <span className="block truncate opacity-90">{event.subtitle}</span>}
-                      </div>
-                    ))
+                    .map((event, index) =>
+                      editableEvents && event.id ? (
+                        <DraggableEvent
+                          key={event.id}
+                          event={event}
+                          onClick={onEventClick}
+                          style={{ top: event.from * ROW_HEIGHT + 1, height: (event.to - event.from) * ROW_HEIGHT - 2 }}
+                        />
+                      ) : (
+                        <div
+                          key={`${event.from}-${index}`}
+                          className="pointer-events-none absolute left-0.5 right-0.5 overflow-hidden rounded-md px-1 py-0.5 text-[10px] leading-tight text-white shadow-sm"
+                          style={{
+                            top: event.from * ROW_HEIGHT + 1,
+                            height: (event.to - event.from) * ROW_HEIGHT - 2,
+                            backgroundColor: event.color
+                          }}
+                        >
+                          <span className="block truncate font-semibold">{event.title}</span>
+                          {event.subtitle && <span className="block truncate opacity-90">{event.subtitle}</span>}
+                        </div>
+                      )
+                    )
                 : intervalsOf(value[dayIndex]).map((interval) => (
                     <div
                       key={interval.from}
@@ -230,5 +312,6 @@ export function WeekGrid({ value, onChange, readOnly = false, events, ready = tr
 
       {children}
     </div>
+    </DndContext>
   );
 }

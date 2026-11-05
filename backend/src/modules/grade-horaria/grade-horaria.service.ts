@@ -593,7 +593,47 @@ export class GradeHorariaService {
     });
   }
 
+  // Mesmas checagens do replace, sem persistir nada: usado pra validar uma edição manual antes de aplicá-la
+  // (ex.: arrastar um bloco da proposta pra outro dia/horário, no passo de revisão do assistente).
+  async validate(input: ReplaceScheduleInput) {
+    input.aulas.forEach((aula) => assertValidRange(aula.horarioInicio, aula.horarioFim));
+
+    if (!(await this.gradeHorariaRepository.findTurma(input.turmaId))) {
+      throw new HttpError(404, "Class not found");
+    }
+
+    const cargas = await this.gradeHorariaRepository.listCargasDaTurma(input.turmaId);
+    const daMatriz = new Set(cargas.map((carga) => carga.disciplinaId));
+    if (input.aulas.some((aula) => !daMatriz.has(aula.disciplinaId))) {
+      throw new HttpError(400, "Disciplina fora da matriz da turma");
+    }
+
+    const professores = await this.gradeHorariaRepository.listProfessoresAtivosDasDisciplinas([...daMatriz], []);
+    const leciona = new Map(professores.map((professor) => [professor.id, new Set(professor.disciplinas.map((d) => d.id))]));
+    if (input.aulas.some((aula) => !leciona.get(aula.professorId)?.has(aula.disciplinaId))) {
+      throw new HttpError(400, "Professor inativo ou que não leciona a disciplina da aula");
+    }
+
+    const aulas = input.aulas.map((aula) => ({ ...aula, turmaId: input.turmaId }));
+    const existentes = await this.gradeHorariaRepository.listAulasDosProfessoresForaDaTurma(
+      [...new Set(aulas.map((aula) => aula.professorId))],
+      input.turmaId
+    );
+    this.assertSemConflitos(aulas, existentes);
+
+    return { ok: true as const };
+  }
+
   private assertSemConflitos(aulas: CreateAulaInput[], existentes: ExistingAula[]) {
+    const conflitos = this.detectarConflitos(aulas, existentes);
+
+    if (conflitos.length > 0) {
+      throw new HttpError(409, "Schedule conflicts with existing classes", { conflitos });
+    }
+  }
+
+  // Mesma lógica de assertSemConflitos, mas devolve a lista em vez de lançar (usado pela validação sem persistir).
+  private detectarConflitos(aulas: CreateAulaInput[], existentes: ExistingAula[]): Conflito[] {
     const conflitos: Conflito[] = [];
 
     aulas.forEach((aula, aulaIndex) => {
@@ -620,9 +660,7 @@ export class GradeHorariaService {
       aulas.slice(0, aulaIndex).forEach((anterior) => registrar(anterior, "PROPOSTA"));
     });
 
-    if (conflitos.length > 0) {
-      throw new HttpError(409, "Schedule conflicts with existing classes", { conflitos });
-    }
+    return conflitos;
   }
 
   // A série passa a cair em datas futuras onde uma ocorrência de outra aula foi movida para o mesmo professor/turma.

@@ -11,6 +11,7 @@ import {
   CalendarRange,
   Clock,
   Loader2,
+  Plus,
   RefreshCw,
   Sparkles,
   UserCheck,
@@ -148,6 +149,149 @@ function Spinner({ text }: { text: string }) {
   );
 }
 
+const TIME_OPTIONS = Array.from({ length: SLOTS }, (_, slot) => slotToApiTime(slot));
+
+interface PropostaEditorProps {
+  disciplinas: Carga[];
+  teachers: Teacher[];
+  initial: Proposta | null;
+  saving: boolean;
+  error: string | null;
+  onCancel: () => void;
+  onSave: (proposta: Proposta) => void;
+  onRemove?: () => void;
+}
+
+// Painel de edição/criação manual de um bloco da proposta (passo 6): clicar num bloco existente edita,
+// "Adicionar aula" abre em branco. Validação acontece no servidor antes de aplicar (ver validateAndApply).
+function PropostaEditor({ disciplinas, teachers, initial, saving, error, onCancel, onSave, onRemove }: PropostaEditorProps) {
+  const [disciplinaId, setDisciplinaId] = useState(initial?.disciplinaId ?? disciplinas[0]?.disciplina.id ?? "");
+  const disciplinaNome = disciplinas.find((c) => c.disciplina.id === disciplinaId)?.disciplina.nome ?? "";
+  const candidatos = teachers.filter((t) => t.disciplinas.some((d) => d.id === disciplinaId));
+  const [professorId, setProfessorId] = useState(initial?.professorId ?? candidatos[0]?.id ?? "");
+  const [diaSemana, setDiaSemana] = useState(initial?.diaSemana ?? DAYS[0].key);
+  const [horarioInicio, setHorarioInicio] = useState(initial?.horarioInicio ?? "08:00");
+  const [horarioFim, setHorarioFim] = useState(initial?.horarioFim ?? "09:00");
+
+  const professorNome = candidatos.find((t) => t.id === professorId)?.name ?? teachers.find((t) => t.id === professorId)?.name ?? "";
+  const valido = !!disciplinaId && !!professorId && horarioFim > horarioInicio;
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 sm:items-center" onClick={onCancel}>
+      <div className="w-full max-w-sm rounded-t-2xl bg-white p-5 sm:rounded-2xl" onClick={(event) => event.stopPropagation()}>
+        <h3 className="mb-3 font-semibold text-gray-800">{initial ? "Editar aula" : "Adicionar aula"}</h3>
+
+        <div className="space-y-3">
+          <label className="block text-sm">
+            <span className="mb-1 block text-gray-600">Disciplina</span>
+            {initial ? (
+              <p className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-gray-800">{disciplinaNome}</p>
+            ) : (
+              <select
+                value={disciplinaId}
+                onChange={(event) => {
+                  setDisciplinaId(event.target.value);
+                  setProfessorId("");
+                }}
+                className="w-full rounded-xl border border-gray-300 px-3 py-2"
+              >
+                {disciplinas.map((c) => (
+                  <option key={c.disciplina.id} value={c.disciplina.id}>
+                    {c.disciplina.nome}
+                  </option>
+                ))}
+              </select>
+            )}
+          </label>
+
+          <label className="block text-sm">
+            <span className="mb-1 block text-gray-600">Professor</span>
+            <select value={professorId} onChange={(event) => setProfessorId(event.target.value)} className="w-full rounded-xl border border-gray-300 px-3 py-2">
+              <option value="">Selecione</option>
+              {candidatos.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block text-sm">
+            <span className="mb-1 block text-gray-600">Dia</span>
+            <select value={diaSemana} onChange={(event) => setDiaSemana(event.target.value)} className="w-full rounded-xl border border-gray-300 px-3 py-2">
+              {DAYS.map((d) => (
+                <option key={d.key} value={d.key}>
+                  {d.short}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block text-sm">
+              <span className="mb-1 block text-gray-600">Início</span>
+              <select value={horarioInicio} onChange={(event) => setHorarioInicio(event.target.value)} className="w-full rounded-xl border border-gray-300 px-3 py-2">
+                {TIME_OPTIONS.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-gray-600">Fim</span>
+              <select value={horarioFim} onChange={(event) => setHorarioFim(event.target.value)} className="w-full rounded-xl border border-gray-300 px-3 py-2">
+                {TIME_OPTIONS.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          {error && <p className="rounded-xl bg-red-50 p-2.5 text-sm text-red-600">{error}</p>}
+
+          <div className="flex gap-2 pt-1">
+            {onRemove && (
+              <button
+                type="button"
+                onClick={onRemove}
+                disabled={saving}
+                className="rounded-full border border-red-200 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
+              >
+                Remover
+              </button>
+            )}
+            <button type="button" onClick={onCancel} disabled={saving} className="rounded-full border border-gray-300 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+              Cancelar
+            </button>
+            <button
+              type="button"
+              disabled={!valido || saving}
+              onClick={() =>
+                onSave({
+                  disciplinaId,
+                  disciplinaNome,
+                  professorId,
+                  professorNome,
+                  diaSemana,
+                  horarioInicio,
+                  horarioFim
+                })
+              }
+              className="ml-auto flex items-center justify-center rounded-full bg-teal-600 px-5 py-2.5 text-sm text-white hover:bg-teal-700 disabled:opacity-50"
+            >
+              {saving ? <Loader2 size={16} className="mr-1.5 animate-spin" /> : null}
+              Salvar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ScheduleWizard() {
   const [step, setStep] = useState(1);
   const [error, setError] = useState<string | null>(null);
@@ -179,6 +323,11 @@ export function ScheduleWizard() {
   const [activeGrade, setActiveGrade] = useState<{ aulas: number } | null>(null);
   const [checkingActive, setCheckingActive] = useState(false);
   const [created, setCreated] = useState<number | null>(null);
+
+  // Edição manual da proposta (passo 6): índice do bloco em edição, ou "novo" pra adicionar um.
+  const [editingIndex, setEditingIndex] = useState<number | "novo" | null>(null);
+  const [conflictMessage, setConflictMessage] = useState<string | null>(null);
+  const [validating, setValidating] = useState(false);
 
   const loadBase = () => {
     api.get<ClassSummary[]>("/classes").then(setClasses).catch(() => setError("Não foi possível carregar as turmas."));
@@ -415,11 +564,85 @@ export function ScheduleWizard() {
     }
   };
 
+  const toAulaPayload = (p: Proposta) => ({
+    disciplinaId: p.disciplinaId,
+    professorId: p.professorId,
+    diaSemana: p.diaSemana,
+    horarioInicio: p.horarioInicio,
+    horarioFim: p.horarioFim
+  });
+
+  // Traduz o primeiro conflito devolvido pelo servidor numa frase legível (ver detectarConflitos no backend).
+  const translateConflito = (conflitos: { recurso: string; origem: string; diaSemana: string; horarioInicio: string; horarioFim: string }[]) => {
+    const c = conflitos[0];
+    if (!c) return "Essa alteração não é permitida.";
+    const dia = DAYS.find((d) => d.key === c.diaSemana)?.short ?? c.diaSemana;
+    const quando = `${dia}, ${c.horarioInicio}–${c.horarioFim}`;
+    if (c.recurso === "PROFESSOR" && c.origem === "EXISTENTE") return `Esse professor já dá aula em outra turma nesse horário (${quando}).`;
+    if (c.recurso === "PROFESSOR") return `Esse professor já está em outra aula dessa mesma proposta nesse horário (${quando}).`;
+    return `Essa turma já tem outra aula proposta nesse horário (${quando}).`;
+  };
+
+  // Valida no servidor (mesma checagem do /replace, sem salvar) antes de aplicar uma edição manual da proposta.
+  const validateAndApply = async (nextPropostas: Proposta[]) => {
+    if (!classId) return false;
+    setValidating(true);
+    setConflictMessage(null);
+    try {
+      await api.post("/schedule/validate", { turmaId: classId, aulas: nextPropostas.map(toAulaPayload) });
+      setResult((prev) => (prev ? { ...prev, propostas: nextPropostas } : prev));
+      setEditingIndex(null);
+      return true;
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409 && Array.isArray((err.body as { conflitos?: unknown[] })?.conflitos)) {
+        setConflictMessage(translateConflito((err.body as { conflitos: Parameters<typeof translateConflito>[0] }).conflitos));
+      } else {
+        setConflictMessage(err instanceof ApiError ? err.message : "Não foi possível validar essa alteração.");
+      }
+      return false;
+    } finally {
+      setValidating(false);
+    }
+  };
+
+  const handleEventMove = (id: string, day: number, slot: number) => {
+    if (!result) return;
+    const index = Number(id);
+    const proposta = result.propostas[index];
+    const newDay = DAYS[day];
+    if (!proposta || !newDay) return;
+    const duration = endToSlot(proposta.horarioFim) - timeToSlot(proposta.horarioInicio);
+    if (slot + duration > SLOTS) {
+      setConflictMessage("Esse horário não cabe nesse dia.");
+      return;
+    }
+    const novaProposta: Proposta = {
+      ...proposta,
+      diaSemana: newDay.key,
+      horarioInicio: slotToApiTime(slot),
+      horarioFim: slotToApiTime(slot + duration)
+    };
+    void validateAndApply(result.propostas.map((p, i) => (i === index ? novaProposta : p)));
+  };
+
+  const handleEventClick = (id: string) => {
+    setConflictMessage(null);
+    setEditingIndex(Number(id));
+  };
+
+  const removeProposta = (index: number) => {
+    if (!result) return;
+    setResult({ ...result, propostas: result.propostas.filter((_, i) => i !== index) });
+    setEditingIndex(null);
+    setConflictMessage(null);
+  };
+
   const requiredMinutes = cargaMinutes(cargas);
   const availableMinutes = grid.reduce((sum, col) => sum + col.filter(Boolean).length, 0) * 30;
   const hasWindows = availableMinutes > 0;
 
-  const events: WeekGridEvent[] = (result?.propostas ?? []).map((p) => ({
+  const events: WeekGridEvent[] = (result?.propostas ?? []).map((p, index) => ({
+    id: String(index),
     day: DAYS.findIndex((d) => d.key === p.diaSemana),
     from: timeToSlot(p.horarioInicio),
     to: endToSlot(p.horarioFim),
@@ -698,10 +921,31 @@ export function ScheduleWizard() {
                       </p>
                     )}
                     <section className={`${cardClass} space-y-3`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs text-gray-500">Arraste uma aula pra mudar dia/horário, ou clique pra editar.</p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setConflictMessage(null);
+                            setEditingIndex("novo");
+                          }}
+                          className="flex shrink-0 items-center gap-1 rounded-full border border-teal-600 px-3 py-1.5 text-xs text-teal-700 hover:bg-teal-50"
+                        >
+                          <Plus size={14} /> Adicionar aula
+                        </button>
+                      </div>
+                      {conflictMessage && (
+                        <p className="flex items-center gap-1.5 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">
+                          <AlertTriangle size={15} className="shrink-0" /> {conflictMessage}
+                        </p>
+                      )}
                       <WeekGrid
                         value={grid}
                         readOnly
                         events={events}
+                        editableEvents
+                        onEventMove={handleEventMove}
+                        onEventClick={handleEventClick}
                         className="h-[28rem] rounded-xl border border-slate-200"
                       />
                       <ul className="flex flex-wrap gap-x-4 gap-y-1.5">
@@ -713,6 +957,28 @@ export function ScheduleWizard() {
                         ))}
                       </ul>
                     </section>
+
+                    {editingIndex !== null && (
+                      <PropostaEditor
+                        disciplinas={cargas}
+                        teachers={eligibleTeachers}
+                        initial={editingIndex === "novo" ? null : result.propostas[editingIndex]}
+                        saving={validating}
+                        error={conflictMessage}
+                        onCancel={() => {
+                          setEditingIndex(null);
+                          setConflictMessage(null);
+                        }}
+                        onRemove={editingIndex === "novo" ? undefined : () => removeProposta(editingIndex)}
+                        onSave={(proposta) => {
+                          const next =
+                            editingIndex === "novo"
+                              ? [...result.propostas, proposta]
+                              : result.propostas.map((p, i) => (i === editingIndex ? proposta : p));
+                          void validateAndApply(next);
+                        }}
+                      />
+                    )}
 
                     {result.naoAlocados.length > 0 && (
                       <section className="space-y-2 rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-200">

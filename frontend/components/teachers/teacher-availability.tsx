@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, Save, Trash2 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { getSessionUser } from "@/lib/auth";
+import { HelpButton } from "@/components/ui/help-button";
 import {
   DAYS,
   SLOTS,
@@ -131,6 +132,11 @@ export function TeacherAvailability({ teacherId }: { teacherId: string }) {
           <p className="text-sm font-semibold text-blue-600">{formatHours(totalSlots)}</p>
           <p className="text-[10px] uppercase tracking-wide text-slate-400">por semana</p>
         </div>
+        <HelpButton title="Pra que serve essa tela" variant="light">
+          <p>Aqui você marca os dias e horários em que pode dar aula — é só arrastar nos quadrinhos (ou tocar, se for pelo celular).</p>
+          <p>Isso é importante porque o "Gerar grade" automático da gestão só encaixa o professor nos horários que ele marcou aqui. Quem não marca nenhuma disponibilidade não aparece como opção na hora de montar a grade.</p>
+          <p>Dá pra mudar quando quiser — é só voltar aqui, ajustar e salvar de novo.</p>
+        </HelpButton>
       </div>
 
       <div className="flex items-center justify-between gap-3 px-4 py-2 text-xs text-slate-500">

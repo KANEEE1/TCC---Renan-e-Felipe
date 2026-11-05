@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { BookOpen, Check, ChevronLeft, Eye, EyeOff, Lock, Mail, Phone, Trash2, User, UserPlus } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
+import { HelpButton } from "@/components/ui/help-button";
 
 const AVATAR_GRADIENTS = [
   "from-blue-500 to-indigo-600",
@@ -112,10 +113,15 @@ export function RegisterTeacher() {
           <Link href="/teachers" className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 transition-colors hover:bg-white/30">
             <ChevronLeft size={18} />
           </Link>
-          <div>
+          <div className="flex-1">
             <h1 className="leading-tight text-white">Cadastrar Professor</h1>
             <p className="mt-0.5 text-xs text-blue-200">Criar login e senha de acesso</p>
           </div>
+          <HelpButton title="Como funciona o cadastro">
+            <p>Aqui você cria o acesso de um novo professor. Você escolhe uma senha inicial pra ele — vale avisar o professor dessa senha por fora do sistema (WhatsApp, por exemplo).</p>
+            <p>Depois de cadastrado, o sistema manda um e-mail de confirmação pro professor automaticamente. Até ele clicar nesse link, a lista de professores mostra um aviso de "e-mail pendente" — mas isso não impede ele de ser escalado pra dar aula enquanto isso.</p>
+            <p>Lembre de marcar as disciplinas que ele vai dar: só assim ele aparece como opção na hora de montar a grade de horários.</p>
+          </HelpButton>
         </div>
 
         <div className="flex rounded-xl bg-white/15 p-0.5">

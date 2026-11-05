@@ -1,17 +1,24 @@
-import { Resend } from "resend";
+import sgMail from "@sendgrid/mail";
 
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+// SendGrid verifica só o remetente (Single Sender Verification, sem precisar de domínio próprio),
+// e entrega pra qualquer destinatário — diferente do Resend sem domínio, que só entrega pro e-mail
+// dono da conta. EMAIL_FROM precisa ser exatamente o endereço verificado como "single sender" no
+// painel do SendGrid.
+if (process.env.SENDGRID_API_KEY) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+}
 
-const FROM = process.env.EMAIL_FROM ?? "Cursinho Popular <onboarding@resend.dev>";
+const FROM = process.env.EMAIL_FROM;
 
 export async function sendEmail(to: string, subject: string, html: string) {
-  if (!resend) {
-    console.log(`[email] RESEND_API_KEY não configurada, e-mail não enviado. Para: ${to} | Assunto: ${subject}`);
+  if (!process.env.SENDGRID_API_KEY || !FROM) {
+    console.log(`[email] SENDGRID_API_KEY ou EMAIL_FROM não configurados, e-mail não enviado. Para: ${to} | Assunto: ${subject}`);
     return;
   }
 
-  const { error } = await resend.emails.send({ from: FROM, to, subject, html });
-  if (error) {
+  try {
+    await sgMail.send({ to, from: FROM, subject, html });
+  } catch (error) {
     console.error(`[email] Falha ao enviar para ${to}:`, error);
   }
 }

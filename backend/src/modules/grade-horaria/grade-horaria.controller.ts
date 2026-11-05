@@ -50,6 +50,12 @@ export class GradeHorariaController {
       res.status(201).json({ criadas: await this.gradeHorariaService.replace(input) });
     }));
 
+    // Mesmas checagens do /replace, sem persistir: usado pra validar uma edição manual da proposta antes de aplicá-la.
+    this.router.post("/validate", requireAuth, requireRole("GESTAO"), asyncHandler(async (req, res) => {
+      const input = replaceScheduleSchema.parse(req.body);
+      res.json(await this.gradeHorariaService.validate(input));
+    }));
+
     this.router.post("/", asyncHandler(async (req, res) => {
       const input = createAulaSchema.parse(req.body);
       res.status(201).json(await this.gradeHorariaService.create(input));

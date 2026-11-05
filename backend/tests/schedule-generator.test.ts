@@ -225,6 +225,69 @@ describe("POST /schedule/replace", () => {
   });
 });
 
+describe("POST /schedule/validate", () => {
+  beforeEach(resetDb);
+
+  const validate = (body: object) => request(app).post("/schedule/validate").set(asGestao()).send(body);
+
+  it("returns ok and never persists anything", async () => {
+    const { turmaId, mat, fis, p1, p3 } = await setup();
+
+    const res = await validate({ turmaId, aulas: [aula(mat, p1), aula(fis, p3, "TERCA")] });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true });
+    expect(await prisma.aula.count({ where: { turmaId } })).toBe(0);
+  });
+
+  it("auth and 404", async () => {
+    const { turmaId, mat, p1 } = await setup();
+    const body = { turmaId, aulas: [aula(mat, p1)] };
+    expect((await request(app).post("/schedule/validate").send(body)).status).toBe(401);
+    expect((await request(app).post("/schedule/validate").set(asTeacher(p1)).send(body)).status).toBe(403);
+    expect((await validate({ ...body, turmaId: "clxxxxxxxxxxxxxxxxxxxxxxx" })).status).toBe(404);
+  });
+
+  it("409 on conflict with another class, with the specific conflict detail", async () => {
+    const { turmaId, outraId, mat, p1 } = await setup();
+    await prisma.aula.create({
+      data: { turmaId: outraId, disciplinaId: mat, professorId: p1, diaSemana: "SEGUNDA", horarioInicio: parseTimeToDate("08:30"), horarioFim: parseTimeToDate("09:30") }
+    });
+
+    const res = await validate({ turmaId, aulas: [aula(mat, p1)] });
+    expect(res.status).toBe(409);
+    expect(res.body.conflitos).toEqual([
+      expect.objectContaining({ recurso: "PROFESSOR", origem: "EXISTENTE", diaSemana: "SEGUNDA" })
+    ]);
+    expect(await prisma.aula.count()).toBe(1);
+  });
+
+  it("409 on overlap among the proposed lessons themselves", async () => {
+    const { turmaId, mat, p1, p2 } = await setup();
+    const res = await validate({ turmaId, aulas: [aula(mat, p1), aula(mat, p2, "SEGUNDA", "08:30", "09:30")] });
+    expect(res.status).toBe(409);
+    expect(res.body.conflitos[0]).toMatchObject({ recurso: "TURMA", origem: "PROPOSTA" });
+  });
+
+  it("400 for discipline outside the matrix or professor who doesn't teach it", async () => {
+    const { turmaId, p1, fis } = await setup();
+    const outra = await prisma.disciplina.create({ data: { nome: "Arte", nomeNormalizado: "arte" } });
+    expect((await validate({ turmaId, aulas: [aula(outra.id, p1)] })).status).toBe(400);
+    expect((await validate({ turmaId, aulas: [aula(fis, p1)] })).status).toBe(400);
+  });
+
+  it("does not block on existing attendance, unlike /replace", async () => {
+    const { turmaId, mat, p1 } = await setup();
+    const existente = await prisma.aula.create({
+      data: { turmaId, disciplinaId: mat, professorId: p1, diaSemana: "TERCA", horarioInicio: parseTimeToDate("10:00"), horarioFim: parseTimeToDate("11:00") }
+    });
+    const aluno = await prisma.aluno.create({ data: { nome: "Aluno", email: "al@t.com" } as never });
+    await prisma.presenca.create({ data: { alunoId: aluno.id, aulaId: existente.id, presente: true, data: new Date("2026-08-04") } });
+
+    const res = await validate({ turmaId, aulas: [aula(mat, p1)] });
+    expect(res.status).toBe(200);
+  });
+});
+
 describe("geração de grade: cenários integrados", () => {
   beforeEach(resetDb);
 

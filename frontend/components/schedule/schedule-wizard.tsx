@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { todayInSaoPaulo } from "@/lib/date";
+import { HelpButton } from "@/components/ui/help-button";
 import { GradeCreatedDialog } from "@/components/schedule/grade-created-dialog";
 import { PeriodPicker, formatPeriodo } from "@/components/schedule/period-picker";
 import { CurriculumEditor, formatHours, makeRow, toDisciplinasPayload, type CargaRow } from "@/components/classes/curriculum-editor";
@@ -676,10 +677,19 @@ export function ScheduleWizard() {
         <Link href="/dashboard" className="mr-3" aria-label="Voltar ao início">
           <ArrowLeft size={24} />
         </Link>
-        <div>
+        <div className="flex-1">
           <h1>Gerar grade horária</h1>
           {detail && <p className="text-xs text-teal-100">{detail.nome}</p>}
         </div>
+        <HelpButton title="Como funciona a geração de grade">
+          <p>Essa tela monta a grade de horários da turma automaticamente, em passos:</p>
+          <p><strong>1.</strong> Você escolhe a turma e o período (quando as aulas começam e terminam).</p>
+          <p><strong>2.</strong> Define quantas aulas por semana cada matéria vai ter.</p>
+          <p><strong>3.</strong> Marca os horários em que a turma pode ter aula.</p>
+          <p><strong>4.</strong> Escolhe quais professores podem ser usados (por padrão, todos que dão aula daquelas matérias entram).</p>
+          <p>Aí o sistema monta uma proposta sozinho, sem deixar um professor ou uma turma com duas aulas no mesmo horário.</p>
+          <p>Depois de gerada, dá pra pedir outra combinação, ou ajustar na mão: arrastar uma aula pra outro dia/horário, clicar numa aula pra trocar o professor ou removê-la, e adicionar aulas novas. Só quando você clica em "Confirmar grade" é que ela é salva de verdade.</p>
+        </HelpButton>
       </div>
 
       <Stepper step={step} onGo={(n) => n < step && goTo(n)} />

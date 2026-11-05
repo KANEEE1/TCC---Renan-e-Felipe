@@ -7,6 +7,7 @@ import { Bell, CalendarClock, CalendarX, ChevronRight, ClipboardList, LogOut, Pl
 import { api, ApiError } from "@/lib/api";
 import { clearSession } from "@/lib/auth";
 import { eventTypeOf, toHHMM, type EventType, type MeetingDTO } from "@/components/meetings/meeting-types";
+import { HelpButton } from "@/components/ui/help-button";
 
 interface DashboardSummary {
   todayActivities: {
@@ -239,6 +240,19 @@ export function DashboardScreen() {
             </span>
           </div>
           <div className="flex gap-2">
+            <HelpButton title="Como funciona essa tela">
+              {userRole === "gestão" ? (
+                <>
+                  <p>Essa é a sua tela inicial. Aqui você vê um resumo do seu dia (aulas e reuniões) e os avisos mais importantes, como um professor avisando que não vai poder dar aula.</p>
+                  <p>Os atalhos em destaque levam pras ferramentas principais, como gerar a grade de horários automaticamente.</p>
+                </>
+              ) : (
+                <>
+                  <p>Essa é a sua tela inicial. Aqui aparecem as aulas e reuniões do seu dia.</p>
+                  <p>Quando a gestão te escalar pra dar uma aula ou te convidar pra uma reunião, o aviso aparece aqui mesmo, com botões pra confirmar ou recusar.</p>
+                </>
+              )}
+            </HelpButton>
             <Link
               href="/profile/edit"
               className="flex h-9 w-9 items-center justify-center rounded-full bg-white/20 transition-colors hover:bg-white/30"

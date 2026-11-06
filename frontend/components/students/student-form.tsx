@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ArrowLeft, Save } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { getSessionUser } from "@/lib/auth";
+import { ImportStudents } from "./import-students";
 
 interface ClassOption {
   id: string;
@@ -114,6 +115,8 @@ export function StudentForm({ isEdit = false, studentId }: StudentFormProps) {
       </div>
 
       <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 pb-32">
+        {!isEdit && isManagement && <ImportStudents />}
+
         <div className="mb-4 rounded-lg bg-white p-4 shadow">
           <h3 className="mb-4 text-gray-800">Dados do Aluno</h3>
 

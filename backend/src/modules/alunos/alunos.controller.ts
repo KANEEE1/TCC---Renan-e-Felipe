@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { requireAuth, requireRole } from "../../shared/auth.js";
 import { asyncHandler } from "../../shared/http.js";
-import { createAlunoSchema, updateAlunoSchema } from "./alunos.schemas.js";
+import { createAlunoSchema, importarAlunosSchema, updateAlunoSchema } from "./alunos.schemas.js";
 import type { AlunosService } from "./alunos.service.js";
 
 export class AlunosController {
@@ -24,6 +24,18 @@ export class AlunosController {
     this.router.post("/", requireAuth, requireRole("GESTAO"), asyncHandler(async (req, res) => {
       const input = createAlunoSchema.parse(req.body);
       res.status(201).json(await this.alunosService.create(input));
+    }));
+
+    // Confere a planilha sem cadastrar nada, para o gestor ver os problemas antes de confirmar.
+    this.router.post("/importar/validacao", requireAuth, requireRole("GESTAO"), asyncHandler(async (req, res) => {
+      const { csv } = importarAlunosSchema.parse(req.body);
+      const { novos, erros } = await this.alunosService.validarPlanilha(csv);
+      res.json({ total: novos.length, erros });
+    }));
+
+    this.router.post("/importar", requireAuth, requireRole("GESTAO"), asyncHandler(async (req, res) => {
+      const { csv } = importarAlunosSchema.parse(req.body);
+      res.status(201).json(await this.alunosService.importarPlanilha(csv));
     }));
 
     this.router.put("/:id", requireAuth, requireRole("GESTAO"), asyncHandler(async (req, res) => {

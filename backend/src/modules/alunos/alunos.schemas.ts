@@ -15,5 +15,8 @@ export const createAlunoSchema = alunoFields.extend({ turmaId: z.string().min(1)
 
 export const updateAlunoSchema = alunoFields.partial();
 
+// Texto do CSV. O limite acompanha o do corpo das requisições (express.json) e comporta cerca de 2.000 alunos.
+export const importarAlunosSchema = z.object({ csv: z.string().min(1).max(90_000) });
+
 export type CreateAlunoInput = z.infer<typeof createAlunoSchema>;
 export type UpdateAlunoInput = z.infer<typeof updateAlunoSchema>;

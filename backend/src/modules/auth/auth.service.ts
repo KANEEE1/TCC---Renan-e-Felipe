@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import type { Role } from "@prisma/client";
 import { HttpError } from "../../shared/http.js";
 import { signAuthToken, signPurposeToken, verifyPurposeToken } from "../../shared/auth.js";
+import { validarCelular } from "../../shared/celular.js";
 import { sendEmail } from "../../shared/email.js";
 import type {
   ChangePasswordInput,
@@ -91,6 +92,7 @@ export class AuthService {
 
   async setup(input: SetupInput) {
     const { password, ...rest } = input;
+    const celular = validarCelular(input.celular);
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
     const user = await this.usersRepository.transaction(async (repository) => {
@@ -98,7 +100,7 @@ export class AuthService {
         throw new HttpError(409, "Management account already exists");
       }
 
-      return repository.create({ ...rest, passwordHash, roles: ["GESTAO"] });
+      return repository.create({ ...rest, celular, passwordHash, roles: ["GESTAO"] });
     });
 
     return this.session(user);
@@ -122,6 +124,6 @@ export class AuthService {
 
   async updateMe(userId: string, input: UpdateMeInput) {
     await this.me(userId);
-    return this.usersRepository.update(userId, input);
+    return this.usersRepository.update(userId, { ...input, celular: validarCelular(input.celular) });
   }
 }

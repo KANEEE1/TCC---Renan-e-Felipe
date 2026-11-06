@@ -65,7 +65,7 @@ export function TeacherForm({ isEdit = false, teacherId }: TeacherFormProps) {
         // A gestão altera só disciplinas e status; dados pessoais são editados pelo próprio professor no perfil.
         await api.put(`/teachers/${teacherId}`, { ativo, disciplinaIds: subjectIds });
       } else {
-        await api.post("/teachers", { name, email, celular: phone, password, disciplinaIds: subjectIds });
+        await api.post("/teachers", { name, email, celular: phone.trim() || undefined, password, disciplinaIds: subjectIds });
       }
       router.push("/teachers");
     } catch (err) {
@@ -133,14 +133,13 @@ export function TeacherForm({ isEdit = false, teacherId }: TeacherFormProps) {
           </div>
 
           <div>
-            <label className="mb-2 block text-gray-700">Telefone</label>
+            <label className="mb-2 block text-gray-700">Celular (opcional)</label>
             <input
               type="tel"
               value={phone}
               onChange={(event) => setPhone(event.target.value)}
               className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="(11) 98765-4321"
-              required
             />
           </div>
             </>

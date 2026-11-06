@@ -79,6 +79,14 @@ describe("auth", () => {
     expect(ok.status).toBe(200);
     expect(ok.body).toMatchObject({ name: "Novo Nome", celular: "(11) 90000-0000" });
 
+    expect((await put({ celular: "21987654321" })).body.celular).toBe("(21) 98765-4321");
+    const invalido = await put({ celular: "(11) 3333-4444" });
+    expect(invalido.status).toBe(400);
+    expect(invalido.body.message).toContain("celular válido");
+    // Editar só o nome não mexe no celular; null remove.
+    expect((await put({ name: "Outro" })).body.celular).toBe("(21) 98765-4321");
+    expect((await put({ celular: null })).body.celular).toBeNull();
+
     expect((await put({ departamento: "Exatas" })).status).toBe(400);
     expect((await put({ bio: "Sobre mim" })).status).toBe(400);
   });

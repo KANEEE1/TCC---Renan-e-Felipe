@@ -5,11 +5,11 @@ export const loginSchema = z.object({
   password: z.string().min(1)
 });
 
-// O próprio usuário edita só nome e telefone; disciplinas e status são definidos pela gestão.
+// O próprio usuário edita só nome e celular (null remove); disciplinas e status são definidos pela gestão.
 export const updateMeSchema = z
   .object({
     name: z.string().min(1).optional(),
-    celular: z.string().min(1).optional()
+    celular: z.string().min(1).nullable().optional()
   })
   .strict();
 

@@ -1,7 +1,9 @@
 import bcrypt from "bcryptjs";
 import { HttpError } from "../../shared/http.js";
 import { signPurposeToken } from "../../shared/auth.js";
+import { validarCelular } from "../../shared/celular.js";
 import { sendEmail } from "../../shared/email.js";
+import { dominioRecebeEmail } from "../../shared/email-domain.js";
 import type { CreateTeacherInput, UpdateTeacherInput } from "./teachers.schemas.js";
 import type { TeachersRepository } from "./teachers.repository.js";
 
@@ -33,11 +35,18 @@ export class TeachersService {
       throw new HttpError(409, "Email already registered");
     }
 
+    const celular = validarCelular(input.celular);
+
+    if (!(await dominioRecebeEmail(input.email))) {
+      throw new HttpError(400, "O domínio deste e-mail não recebe mensagens. Confira se foi digitado corretamente.");
+    }
+
     const { password, disciplinaIds, ...rest } = input;
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
     const teacher = await this.teachersRepository.create({
       ...rest,
+      celular,
       passwordHash,
       roles: ["PROFESSOR"],
       emailConfirmado: false,

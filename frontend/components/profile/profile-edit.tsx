@@ -62,7 +62,7 @@ export function ProfileEdit() {
     try {
       await api.put("/auth/me", {
         name: formData.name,
-        celular: formData.phone || undefined
+        celular: formData.phone.trim() || null
       });
 
       setSaved(true);
@@ -122,11 +122,12 @@ export function ProfileEdit() {
             </div>
 
             <div>
-              <label className="mb-2 block text-gray-700">Telefone</label>
+              <label className="mb-2 block text-gray-700">Celular (opcional)</label>
               <input
                 type="tel"
                 value={formData.phone}
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                placeholder="(11) 98765-4321"
                 className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>

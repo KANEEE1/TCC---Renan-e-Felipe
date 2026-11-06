@@ -90,7 +90,7 @@ export function RegisterTeacher() {
     setSubmitting(true);
 
     try {
-      await api.post("/teachers", { name, email, celular: phone, password, disciplinaIds: subjectIds });
+      await api.post("/teachers", { name, email, celular: phone.trim() || undefined, password, disciplinaIds: subjectIds });
       setName("");
       setEmail("");
       setPhone("");
@@ -173,7 +173,7 @@ export function RegisterTeacher() {
 
               <div className="space-y-1.5">
                 <label className="flex items-center gap-1.5 text-sm text-slate-600">
-                  <Phone size={14} className="text-slate-400" /> Telefone
+                  <Phone size={14} className="text-slate-400" /> Celular (opcional)
                 </label>
                 <input
                   type="tel"

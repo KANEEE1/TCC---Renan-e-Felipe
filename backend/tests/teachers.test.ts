@@ -1,5 +1,7 @@
 import request from "supertest";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { dominioRecebeEmail } from "../src/shared/email-domain.js";
+import { prisma } from "../src/shared/prisma.js";
 import { app, createUser, resetDb, asTeacher, loginAs, asGestao } from "./helpers.js";
 
 describe("teachers", () => {
@@ -22,6 +24,31 @@ describe("teachers", () => {
     expect(res.body.roles).toEqual(["PROFESSOR"]);
     expect(res.body.disciplinas).toHaveLength(1);
     expect(res.body.passwordHash).toBeUndefined();
+  });
+
+  it("stores the phone in a standard format and keeps it optional", async () => {
+    const com = await request(app).post("/teachers").send({ name: "Ana", email: "ana@test.com", celular: "+55 11 98765-4321", password: "senha1234" });
+    expect(com.status).toBe(201);
+    expect(com.body.celular).toBe("(11) 98765-4321");
+
+    const sem = await request(app).post("/teachers").send({ name: "Bia", email: "bia@test.com", password: "senha1234" });
+    expect(sem.status).toBe(201);
+    expect(sem.body.celular).toBeNull();
+  });
+
+  it("rejects a phone that cannot be a Brazilian mobile, without creating the teacher", async () => {
+    const res = await request(app).post("/teachers").send({ name: "Ana", email: "ana@test.com", celular: "(11) 3333-4444", password: "senha1234" });
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain("celular válido");
+    expect(await prisma.user.count({ where: { email: "ana@test.com" } })).toBe(0);
+  });
+
+  it("rejects an email whose domain does not receive mail, without creating the teacher", async () => {
+    vi.mocked(dominioRecebeEmail).mockResolvedValueOnce(false);
+    const res = await request(app).post("/teachers").send({ name: "Ana", email: "ana@gmail.con", password: "senha1234" });
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain("domínio");
+    expect(await prisma.user.count({ where: { email: "ana@gmail.con" } })).toBe(0);
   });
 
   it("only lists users with the PROFESSOR role", async () => {

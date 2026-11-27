@@ -11,6 +11,7 @@ import {
   CalendarRange,
   Clock,
   Loader2,
+  MousePointerClick,
   Plus,
   RefreshCw,
   Sparkles,
@@ -136,6 +137,24 @@ function displayTime(time: string) {
 
 function cargaMinutes(cargas: { aulasPorSemana: number; duracaoMinutos: number }[]) {
   return cargas.reduce((sum, c) => sum + c.aulasPorSemana * c.duracaoMinutos, 0);
+}
+
+// Soma de minutos marcados não garante nada sozinha: uma janela mais curta que a
+// aula mais curta da matriz nunca vai caber nenhuma aula, mesmo que o total bata.
+function temJanelaMenorQue(grid: Grid, minMinutos: number) {
+  const minSlots = Math.ceil(minMinutos / 30);
+  return grid.some((coluna) => {
+    let sequencia = 0;
+    for (const marcado of coluna) {
+      if (marcado) {
+        sequencia += 1;
+        continue;
+      }
+      if (sequencia > 0 && sequencia < minSlots) return true;
+      sequencia = 0;
+    }
+    return sequencia > 0 && sequencia < minSlots;
+  });
 }
 
 function rowsOf(cargas: Carga[]): CargaRow[] {
@@ -641,6 +660,29 @@ export function ScheduleWizard() {
   const requiredMinutes = cargaMinutes(cargas);
   const availableMinutes = grid.reduce((sum, col) => sum + col.filter(Boolean).length, 0) * 30;
   const hasWindows = availableMinutes > 0;
+  const menorDuracaoAula = cargas.length > 0 ? Math.min(...cargas.map((c) => c.duracaoMinutos)) : 0;
+  const janelaCurtaDemais = hasWindows && menorDuracaoAula > 0 && temJanelaMenorQue(grid, menorDuracaoAula);
+
+  // Pinta de vermelho, direto no calendário, os blocos curtos demais para caber uma aula — em vez de só
+  // avisar em texto que "algum dia" está errado, mostra exatamente qual bloco é o problema.
+  const horarioEvents = useMemo<WeekGridEvent[]>(() => {
+    if (menorDuracaoAula === 0) return [];
+    const minSlots = Math.ceil(menorDuracaoAula / 30);
+    return grid.flatMap((coluna, dayIndex) =>
+      intervalsOf(coluna).map((interval) => {
+        const curto = interval.to - interval.from < minSlots;
+        return {
+          day: dayIndex,
+          from: interval.from,
+          to: interval.to,
+          title: interval.inicio,
+          subtitle: interval.to - interval.from > 1 ? interval.fim : undefined,
+          color: curto ? "#dc2626" : "#2563eb",
+          warning: curto
+        };
+      })
+    );
+  }, [grid, menorDuracaoAula]);
 
   const events: WeekGridEvent[] = (result?.propostas ?? []).map((p, index) => ({
     id: String(index),
@@ -802,23 +844,51 @@ export function ScheduleWizard() {
                       <strong className="text-gray-800">{formatHours(requiredMinutes)}</strong> necessárias
                     </span>
                   </div>
-                  {hasWindows && availableMinutes < requiredMinutes && (
-                    <p className="flex items-start gap-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-800">
-                      <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-                      Os horários marcados são menores que a carga semanal da matriz; algumas aulas podem ficar sem alocação.
+                  {menorDuracaoAula > 0 && (
+                    <p className="text-xs text-gray-500">
+                      Cada aula dura pelo menos {menorDuracaoAula}min: marque blocos de pelo menos esse tamanho por dia, sem isso a aula não cabe em
+                      nenhum horário.
                     </p>
                   )}
-                  <WeekGrid
-                    value={grid}
-                    onChange={setGrid}
-                    ready={janelasFor === classId}
-                    className="h-[28rem] rounded-xl border border-slate-200"
-                  >
-                    {janelasFor !== classId && !error && <Spinner text="Carregando horários..." />}
-                  </WeekGrid>
-                  {!hasWindows && janelasFor === classId && (
-                    <p className="text-sm text-amber-600">Marque ao menos um horário para continuar.</p>
+                  {janelaCurtaDemais ? (
+                    <p className="flex items-start gap-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-800">
+                      <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                      Um ou mais dias marcados têm menos de {menorDuracaoAula}min seguidos: nenhuma aula cabe nesses horários, mesmo contando no total
+                      abaixo.
+                    </p>
+                  ) : (
+                    hasWindows &&
+                    availableMinutes < requiredMinutes && (
+                      <p className="flex items-start gap-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-800">
+                        <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                        Os horários marcados são menores que a carga semanal da matriz; algumas aulas podem ficar sem alocação.
+                      </p>
+                    )
                   )}
+                  {janelaCurtaDemais && (
+                    <p className="flex items-center gap-1.5 text-xs text-red-700">
+                      <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm bg-red-600" />
+                      Em vermelho: períodos com menos de {menorDuracaoAula}min seguidos, onde nenhuma aula cabe.
+                    </p>
+                  )}
+                  <div className="relative">
+                    <WeekGrid
+                      value={grid}
+                      onChange={setGrid}
+                      events={horarioEvents}
+                      ready={janelasFor === classId}
+                      className="h-[28rem] rounded-xl border border-slate-200"
+                    >
+                      {janelasFor !== classId && !error && <Spinner text="Carregando horários..." />}
+                    </WeekGrid>
+                    {!hasWindows && janelasFor === classId && (
+                      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                        <p className="flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm text-gray-500 shadow-sm ring-1 ring-slate-200">
+                          <MousePointerClick size={16} /> Clique e arraste no calendário para marcar disponibilidade
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </section>
               </>
             )}
@@ -921,6 +991,23 @@ export function ScheduleWizard() {
                         result.propostas.length !== 1 ? "s" : ""
                       }${gradeInicio && gradeFim ? ` Período: ${formatPeriodo(gradeInicio, gradeFim)}.` : ""}`}
                     />
+                    {(() => {
+                      const totalEsperado = cargas.reduce((sum, c) => sum + c.aulasPorSemana, 0);
+                      const faltando = Math.max(totalEsperado - result.propostas.length, 0);
+                      if (totalEsperado === 0) return null;
+                      return faltando === 0 ? (
+                        <p className="flex items-center gap-2 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                          <Check size={16} className="shrink-0" />
+                          Grade completa: todas as {totalEsperado} aulas da matriz foram alocadas.
+                        </p>
+                      ) : (
+                        <p className="flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                          <AlertTriangle size={16} className="shrink-0" />
+                          Grade incompleta: {result.propostas.length} de {totalEsperado} aulas alocadas, {faltando} ficaram de
+                          fora (detalhes abaixo).
+                        </p>
+                      );
+                    })()}
                     {notice && (
                       <p
                         className={`rounded-xl px-4 py-3 text-sm ${

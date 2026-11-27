@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { DndContext, PointerSensor, useDraggable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
+import { AlertTriangle } from "lucide-react";
 
 // Semana no estilo de agenda: colunas por dia, linhas de 30 minutos entre START_HOUR e END_HOUR.
 export const DAYS = [
@@ -43,6 +44,8 @@ export interface WeekGridEvent {
   title: string;
   subtitle?: string;
   color: string;
+  // Mostra um ícone de alerta no canto do bloco, sem depender de espaço pra texto (útil em blocos pequenos).
+  warning?: boolean;
 }
 
 export function emptyGrid(): Grid {
@@ -290,6 +293,7 @@ export function WeekGrid({
                             backgroundColor: event.color
                           }}
                         >
+                          {event.warning && <AlertTriangle size={11} className="float-right ml-0.5 shrink-0" />}
                           <span className="block truncate font-semibold">{event.title}</span>
                           {event.subtitle && <span className="block truncate opacity-90">{event.subtitle}</span>}
                         </div>
